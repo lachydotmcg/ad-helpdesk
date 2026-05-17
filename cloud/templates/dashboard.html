@@ -1227,6 +1227,40 @@
               <div style="font-size:11px;color:var(--muted);margin-top:8px;">Email pattern examples: *@it.company.com, manager@company.com, *@hr.company.com</div>
             </div>
 
+            <!-- Agent Configuration -->
+            <div class="settings-section">
+              <div class="settings-section-title">Agent Configuration</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                Your Windows agent needs this API key to connect to your account.
+                Paste it into <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">agent-config.json</code> on your server.
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <input id="tenant-api-key" class="search-input" readonly
+                       style="flex:1;min-width:200px;max-width:420px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
+                       placeholder="Loading..." />
+                <button class="btn btn-ghost" style="font-size:12px;" onclick="copyApiKey()">Copy</button>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:12px;">
+                Cloud URL: <code id="cloud-url-display" style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;font-size:11px;">{{ request.host_url.rstrip('/') }}</code>
+              </div>
+            </div>
+
+            <!-- SMTP Email Notifications -->
+            <div class="settings-section">
+              <div class="settings-section-title">Email Notifications (SMTP)</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                When configured, Janus emails requesters automatically when their ticket is resolved.
+                Set these as environment variables on your Railway deployment.
+              </div>
+              <div style="font-size:12px;padding:10px 14px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;font-family:'Courier New',monospace;color:var(--accent2);line-height:1.8;">
+                SMTP_HOST=smtp.gmail.com<br>
+                SMTP_PORT=587<br>
+                SMTP_USER=helpdesk@yourcompany.com<br>
+                SMTP_PASS=your-app-password<br>
+                SMTP_FROM=helpdesk@yourcompany.com
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
@@ -2347,27 +2381,42 @@
 
   async function loadSettings() {
     try {
-      const res  = await fetch('/dashboard/api/settings');
-      const json = await res.json();
-      if (!json.success) return;
-      const s = json.data;
+      const [sRes, tRes] = await Promise.all([
+        fetch('/dashboard/api/settings'),
+        fetch('/dashboard/api/tenant'),
+      ]);
+      const sJson = await sRes.json();
+      const tJson = await tRes.json();
 
-      document.getElementById('s-janus-enabled').checked  = !!s.janus_enabled;
-      document.getElementById('s-scan-emails').checked    = !!s.janus_scan_emails;
-      document.getElementById('s-security-checks').checked = !!s.security_checks;
-      document.getElementById('s-email-domain').value     = s.email_domain || '';
+      if (sJson.success) {
+        const s = sJson.data;
+        document.getElementById('s-janus-enabled').checked  = !!s.janus_enabled;
+        document.getElementById('s-scan-emails').checked    = !!s.janus_scan_emails;
+        document.getElementById('s-security-checks').checked = !!s.security_checks;
+        document.getElementById('s-email-domain').value     = s.email_domain || '';
 
-      const aa = s.janus_auto_actions || [];
-      document.getElementById('s-auto-unlock').checked  = aa.includes('unlock_account');
-      document.getElementById('s-auto-reset').checked   = aa.includes('reset_password');
-      document.getElementById('s-auto-enable').checked  = aa.includes('enable_account');
-      document.getElementById('s-auto-disable').checked = aa.includes('disable_account');
+        const aa = s.janus_auto_actions || [];
+        document.getElementById('s-auto-unlock').checked  = aa.includes('unlock_account');
+        document.getElementById('s-auto-reset').checked   = aa.includes('reset_password');
+        document.getElementById('s-auto-enable').checked  = aa.includes('enable_account');
+        document.getElementById('s-auto-disable').checked = aa.includes('disable_account');
 
-      _settingsRoles = s.roles || [];
-      renderRoles();
+        _settingsRoles = s.roles || [];
+        renderRoles();
+      }
+
+      if (tJson.success) {
+        document.getElementById('tenant-api-key').value = tJson.data.api_key;
+      }
     } catch (e) {
       toast('Could not load settings: ' + e.message, 'error');
     }
+  }
+
+  function copyApiKey() {
+    const el = document.getElementById('tenant-api-key');
+    if (!el.value) return;
+    navigator.clipboard.writeText(el.value).then(() => toast('API key copied!', 'success'));
   }
 
   function renderRoles() {

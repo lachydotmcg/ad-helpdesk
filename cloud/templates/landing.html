@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AID Helpdesk — Manage Active Directory with plain English</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f0e1a;
+      --surface:  #1a1830;
+      --surface2: #221f3a;
+      --accent:   #6366f1;
+      --accent2:  #818cf8;
+      --text:     #e2e8f0;
+      --muted:    #94a3b8;
+      --border:   rgba(99,102,241,0.18);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 48px;
+      background: rgba(15,14,26,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-logo img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+    .nav-logo span { font-size: 16px; font-weight: 700; color: var(--text); }
+    .nav-logo span em { color: var(--accent2); font-style: normal; }
+    .nav-cta {
+      padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      background: var(--accent); color: #fff; text-decoration: none;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: var(--accent2); }
+
+    /* ── Sections ── */
+    section { padding: 80px 48px; max-width: 1080px; margin: 0 auto; }
+
+    /* ── Hero ── */
+    .hero { text-align: center; padding-top: 100px; padding-bottom: 80px; }
+    .hero-badge {
+      display: inline-block; margin-bottom: 20px;
+      padding: 4px 14px; border-radius: 999px;
+      background: rgba(99,102,241,0.12); border: 1px solid var(--border);
+      font-size: 12px; font-weight: 600; color: var(--accent2); letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 800; line-height: 1.15;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--text) 30%, var(--accent2) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 20px;
+    }
+    .hero p {
+      font-size: 1.1rem; color: var(--muted); max-width: 580px; margin: 0 auto 36px;
+    }
+    .hero-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 700;
+      background: var(--accent); color: #fff; text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 0 24px rgba(99,102,241,0.35);
+    }
+    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+    .btn-secondary {
+      padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
+      background: var(--surface); color: var(--text); text-decoration: none;
+      border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--accent2); transform: translateY(-1px); }
+
+    /* ── Features ── */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 28px; transition: border-color 0.2s, transform 0.2s;
+    }
+    .feature-card:hover { border-color: var(--accent2); transform: translateY(-3px); }
+    .feature-icon { font-size: 28px; margin-bottom: 14px; }
+    .feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    /* ── How it works ── */
+    .section-label {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--accent2); margin-bottom: 10px;
+    }
+    .section-title { font-size: clamp(1.5rem, 3vw, 2.2rem); font-weight: 800; margin-bottom: 48px; }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .step {
+      display: flex; gap: 16px; align-items: flex-start;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px;
+    }
+    .step-num {
+      flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(99,102,241,0.15); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800; color: var(--accent2);
+    }
+    .step-body h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .step-body p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+    /* ── Pricing ── */
+    .pricing-card {
+      max-width: 460px; margin: 0 auto;
+      background: var(--surface); border: 1px solid var(--accent); border-radius: 18px;
+      padding: 40px; text-align: center;
+      box-shadow: 0 0 48px rgba(99,102,241,0.15);
+    }
+    .plan-name { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent2); text-transform: uppercase; margin-bottom: 8px; }
+    .plan-price { font-size: 3rem; font-weight: 800; color: var(--text); }
+    .plan-price span { font-size: 1rem; font-weight: 400; color: var(--muted); }
+    .plan-note { font-size: 13px; color: var(--muted); margin: 10px 0 28px; }
+    .plan-features { list-style: none; text-align: left; margin-bottom: 32px; }
+    .plan-features li {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .plan-features li:last-child { border-bottom: none; }
+    .check { color: var(--accent2); font-size: 16px; }
+    .btn-pricing {
+      display: block; width: 100%; padding: 14px; border-radius: 10px;
+      font-size: 15px; font-weight: 700; background: var(--accent); color: #fff;
+      text-decoration: none; transition: background 0.2s;
+    }
+    .btn-pricing:hover { background: var(--accent2); }
+    .trial-note { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border); padding: 32px 48px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+      font-size: 13px; color: var(--muted);
+    }
+    footer a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+    footer a:hover { color: var(--accent2); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      nav { padding: 12px 20px; }
+      section { padding: 60px 20px; }
+      .hero { padding-top: 60px; }
+      footer { padding: 24px 20px; flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav>
+  <a class="nav-logo" href="/">
+    <img src="/logo.png" alt="AID Helpdesk logo" />
+    <span><em>AID</em> Helpdesk</span>
+  </a>
+  <a class="nav-cta" href="/login">Sign in</a>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-badge">Powered by Janus AI</div>
+  <h1>Manage Active Directory<br />with plain English</h1>
+  <p>AID Helpdesk lets you unlock accounts, reset passwords, and manage users just by describing what you need. Janus AI handles the rest.</p>
+  <div class="hero-btns">
+    <a class="btn-primary" href="/login">Get started free</a>
+    <a class="btn-secondary" href="#features">See how it works</a>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section id="features">
+  <div class="section-label">What you get</div>
+  <div class="section-title">Everything your IT team needs</div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">✨</div>
+      <h3>Janus AI</h3>
+      <p>Describe what you need in plain English. Janus understands, queries your AD, and takes action — or flags security concerns before anything happens.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎫</div>
+      <h3>Smart Tickets</h3>
+      <p>Turn support emails into tickets automatically. Janus analyses them, suggests fixes, and can auto-resolve common issues without human intervention.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <h3>Security Checks</h3>
+      <p>Janus flags impersonation attempts, typosquatting, and suspicious requests before they reach your AD. Built-in permission checking keeps your data safe.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section id="how-it-works">
+  <div class="section-label">Getting started</div>
+  <div class="section-title">Three steps to your first action</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h4>Connect</h4>
+        <p>Install the Windows agent on your server. It connects out to the cloud — no inbound ports or VPN needed.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h4>Ask</h4>
+        <p>Type your request in plain English. Unlock a user, reset a password, create an account — just describe it.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h4>Done</h4>
+        <p>Janus acts on your AD and replies with what it did. Full audit trail kept automatically — nothing ever gets lost.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pricing ── -->
+<section id="pricing">
+  <div class="section-label">Pricing</div>
+  <div class="section-title" style="text-align:center;">Simple, flat pricing</div>
+  <div class="pricing-card">
+    <div class="plan-name">Pro</div>
+    <div class="plan-price">£29 <span>/ month per tenant</span></div>
+    <div class="plan-note">Includes everything. No surprises.</div>
+    <ul class="plan-features">
+      <li><span class="check">✓</span> Unlimited AD users</li>
+      <li><span class="check">✓</span> Janus AI — natural language commands</li>
+      <li><span class="check">✓</span> Ticket system with email ingestion</li>
+      <li><span class="check">✓</span> Activity feed &amp; full audit log</li>
+      <li><span class="check">✓</span> Team access — up to 5 dashboard users</li>
+      <li><span class="check">✓</span> Security checks &amp; impersonation detection</li>
+    </ul>
+    <a class="btn-pricing" href="/login">Start free for 14 days</a>
+    <p class="trial-note">No credit card required. Cancel any time.</p>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <span>AID Helpdesk — Manage Active Directory with plain English</span>
+  <a href="/login">Sign in →</a>
+</footer>
+
+</body>
+</html>

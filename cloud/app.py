@@ -19,6 +19,9 @@ Environment variables:
 import os
 import json
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from functools import wraps
 from flask import (
     Flask, request, jsonify, g,
@@ -35,6 +38,67 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 
 db.init_db()
+
+
+# ---------------------------------------------------------------------------
+# Email helper
+# ---------------------------------------------------------------------------
+
+def send_ticket_email(to_email: str, to_name: str, ticket_title: str,
+                      action_taken: str, message: str):
+    """Send email notification to ticket requester. Silently skips if SMTP not configured."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+
+    if not smtp_host or not smtp_user or not to_email:
+        return  # SMTP not configured — skip silently
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Re: {ticket_title} — Resolved"
+        msg["From"]    = f"AID Helpdesk <{smtp_from}>"
+        msg["To"]      = f"{to_name} <{to_email}>" if to_name else to_email
+
+        greeting     = f"Hi {to_name.split()[0]}," if to_name else "Hi,"
+        action_line  = f"\n\nAction taken: {action_taken}" if action_taken else ""
+
+        plain = f"""{greeting}
+
+Your request "{ticket_title}" has been resolved.{action_line}
+
+{message}
+
+— AID Helpdesk (powered by Janus AI)
+"""
+        html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e;padding:20px;">
+  <div style="background:#1a1830;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+    <span style="color:#818cf8;font-size:18px;font-weight:700;">AID</span>
+    <span style="color:#e2e8f0;font-size:18px;"> Helpdesk</span>
+  </div>
+  <p>{greeting}</p>
+  <p>Your request <strong>{ticket_title}</strong> has been resolved.</p>
+  {'<p><strong>Action taken:</strong> ' + action_taken + '</p>' if action_taken else ''}
+  <p>{message}</p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+  <p style="color:#64748b;font-size:12px;">Powered by Janus AI — AID Helpdesk</p>
+</body>
+</html>"""
+
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+    except Exception as e:
+        print(f"[email] Failed to send to {to_email}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +181,7 @@ def logo():
 def index():
     if "tenant_id" in session:
         return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
+    return render_template("landing.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -444,6 +508,23 @@ def dashboard_update_settings():
     return jsonify({"success": True, "data": current})
 
 
+@app.route("/dashboard/api/tenant")
+@require_dashboard_user
+def dashboard_tenant_info():
+    """Return current tenant info including api_key (for agent-config.json setup)."""
+    tenant = db.get_tenant_by_id(g.tenant_id)
+    if not tenant:
+        return jsonify({"success": False, "message": "Tenant not found."}), 404
+    return jsonify({
+        "success": True,
+        "data": {
+            "id":      tenant["id"],
+            "name":    tenant["name"],
+            "api_key": tenant["api_key"],
+        }
+    })
+
+
 @app.route("/dashboard/api/activity")
 @require_dashboard_user
 def dashboard_activity():
@@ -636,6 +717,15 @@ RULES:
                                     target=ticket["id"],
                                     detail=f"Auto-resolved via {janus_action} on {janus_args[0] if janus_args else '?'}")
                     ticket["auto_resolved"] = True
+                    # Email the requester
+                    if requester_email:
+                        send_ticket_email(
+                            to_email=requester_email,
+                            to_name=requester_name or "",
+                            ticket_title=title,
+                            action_taken=f"{janus_action} on {janus_args[0] if janus_args else '?'}",
+                            message="Your account issue has been resolved automatically by Janus AI. If you have further questions, please submit a new ticket."
+                        )
                 elif result_data:
                     db.add_ticket_action(ticket["id"], g.tenant_id, "ad_action",
                                          f"❌ Janus auto-apply failed: {result_data['message']}", "janus")
@@ -738,6 +828,15 @@ def apply_ticket_fix_complete(ticket_id):
         db.log_audit(g.tenant_id, g.user_email, action, args[0] if args else "", "success")
         db.log_activity(g.tenant_id, "ticket_resolved", g.user_email,
                         target=ticket_id, detail=f"Fix applied: {action} on {args[0] if args else '?'}")
+        # Email the requester
+        if ticket.get("requester_email"):
+            send_ticket_email(
+                to_email=ticket["requester_email"],
+                to_name=ticket.get("requester_name", ""),
+                ticket_title=ticket["title"],
+                action_taken=f"{action} on {args[0] if args else '?'}",
+                message="Your account issue has been resolved. If you have further questions, please submit a new ticket."
+            )
     else:
         db.add_ticket_action(ticket_id, g.tenant_id, "ad_action",
                              f"Fix failed: {message}", g.user_email)
@@ -767,13 +866,9 @@ def email_webhook():
     from_name = data.get("from-name", data.get("name", ""))
 
     # For now, create ticket on the first tenant (multi-tenant routing comes with v1.0)
-    import sqlite3
-    with db.get_conn() as conn:
-        row = conn.execute("SELECT id FROM tenants LIMIT 1").fetchone()
-    if not row:
+    tenant_id = db.get_first_tenant_id()
+    if not tenant_id:
         return jsonify({"success": False, "message": "No tenants configured."}), 500
-
-    tenant_id = row["id"]
     db.create_ticket(
         tenant_id, "email-webhook",
         title=subject[:200],
