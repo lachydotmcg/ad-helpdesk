@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python cloud/app.py"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

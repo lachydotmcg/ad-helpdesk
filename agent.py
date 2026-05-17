@@ -44,6 +44,7 @@ ACTIONS = {
     "list_locked_accounts":   lambda a: ad_bridge.list_locked_accounts(),
     "list_expired_passwords": lambda a: ad_bridge.list_expired_passwords(),
     "get_stats":              lambda a: ad_bridge.get_stats(),
+    "list_ous":               lambda a: ad_bridge.list_ous(),
     "reset_password":         lambda a: ad_bridge.reset_password(*a),
     "unlock_account":         lambda a: ad_bridge.unlock_account(*a),
     "disable_account":        lambda a: ad_bridge.disable_account(*a),

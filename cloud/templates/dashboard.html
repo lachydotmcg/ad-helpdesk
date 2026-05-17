@@ -1,0 +1,2624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AID Helpdesk — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0e1a;
+      --surface:   #1a1830;
+      --surface2:  #211f3a;
+      --border:    #2d2b4e;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --accent:    #6366f1;
+      --accent2:   #818cf8;
+      --green:     #34d399;
+      --red:       #f87171;
+      --yellow:    #fbbf24;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---- Top nav ---- */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .nav-logo span { color: var(--accent2); font-weight: 400; }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .tenant-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: var(--accent2);
+    }
+
+    .logout-btn {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: color 0.15s;
+    }
+
+    .logout-btn:hover { color: var(--text); }
+
+    /* ---- Main layout ---- */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ---- Sidebar ---- */
+    aside {
+      width: 200px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px 0;
+      flex-shrink: 0;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 14px;
+      color: var(--muted);
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .nav-item:hover { color: var(--text); background: var(--surface2); }
+    .nav-item.active { color: var(--accent2); border-left-color: var(--accent); background: rgba(99,102,241,0.08); }
+
+    .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+
+    .nav-section {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      padding: 16px 20px 6px;
+    }
+
+    /* ---- Content ---- */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ---- Stats row ---- */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .stat-value.green { color: var(--green); }
+    .stat-value.red   { color: var(--red); }
+    .stat-value.yellow{ color: var(--yellow); }
+
+    /* ---- Panel ---- */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .panel-count {
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface2);
+      border-radius: 12px;
+      padding: 2px 10px;
+    }
+
+    /* ---- Search bar ---- */
+    .search-row {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+    }
+
+    .search-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .search-input:focus { border-color: var(--accent); }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger  { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+    .btn-success { background: rgba(52,211,153,0.15); color: var(--green); border: 1px solid rgba(52,211,153,0.3); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    /* ---- Table ---- */
+    table { width: 100%; border-collapse: collapse; }
+
+    th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 11px 20px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(45,43,78,0.5);
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(99,102,241,0.04); }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .pill-green  { background: rgba(52,211,153,0.15); color: var(--green); }
+    .pill-red    { background: rgba(248,113,113,0.15); color: var(--red); }
+    .pill-yellow { background: rgba(251,191,36,0.15);  color: var(--yellow); }
+    .pill-gray   { background: var(--surface2); color: var(--muted); }
+
+    .action-btns { display: flex; gap: 6px; }
+
+    /* ---- Loading states ---- */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Toast ---- */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+    }
+
+    .toast {
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid;
+      animation: slide-in 0.2s ease;
+      max-width: 320px;
+    }
+
+    .toast-success { background: rgba(52,211,153,0.15); border-color: rgba(52,211,153,0.3); color: var(--green); }
+    .toast-error   { background: rgba(248,113,113,0.15); border-color: rgba(248,113,113,0.3); color: var(--red); }
+    .toast-info    { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); color: var(--accent2); }
+
+    @keyframes slide-in {
+      from { transform: translateX(20px); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ---- Agent status dot ---- */
+    .agent-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--yellow);
+    }
+
+    .status-dot.online  { background: var(--green); }
+    .status-dot.offline { background: var(--red); }
+
+    /* ---- Empty state ---- */
+    .empty {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .empty-icon { font-size: 32px; margin-bottom: 12px; }
+
+    /* ---- Modal ---- */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .modal h2 { font-size: 17px; margin-bottom: 6px; }
+    .modal p  { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+    .modal .field { margin-bottom: 16px; }
+    .modal label  { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .modal input, .modal select {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .modal input:focus { border-color: var(--accent); }
+
+    .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+    /* ---- Audit log ---- */
+    .audit-row td:first-child { font-family: 'Courier New', monospace; font-size: 11px; color: var(--muted); }
+
+    /* ---- Tickets ---- */
+    .ticket-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .ticket-row { cursor: pointer; }
+    .ticket-row.selected td { background: rgba(99,102,241,0.08); }
+
+    .priority-urgent { color: var(--red); font-weight: 600; }
+    .priority-high   { color: var(--yellow); }
+    .priority-medium { color: var(--accent2); }
+    .priority-low    { color: var(--muted); }
+
+    .ticket-detail {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      position: sticky;
+      top: 0;
+    }
+
+    .ticket-detail h2 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .ticket-detail .meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+
+    .janus-box {
+      background: rgba(99,102,241,0.08);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .janus-box .janus-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .ticket-actions-log {
+      max-height: 200px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .action-entry {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border-left: 3px solid var(--border);
+    }
+
+    .action-entry.comment      { border-left-color: var(--accent2); background: var(--surface2); }
+    .action-entry.ad_action    { border-left-color: var(--green); background: rgba(52,211,153,0.06); }
+    .action-entry.status_change{ border-left-color: var(--yellow); background: rgba(251,191,36,0.06); }
+    .action-entry.janus_analysis { border-left-color: var(--accent); background: rgba(99,102,241,0.06); }
+
+    .action-entry .action-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+
+    /* ---- AI Chat ---- */
+    .chat-wrap {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 56px - 56px);
+      min-height: 400px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chat-bubble {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .chat-bubble.user {
+      background: var(--accent);
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-bubble.assistant {
+      background: var(--surface2);
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .chat-bubble.assistant.thinking {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .thinking-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .thinking-dots {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .thinking-dots span {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent2);
+      animation: thinking-bounce 1.3s infinite ease-in-out;
+    }
+
+    .thinking-dots span:nth-child(1) { animation-delay: 0s; }
+    .thinking-dots span:nth-child(2) { animation-delay: 0.18s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.36s; }
+
+    @keyframes thinking-bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+      30%           { transform: translateY(-6px); opacity: 1; }
+    }
+
+    .chat-action-tag {
+      display: inline-block;
+      font-size: 11px;
+      background: rgba(99,102,241,0.15);
+      color: var(--accent2);
+      border-radius: 6px;
+      padding: 2px 8px;
+      margin-bottom: 6px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      resize: none;
+      line-height: 1.5;
+    }
+
+    .chat-input:focus { border-color: var(--accent); }
+
+    .chat-send-btn {
+      padding: 10px 20px;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      align-self: flex-end;
+    }
+
+    .chat-send-btn:hover   { opacity: 0.85; }
+    .chat-send-btn:disabled { opacity: 0.4; cursor: default; }
+
+    .chat-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      gap: 12px;
+    }
+
+    .chat-empty-icon { font-size: 40px; }
+    .chat-empty h3 { font-size: 16px; color: var(--text); font-weight: 500; }
+    .chat-empty p  { font-size: 13px; text-align: center; max-width: 360px; line-height: 1.6; }
+
+    .chat-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .chat-suggestion {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .chat-suggestion:hover { border-color: var(--accent); color: var(--accent2); }
+
+    /* ---- Settings page ---- */
+    .settings-section {
+      margin-bottom: 28px;
+    }
+
+    .settings-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(45,43,78,0.4);
+      cursor: pointer;
+    }
+
+    .toggle-row:last-child { border-bottom: none; }
+
+    .toggle-row label { cursor: pointer; }
+    .toggle-row label:not(.toggle-switch) { flex: 1; }
+
+    .toggle-row .label-title { font-size: 13px; color: var(--text); margin-bottom: 2px; }
+    .toggle-row .label-desc  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* iOS-style toggle */
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      min-width: 40px;
+      height: 22px;
+      flex: 0 0 40px;
+      margin-top: 1px;
+    }
+
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 22px;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-track { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(18px); }
+
+    .role-entry {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(45,43,78,0.4);
+    }
+
+    .role-entry:last-child { border-bottom: none; }
+
+    /* ---- Activity feed ---- */
+    .activity-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 12px 20px;
+      border-bottom: 1px solid rgba(45,43,78,0.4);
+      font-size: 13px;
+    }
+
+    .activity-entry:last-child { border-bottom: none; }
+    .activity-entry:hover { background: rgba(99,102,241,0.04); }
+
+    .activity-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
+    .activity-icon.type-ticket_created   { background: rgba(99,102,241,0.15); }
+    .activity-icon.type-ticket_resolved  { background: rgba(52,211,153,0.15); }
+    .activity-icon.type-ad_action        { background: rgba(251,191,36,0.1); }
+    .activity-icon.type-janus_action     { background: rgba(99,102,241,0.15); }
+    .activity-icon.type-security_flag    { background: rgba(248,113,113,0.15); }
+    .activity-icon.type-settings_changed { background: rgba(100,116,139,0.15); }
+    .activity-icon.type-fix_failed       { background: rgba(248,113,113,0.15); }
+
+    .activity-body { flex: 1; }
+    .activity-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .activity-time   { font-size: 11px; color: var(--muted); flex-shrink: 0; margin-top: 2px; }
+
+    /* ---- Alert banners ---- */
+    .alert-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      border: 1px solid;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .alert-banner:hover { opacity: 0.85; }
+    .alert-banner.warn  { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); color: var(--yellow); }
+    .alert-banner.danger{ background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); color: var(--red); }
+    .alert-banner .alert-action { margin-left: auto; font-weight: 600; font-size: 12px; }
+
+    /* ---- Password strength ---- */
+    .pwd-strength { display: flex; gap: 4px; margin-top: 6px; }
+    .pwd-bar { height: 4px; flex: 1; border-radius: 2px; background: var(--border); transition: background 0.2s; }
+
+    .security-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(248,113,113,0.15);
+      color: var(--red);
+      border: 1px solid rgba(248,113,113,0.3);
+      margin-left: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top nav -->
+<nav>
+  <div class="nav-logo">
+    <img src="/logo.png" alt="AID" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"/>
+    AID <span>&nbsp;Helpdesk</span>
+  </div>
+  <div class="nav-right">
+    <div class="agent-status">
+      <div class="status-dot" id="agent-dot"></div>
+      <span id="agent-label">Checking agent...</span>
+    </div>
+    <div class="tenant-badge">{{ tenant_name }}</div>
+    <span>{{ user_email }}</span>
+    <a href="/logout" class="logout-btn">Sign out</a>
+  </div>
+</nav>
+
+<div class="main">
+  <!-- Sidebar -->
+  <aside>
+    <div class="nav-section">Manage</div>
+    <div class="nav-item active" onclick="showPage('users')">
+      <span class="nav-icon">👥</span> All Users
+    </div>
+    <div class="nav-item" onclick="showPage('locked')">
+      <span class="nav-icon">🔒</span> Locked Out
+      <span id="locked-badge" style="margin-left:auto;font-size:11px;color:var(--red);display:none"></span>
+    </div>
+    <div class="nav-item" onclick="showPage('expired')">
+      <span class="nav-icon">⏰</span> Pwd Expired
+    </div>
+    <div class="nav-section">Support</div>
+    <div class="nav-item" onclick="showPage('tickets')">
+      <span class="nav-icon">🎫</span> Tickets
+      <span id="open-tickets-badge" style="margin-left:auto;font-size:11px;color:var(--yellow);display:none"></span>
+    </div>
+    <div class="nav-section">Activity</div>
+    <div class="nav-item" onclick="showPage('chat')">
+      <span class="nav-icon">✨</span> Janus AI
+    </div>
+    <div class="nav-item" onclick="showPage('activity')">
+      <span class="nav-icon">⚡</span> Activity Feed
+    </div>
+    <div class="nav-item" onclick="showPage('audit')">
+      <span class="nav-icon">📋</span> Audit Log
+    </div>
+    {% if user_role == 'admin' %}
+    <div class="nav-section">Settings</div>
+    <div class="nav-item" onclick="showPage('team')">
+      <span class="nav-icon">👤</span> Team
+    </div>
+    <div class="nav-item" onclick="showPage('settings')">
+      <span class="nav-icon">⚙️</span> Janus Settings
+    </div>
+    {% endif %}
+  </aside>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- ===== USERS PAGE ===== -->
+    <div class="page active" id="page-users">
+      <!-- Smart alert banners — shown when there are issues -->
+      <div id="alert-banners" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;"></div>
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-label">Total Users</div>
+          <div class="stat-value" id="stat-total">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Locked</div>
+          <div class="stat-value red" id="stat-locked">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Disabled</div>
+          <div class="stat-value yellow" id="stat-disabled">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Pwd Expired</div>
+          <div class="stat-value yellow" id="stat-expired">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Users</span>
+          <span class="panel-count" id="users-count">loading...</span>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="user-search" placeholder="Search by name or username..." oninput="filterUsers()"/>
+          <button class="btn btn-ghost" onclick="loadUsers()">↺ Refresh</button>
+          {% if user_role == 'admin' %}
+          <button class="btn btn-primary" onclick="openCreateUser()">+ New User</button>
+          {% endif %}
+        </div>
+        <div id="users-table-wrap">
+          <div class="loading"><span class="spinner"></span>Loading users...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== LOCKED PAGE ===== -->
+    <div class="page" id="page-locked">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Locked Out Accounts</span>
+          <div style="display:flex;gap:8px;">
+            {% if user_role == 'admin' %}
+            <button class="btn btn-success" id="unlock-all-btn" onclick="unlockAll()" style="display:none;">🔓 Unlock All</button>
+            {% endif %}
+            <button class="btn btn-ghost" onclick="loadLocked()">↺ Refresh</button>
+          </div>
+        </div>
+        <div id="locked-table-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== EXPIRED PAGE ===== -->
+    <div class="page" id="page-expired">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Password Expired Accounts</span>
+          <div style="display:flex;gap:8px;">
+            {% if user_role == 'admin' %}
+            <button class="btn btn-ghost" id="bulk-reset-btn" onclick="bulkReset()" style="display:none;">🔑 Bulk Reset All</button>
+            {% endif %}
+            <button class="btn btn-ghost" onclick="loadExpired()">↺ Refresh</button>
+          </div>
+        </div>
+        <div id="expired-table-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TICKETS PAGE ===== -->
+    <div class="page" id="page-tickets">
+
+      <!-- New ticket form -->
+      <div class="panel" id="new-ticket-panel" style="display:none;margin-bottom:20px;">
+        <div class="panel-header">
+          <span class="panel-title">New Ticket</span>
+          <button class="btn btn-ghost" onclick="document.getElementById('new-ticket-panel').style.display='none'">✕ Cancel</button>
+        </div>
+        <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Title</label>
+            <input class="search-input" id="nt-title" placeholder="Can't log in / password expired / account locked..." style="width:100%"/>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Requester name</label>
+            <input class="search-input" id="nt-name" placeholder="Jane Smith"/>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Requester email</label>
+            <input class="search-input" id="nt-email" placeholder="jane@company.com"/>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Priority</label>
+            <select class="search-input" id="nt-priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Description</label>
+            <textarea class="search-input" id="nt-description" rows="3" style="width:100%;resize:vertical;" placeholder="Describe the issue in detail. Include the username if known."></textarea>
+          </div>
+          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="submitNewTicket()">Create &amp; analyse with Janus</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ticket-grid">
+        <!-- Ticket list -->
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">Tickets</span>
+              <div style="display:flex;gap:8px;">
+                <select class="btn btn-ghost" id="ticket-filter" onchange="loadTickets()" style="font-size:12px;padding:6px 10px;">
+                  <option value="">All</option>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+                <button class="btn btn-ghost" onclick="loadTickets()">↺</button>
+                {% if user_role == 'admin' %}
+                <button class="btn btn-primary" onclick="document.getElementById('new-ticket-panel').style.display='block'">+ New</button>
+                {% endif %}
+              </div>
+            </div>
+            <div id="tickets-table-wrap">
+              <div class="loading"><span class="spinner"></span>Loading tickets...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ticket detail panel -->
+        <div id="ticket-detail-wrap" style="display:none;">
+          <div class="ticket-detail">
+            <h2 id="td-title"></h2>
+            <div class="meta" id="td-meta"></div>
+
+            <!-- Status / priority controls -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+              <select class="btn btn-ghost" id="td-status" onchange="updateTicketField('status')" style="font-size:12px;">
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+              </select>
+              <select class="btn btn-ghost" id="td-priority" onchange="updateTicketField('priority')" style="font-size:12px;">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+
+            <!-- Janus analysis -->
+            <div class="janus-box" id="td-janus" style="display:none">
+              <div class="janus-label">✨ Janus analysis</div>
+              <div id="td-janus-text"></div>
+              <div id="td-janus-action" style="margin-top:10px;display:none">
+                <button class="btn btn-primary" style="width:100%" onclick="applyTicketFix()">⚡ Apply suggested fix</button>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div style="font-size:13px;line-height:1.7;color:var(--text);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;" id="td-description"></div>
+
+            <!-- Action log -->
+            <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Activity</div>
+            <div class="ticket-actions-log" id="td-actions"></div>
+
+            <!-- Comment box -->
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <input class="search-input" id="td-comment" placeholder="Add a comment..." style="flex:1;font-size:13px;"/>
+              <button class="btn btn-ghost" onclick="submitComment()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AI CHAT PAGE ===== -->
+    <div class="page" id="page-chat">
+      <div class="panel" style="display:flex;flex-direction:column;height:calc(100vh - 130px);">
+        <div class="panel-header">
+          <span class="panel-title">✨ Janus AI</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-ghost" onclick="loadChatHistory()" style="font-size:12px;">History</button>
+            <button class="btn btn-ghost" onclick="clearChat()">New chat</button>
+          </div>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-empty" id="chat-empty">
+            <div class="chat-empty-icon">✨</div>
+            <h3>Hi, I'm Janus</h3>
+            <p>I'm your AI assistant for Active Directory. Ask me anything — look up users, unlock accounts, reset passwords, run bulk operations — all in plain English.</p>
+            <div class="chat-suggestions">
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">Show me domain stats</span>
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">Find users with expired passwords</span>
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">Look up jake.miller</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chat-input" rows="1"
+            placeholder="Unlock john.smith, reset sarah's password, show me all users in IT..."
+            onkeydown="chatKeydown(event)"></textarea>
+          <button class="chat-send-btn" id="chat-send" onclick="sendChat()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AUDIT PAGE ===== -->
+    <div class="page" id="page-audit">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Audit Log</span>
+          <button class="btn btn-ghost" onclick="loadAudit()">↺ Refresh</button>
+        </div>
+        <div id="audit-table-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TEAM PAGE ===== -->
+    <div class="page" id="page-team">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Team Members</span>
+          <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
+        </div>
+        <div id="team-table-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ACTIVITY FEED PAGE ===== -->
+    <div class="page" id="page-activity">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">⚡ Activity Feed</span>
+          <button class="btn btn-ghost" onclick="loadActivity(true)">↺ Refresh</button>
+        </div>
+        <div id="activity-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SETTINGS PAGE ===== -->
+    <div class="page" id="page-settings">
+      <div style="max-width:680px;">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">⚙️ Janus Settings</span>
+            <button class="btn btn-primary" onclick="saveSettings()">Save changes</button>
+          </div>
+          <div style="padding:24px;">
+
+            <!-- Janus Intelligence toggles -->
+            <div class="settings-section">
+              <div class="settings-section-title">Janus Intelligence</div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="s-janus-enabled">
+                  <input type="checkbox" id="s-janus-enabled"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="s-janus-enabled">
+                  <div class="label-title">Enable Janus AI</div>
+                  <div class="label-desc">Janus analyses incoming tickets and suggests fixes using Claude AI</div>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="s-scan-emails">
+                  <input type="checkbox" id="s-scan-emails"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="s-scan-emails">
+                  <div class="label-title">Scan incoming emails</div>
+                  <div class="label-desc">Auto-analyse tickets created from inbound support emails</div>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="s-security-checks">
+                  <input type="checkbox" id="s-security-checks"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="s-security-checks">
+                  <div class="label-title">Security checks</div>
+                  <div class="label-desc">Flag typosquatting, impersonation, and unauthorised requests in tickets</div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Trusted domain -->
+            <div class="settings-section">
+              <div class="settings-section-title">Trusted Email Domain</div>
+              <input class="search-input" id="s-email-domain" placeholder="company.com" style="max-width:280px;margin-bottom:6px;"/>
+              <div style="font-size:12px;color:var(--muted);">Used for security checks — emails not matching this domain are scrutinised for spoofing</div>
+            </div>
+
+            <!-- Auto-actions -->
+            <div class="settings-section">
+              <div class="settings-section-title">Janus Auto-Actions</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">AD actions Janus can apply automatically without requiring admin approval. Use with caution.</div>
+              <div style="display:flex;flex-direction:column;gap:0;">
+                <div class="toggle-row">
+                  <label class="toggle-switch" for="s-auto-unlock">
+                    <input type="checkbox" id="s-auto-unlock"/>
+                    <span class="toggle-track"></span>
+                  </label>
+                  <label for="s-auto-unlock">
+                    <div class="label-title">Unlock account</div>
+                    <div class="label-desc">Automatically unlock locked accounts when Janus is confident</div>
+                  </label>
+                </div>
+                <div class="toggle-row">
+                  <label class="toggle-switch" for="s-auto-reset">
+                    <input type="checkbox" id="s-auto-reset"/>
+                    <span class="toggle-track"></span>
+                  </label>
+                  <label for="s-auto-reset">
+                    <div class="label-title">Reset password</div>
+                    <div class="label-desc">Automatically reset passwords — Janus will generate a secure temporary one</div>
+                  </label>
+                </div>
+                <div class="toggle-row">
+                  <label class="toggle-switch" for="s-auto-enable">
+                    <input type="checkbox" id="s-auto-enable"/>
+                    <span class="toggle-track"></span>
+                  </label>
+                  <label for="s-auto-enable">
+                    <div class="label-title">Enable account</div>
+                    <div class="label-desc">Automatically re-enable disabled accounts</div>
+                  </label>
+                </div>
+                <div class="toggle-row">
+                  <label class="toggle-switch" for="s-auto-disable">
+                    <input type="checkbox" id="s-auto-disable"/>
+                    <span class="toggle-track"></span>
+                  </label>
+                  <label for="s-auto-disable">
+                    <div class="label-title">Disable account</div>
+                    <div class="label-desc">Automatically disable accounts — requires high Janus confidence</div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Requester Roles -->
+            <div class="settings-section">
+              <div class="settings-section-title">Requester Roles</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                Define who can request AD actions on behalf of other users.
+                Janus uses these to detect impersonation and unauthorised requests.
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:0 4px;">
+                <span>Email pattern</span><span>Role name</span><span>Allowed actions</span><span></span>
+              </div>
+              <div id="roles-list"></div>
+              <button class="btn btn-ghost" style="margin-top:10px;font-size:12px;" onclick="addRole()">+ Add role</button>
+              <div style="font-size:11px;color:var(--muted);margin-top:8px;">Email pattern examples: *@it.company.com, manager@company.com, *@hr.company.com</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Move user modal -->
+<div class="modal-overlay" id="modal-move-user">
+  <div class="modal">
+    <h2>Move to OU</h2>
+    <p>Move <strong id="move-username-label"></strong> to a different Organisational Unit.</p>
+    <div class="field">
+      <label>Target OU</label>
+      <select id="move-ou-select" class="search-input" style="width:100%">
+        <option value="">Loading OUs...</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="move-ou-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-move-user')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMoveUser()">Move</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset password modal -->
+<div class="modal-overlay" id="modal-reset">
+  <div class="modal">
+    <h2>Reset Password</h2>
+    <p>Set a new temporary password for <strong id="reset-username-label"></strong>.</p>
+    <div class="field">
+      <label>New password</label>
+      <input type="text" id="reset-password-input" placeholder="TempPass123!" oninput="updatePwdStrength(this.value)"/>
+      <div class="pwd-strength">
+        <div class="pwd-bar" id="ps-1"></div>
+        <div class="pwd-bar" id="ps-2"></div>
+        <div class="pwd-bar" id="ps-3"></div>
+        <div class="pwd-bar" id="ps-4"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="pwd-strength-label"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-reset')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitReset()">Reset Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add team user modal -->
+<div class="modal-overlay" id="modal-adduser">
+  <div class="modal">
+    <h2>Add Team Member</h2>
+    <p>Give someone access to this AD Helpdesk dashboard.</p>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="new-user-email" placeholder="colleague@company.com"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="new-user-password" placeholder="••••••••"/>
+    </div>
+    <div class="field">
+      <label>Role</label>
+      <select id="new-user-role">
+        <option value="viewer">Viewer — read only</option>
+        <option value="admin">Admin — full access</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-adduser')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create AD user modal -->
+<div class="modal-overlay" id="modal-create-ad-user">
+  <div class="modal">
+    <h2>Create AD User</h2>
+    <p>Create a new Active Directory account.</p>
+    <div class="field">
+      <label>First name</label>
+      <input type="text" id="cu-first" placeholder="Jane"/>
+    </div>
+    <div class="field">
+      <label>Last name</label>
+      <input type="text" id="cu-last" placeholder="Smith"/>
+    </div>
+    <div class="field">
+      <label>Username (SAMAccountName)</label>
+      <input type="text" id="cu-username" placeholder="jane.smith"/>
+    </div>
+    <div class="field">
+      <label>Organisational Unit</label>
+      <select id="cu-ou" class="search-input" style="width:100%">
+        <option value="">— Default (no OU) —</option>
+      </select>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="cu-ou-status">Loading OUs from AD...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-create-ad-user')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreateAdUser()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- User detail modal -->
+<div class="modal-overlay" id="modal-user-detail">
+  <div class="modal" style="max-width:520px;">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+      <div id="ud-avatar" style="width:52px;height:52px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:17px;font-weight:600;" id="ud-name"></div>
+        <div style="font-size:13px;color:var(--muted);" id="ud-username"></div>
+      </div>
+      <div style="margin-left:auto;" id="ud-status-pill"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;" id="ud-meta-grid"></div>
+
+    <div style="margin-bottom:16px;" id="ud-groups-wrap">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Group Memberships</div>
+      <div id="ud-groups" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ud-actions"></div>
+
+    <div class="modal-footer" style="margin-top:20px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-user-detail')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // =========================================================
+  // Cache — store results in memory with timestamps
+  // =========================================================
+
+  const _cache = {};
+  const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+  function cacheSet(key, data) { _cache[key] = { data, ts: Date.now() }; }
+  function cacheGet(key) {
+    const entry = _cache[key];
+    if (!entry) return null;
+    if (Date.now() - entry.ts > CACHE_TTL) { delete _cache[key]; return null; }
+    return entry.data;
+  }
+  function cacheInvalidate(...keys) { keys.forEach(k => delete _cache[k]); }
+
+  // =========================================================
+  // Core: command execution + polling
+  // =========================================================
+
+  async function execCommand(action, args = [], target = '') {
+    const res = await fetch('/dashboard/api/exec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, args, target })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to queue command');
+    return json.command_id;
+  }
+
+  async function pollResult(commandId, timeoutMs = 30000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await sleep(600);
+      const res  = await fetch(`/dashboard/api/result/${commandId}`);
+      const json = await res.json();
+      if (!json.pending) {
+        if (!json.data.success) throw new Error(json.data.message || 'Command failed');
+        return json.data.data;
+      }
+    }
+    throw new Error('Timed out waiting for agent response. Is the agent running?');
+  }
+
+  async function run(action, args = [], target = '', useCache = false) {
+    if (useCache) {
+      const cacheKey = action + JSON.stringify(args);
+      const cached = cacheGet(cacheKey);
+      if (cached) return cached;
+      const result = await _run(action, args, target);
+      cacheSet(cacheKey, result);
+      return result;
+    }
+    return _run(action, args, target);
+  }
+
+  async function _run(action, args, target) {
+    const id = await execCommand(action, args, target);
+    return await pollResult(id);
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // =========================================================
+  // Agent status + stats — single combined call on init
+  // =========================================================
+
+  let _agentOnline = null;
+
+  function setAgentStatus(online) {
+    _agentOnline = online;
+    const dot   = document.getElementById('agent-dot');
+    const label = document.getElementById('agent-label');
+    dot.className   = 'status-dot ' + (online ? 'online' : 'offline');
+    label.textContent = online ? 'Agent connected' : 'Agent offline';
+  }
+
+  // =========================================================
+  // Page navigation
+  // =========================================================
+
+  const pageLoaded = {};
+
+  // =========================================================
+  // Users table
+  // =========================================================
+
+  let _allUsers = [];
+
+  async function loadUsers(forceRefresh = false) {
+    document.getElementById('users-table-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading users...</div>';
+    if (forceRefresh) cacheInvalidate('list_users[]');
+    try {
+      const data = await run('list_users', [], '', true);
+      _allUsers = Array.isArray(data) ? data : (data.users || data.Users || []);
+      renderUsers(_allUsers);
+      document.getElementById('users-count').textContent = _allUsers.length + ' users';
+    } catch (e) {
+      document.getElementById('users-table-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const data = await run('get_stats', [], '', true);
+      if (!data) return;
+      // Handle both possible field name formats from different AD setups
+      const total    = data.total   ?? data.total_users    ?? '—';
+      const locked   = data.locked  ?? data.locked_count   ?? '—';
+      const disabled = (data.total != null && data.enabled != null) ? data.total - data.enabled : (data.disabled_count ?? '—');
+      const expired  = data.expired ?? data.expired_count  ?? '—';
+      document.getElementById('stat-total').textContent    = total;
+      document.getElementById('stat-locked').textContent   = locked;
+      document.getElementById('stat-disabled').textContent = disabled;
+      document.getElementById('stat-expired').textContent  = expired;
+      const lc = parseInt(locked) || 0;
+      const ec = parseInt(expired) || 0;
+      const badge = document.getElementById('locked-badge');
+      if (lc > 0) { badge.textContent = lc; badge.style.display = 'inline'; }
+
+      // Alert banners on users page
+      const bannerWrap = document.getElementById('alert-banners');
+      if (bannerWrap) {
+        let bannerHtml = '';
+        if (lc > 0) bannerHtml += `
+          <div class="alert-banner danger" onclick="showPage('locked')">
+            🔒 <strong>${lc} account${lc > 1 ? 's are' : ' is'} locked out</strong> — users can't log in.
+            <span class="alert-action">View →</span>
+          </div>`;
+        if (ec > 0) bannerHtml += `
+          <div class="alert-banner warn" onclick="showPage('expired')">
+            ⏰ <strong>${ec} account${ec > 1 ? 's have' : ' has'} expired passwords</strong> — users must change on next login.
+            <span class="alert-action">View →</span>
+          </div>`;
+        bannerWrap.innerHTML = bannerHtml;
+      }
+    } catch (e) {
+      console.warn('Stats failed:', e.message);
+    }
+  }
+
+  function renderUsers(users) {
+    if (!users.length) {
+      document.getElementById('users-table-wrap').innerHTML =
+        '<div class="empty"><div class="empty-icon">👤</div>No users found.</div>';
+      return;
+    }
+    const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
+    let html = `<table>
+      <thead><tr>
+        <th>Name</th><th>Username</th><th>OU</th><th>Status</th>
+        ${isAdmin ? '<th>Actions</th>' : ''}
+      </tr></thead><tbody>`;
+    for (const u of users) {
+      const name   = u.DisplayName || u.Name || (u.GivenName + ' ' + u.Surname) || '—';
+      const uname  = u.SamAccountName || u.Username || '—';
+      const ou     = (u.DistinguishedName || '').match(/OU=([^,]+)/)?.[1] || '—';
+      let pill = '<span class="pill pill-green">Active</span>';
+      if (!u.Enabled)           pill = '<span class="pill pill-gray">Disabled</span>';
+      if (u.LockedOut)          pill = '<span class="pill pill-red">Locked</span>';
+      if (u.PasswordExpired)    pill = '<span class="pill pill-yellow">Pwd Expired</span>';
+      const actions = isAdmin ? `
+        <td onclick="event.stopPropagation()"><div class="action-btns">
+          <button class="btn btn-success btn-sm" onclick="unlockUser('${uname}')" ${u.LockedOut ? '' : 'style="display:none"'}>Unlock</button>
+          <button class="btn btn-ghost btn-sm" onclick="openReset('${uname}')">Reset Pwd</button>
+          <button class="btn btn-danger btn-sm" onclick="toggleEnabled('${uname}', ${u.Enabled})">${u.Enabled ? 'Disable' : 'Enable'}</button>
+        </div></td>` : '';
+      html += `<tr style="cursor:pointer" onclick="openUserDetail('${uname}')"  title="Click to view ${name}'s details">
+        <td>${name}</td><td><code style="font-size:12px;color:var(--accent2)">${uname}</code></td><td>${ou}</td><td>${pill}</td>${actions}</tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('users-table-wrap').innerHTML = html;
+  }
+
+  function filterUsers() {
+    const q = document.getElementById('user-search').value.toLowerCase();
+    if (!q) { renderUsers(_allUsers); return; }
+    const filtered = _allUsers.filter(u => {
+      const name  = (u.DisplayName || u.Name || '').toLowerCase();
+      const uname = (u.SamAccountName || '').toLowerCase();
+      return name.includes(q) || uname.includes(q);
+    });
+    renderUsers(filtered);
+    document.getElementById('users-count').textContent = filtered.length + ' results';
+  }
+
+  // =========================================================
+  // Locked accounts
+  // =========================================================
+
+  let _lockedUsers = [];
+
+  async function loadLocked() {
+    document.getElementById('locked-table-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    const unlockAllBtn = document.getElementById('unlock-all-btn');
+    if (unlockAllBtn) unlockAllBtn.style.display = 'none';
+    try {
+      const data = await run('list_locked_accounts', []);
+      _lockedUsers = Array.isArray(data) ? data : (data.users || []);
+      if (!_lockedUsers.length) {
+        document.getElementById('locked-table-wrap').innerHTML =
+          '<div class="empty"><div class="empty-icon">✅</div>No locked accounts — all clear!</div>';
+        return;
+      }
+      if (unlockAllBtn && _lockedUsers.length > 1) unlockAllBtn.style.display = 'inline-block';
+      const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
+      let html = `<table><thead><tr><th>Name</th><th>Username</th><th>Last Logon</th>${isAdmin ? '<th>Action</th>' : ''}</tr></thead><tbody>`;
+      for (const u of _lockedUsers) {
+        const name    = u.DisplayName || u.Name || '—';
+        const uname   = u.SamAccountName || '—';
+        const logon   = u.LastLogonDate ? u.LastLogonDate.slice(0, 10) : 'Never';
+        const action  = isAdmin
+          ? `<td><button class="btn btn-success btn-sm" onclick="unlockUser('${uname}')">Unlock</button></td>`
+          : '';
+        html += `<tr><td>${name}</td><td><code style="font-size:12px;color:var(--accent2)">${uname}</code></td><td style="font-size:12px;color:var(--muted)">${logon}</td>${action}</tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('locked-table-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('locked-table-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  async function unlockAll() {
+    if (!_lockedUsers.length) return;
+    const count = _lockedUsers.length;
+    if (!confirm(`Unlock all ${count} locked account${count > 1 ? 's' : ''}?`)) return;
+    toast(`Unlocking ${count} accounts...`, 'info');
+    let ok = 0, fail = 0;
+    for (const u of _lockedUsers) {
+      const uname = u.SamAccountName || u.Name;
+      try { await run('unlock_account', [uname], uname); ok++; }
+      catch { fail++; }
+    }
+    toast(fail ? `${ok} unlocked, ${fail} failed.` : `✅ All ${ok} accounts unlocked.`, fail ? 'error' : 'success');
+    cacheInvalidate('list_users[]', 'list_locked_accounts[]', 'get_stats[]');
+    loadLocked(); loadStats();
+  }
+
+  // =========================================================
+  // Expired passwords
+  // =========================================================
+
+  let _expiredUsers = [];
+
+  async function loadExpired() {
+    document.getElementById('expired-table-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    const bulkBtn = document.getElementById('bulk-reset-btn');
+    if (bulkBtn) bulkBtn.style.display = 'none';
+    try {
+      const data = await run('list_expired_passwords', []);
+      _expiredUsers = Array.isArray(data) ? data : (data.users || []);
+      if (!_expiredUsers.length) {
+        document.getElementById('expired-table-wrap').innerHTML =
+          '<div class="empty"><div class="empty-icon">✅</div>No expired passwords.</div>';
+        return;
+      }
+      if (bulkBtn && _expiredUsers.length > 1) bulkBtn.style.display = 'inline-block';
+      const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
+      let html = `<table><thead><tr><th>Name</th><th>Username</th><th>Pwd Last Set</th><th>Last Logon</th>${isAdmin ? '<th>Action</th>' : ''}</tr></thead><tbody>`;
+      for (const u of _expiredUsers) {
+        const name    = u.DisplayName || u.Name || '—';
+        const uname   = u.SamAccountName || '—';
+        const pwdSet  = u.PasswordLastSet ? u.PasswordLastSet.slice(0, 10) : 'Never';
+        const logon   = u.LastLogonDate ? u.LastLogonDate.slice(0, 10) : 'Never';
+        const action  = isAdmin
+          ? `<td><button class="btn btn-ghost btn-sm" onclick="openReset('${uname}')">Reset Pwd</button></td>`
+          : '';
+        html += `<tr><td>${name}</td><td><code style="font-size:12px;color:var(--accent2)">${uname}</code></td><td style="font-size:12px;color:var(--muted)">${pwdSet}</td><td style="font-size:12px;color:var(--muted)">${logon}</td>${action}</tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('expired-table-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('expired-table-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  const BULK_TEMP_PASSWORD = 'TempReset1!';
+
+  async function bulkReset() {
+    if (!_expiredUsers.length) return;
+    const count = _expiredUsers.length;
+    if (!confirm(`Reset passwords for all ${count} expired account${count > 1 ? 's' : ''}?\n\nAll will be set to: ${BULK_TEMP_PASSWORD}\nUsers must change on next logon.`)) return;
+    toast(`Resetting ${count} passwords...`, 'info');
+    let ok = 0, fail = 0;
+    for (const u of _expiredUsers) {
+      const uname = u.SamAccountName || u.Name;
+      try { await run('reset_password', [uname, BULK_TEMP_PASSWORD], uname); ok++; }
+      catch { fail++; }
+    }
+    toast(fail ? `${ok} reset, ${fail} failed.` : `✅ ${ok} passwords reset to ${BULK_TEMP_PASSWORD}`, fail ? 'error' : 'success');
+    cacheInvalidate('list_users[]', 'get_stats[]');
+    loadExpired(); loadStats();
+  }
+
+  // =========================================================
+  // AD write operations
+  // =========================================================
+
+  async function unlockUser(username) {
+    toast(`Unlocking ${username}...`, 'info');
+    try {
+      await run('unlock_account', [username], username);
+      toast(`${username} unlocked.`, 'success');
+      cacheInvalidate('list_users[]', 'list_locked_accounts[]', 'get_stats[]');
+      loadUsers(true); loadLocked(); loadStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  let _resetTarget = '';
+  function openReset(username) {
+    _resetTarget = username;
+    document.getElementById('reset-username-label').textContent = username;
+    document.getElementById('reset-password-input').value = '';
+    updatePwdStrength('');
+    openModal('modal-reset');
+  }
+
+  function updatePwdStrength(pw) {
+    let score = 0;
+    if (pw.length >= 8)  score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    const colours = ['', '#ef4444', '#f59e0b', '#6366f1', '#34d399'];
+    const labels  = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById(`ps-${i}`).style.background = i <= score ? colours[score] : 'var(--border)';
+    }
+    document.getElementById('pwd-strength-label').textContent = pw ? (labels[score] || '') : '';
+  }
+
+  async function submitReset() {
+    const pw = document.getElementById('reset-password-input').value.trim();
+    if (!pw) { toast('Enter a password.', 'error'); return; }
+    closeModal('modal-reset');
+    toast(`Resetting password for ${_resetTarget}...`, 'info');
+    try {
+      await run('reset_password', [_resetTarget, pw], _resetTarget);
+      toast(`Password reset for ${_resetTarget}.`, 'success');
+      cacheInvalidate('list_users[]');
+      loadUsers(true);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function toggleEnabled(username, currentlyEnabled) {
+    const action = currentlyEnabled ? 'disable_account' : 'enable_account';
+    const label  = currentlyEnabled ? 'Disabling' : 'Enabling';
+    toast(`${label} ${username}...`, 'info');
+    try {
+      await run(action, [username], username);
+      toast(`${username} ${currentlyEnabled ? 'disabled' : 'enabled'}.`, 'success');
+      cacheInvalidate('list_users[]', 'get_stats[]');
+      loadUsers(true); loadStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
+  // OU loader for create user modal
+  // =========================================================
+
+  let _ousLoaded = false;
+
+  async function openCreateUser() {
+    openModal('modal-create-ad-user');
+    if (_ousLoaded) return;
+    const sel    = document.getElementById('cu-ou');
+    const status = document.getElementById('cu-ou-status');
+    status.textContent = 'Loading OUs from AD...';
+    try {
+      const data = await run('list_ous', [], '', true);
+      const ous  = Array.isArray(data) ? data : [];
+      // Clear existing options except the default
+      sel.innerHTML = '<option value="">— Default (no OU) —</option>';
+      for (const ou of ous) {
+        const opt = document.createElement('option');
+        opt.value       = ou.Name || ou.name || '';
+        opt.textContent = ou.Name || ou.name || '—';
+        opt.title       = ou.DistinguishedName || '';
+        sel.appendChild(opt);
+      }
+      status.textContent = ous.length ? `${ous.length} OUs loaded from AD` : 'No OUs found';
+      _ousLoaded = true;
+    } catch (e) {
+      status.textContent = '⚠ Could not load OUs — type manually if needed';
+      // Fallback: let them type
+      sel.style.display = 'none';
+      const fallback = document.createElement('input');
+      fallback.className   = 'search-input';
+      fallback.id          = 'cu-ou';
+      fallback.placeholder = 'Staff';
+      fallback.style.width = '100%';
+      sel.parentNode.insertBefore(fallback, sel);
+    }
+  }
+
+  // =========================================================
+  // Move user modal
+  // =========================================================
+
+  let _moveTarget = '';
+
+  async function openMoveUser(username) {
+    _moveTarget = username;
+    document.getElementById('move-username-label').textContent = username;
+    const sel    = document.getElementById('move-ou-select');
+    const status = document.getElementById('move-ou-status');
+    sel.innerHTML = '<option value="">Loading OUs from AD...</option>';
+    status.textContent = '';
+    openModal('modal-move-user');
+
+    try {
+      const data = await run('list_ous', [], '', true);
+      const ous  = Array.isArray(data) ? data : [];
+      sel.innerHTML = '';
+      for (const ou of ous) {
+        const opt = document.createElement('option');
+        opt.value       = ou.Name || ou.name || '';
+        opt.textContent = ou.Name || ou.name || '—';
+        opt.title       = ou.DistinguishedName || '';
+        sel.appendChild(opt);
+      }
+      status.textContent = ous.length ? `${ous.length} OUs available` : 'No OUs found';
+    } catch (e) {
+      sel.innerHTML = '<option value="">Failed to load OUs</option>';
+      status.textContent = '⚠ ' + e.message;
+    }
+  }
+
+  async function submitMoveUser() {
+    const ou = document.getElementById('move-ou-select').value.trim();
+    if (!ou) { toast('Select a target OU.', 'error'); return; }
+    closeModal('modal-move-user');
+    closeModal('modal-user-detail');
+    toast(`Moving ${_moveTarget} to ${ou}...`, 'info');
+    try {
+      await run('move_user', [_moveTarget, ou], _moveTarget);
+      toast(`✅ ${_moveTarget} moved to ${ou}.`, 'success');
+      cacheInvalidate('list_users[]');
+      loadUsers(true);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
+  // User detail modal
+  // =========================================================
+
+  async function openUserDetail(username) {
+    openModal('modal-user-detail');
+    document.getElementById('ud-name').textContent     = 'Loading...';
+    document.getElementById('ud-username').textContent = username;
+    document.getElementById('ud-avatar').textContent   = '?';
+    document.getElementById('ud-meta-grid').innerHTML  = '';
+    document.getElementById('ud-groups').innerHTML     = '<span style="color:var(--muted);font-size:12px;">Loading...</span>';
+    document.getElementById('ud-actions').innerHTML    = '';
+    document.getElementById('ud-status-pill').innerHTML = '';
+
+    try {
+      const data = await run('get_user_info', [username]);
+      if (!data) { toast('User not found.', 'error'); closeModal('modal-user-detail'); return; }
+
+      const name     = data.Name || `${data.GivenName || ''} ${data.Surname || ''}`.trim() || username;
+      const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+      // Deterministic colour from name
+      const avatarColours = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
+      const avatarColour  = avatarColours[name.split('').reduce((a,c) => a + c.charCodeAt(0), 0) % avatarColours.length];
+      document.getElementById('ud-avatar').style.background = avatarColour;
+
+      document.getElementById('ud-avatar').textContent   = initials;
+      document.getElementById('ud-name').textContent     = name;
+      document.getElementById('ud-username').textContent = `@${data.SamAccountName || username}`;
+
+      // Status pill
+      let pillHtml = '<span class="pill pill-green">Active</span>';
+      if (!data.Enabled)        pillHtml = '<span class="pill pill-gray">Disabled</span>';
+      if (data.LockedOut)       pillHtml = '<span class="pill pill-red">Locked</span>';
+      if (data.PasswordExpired) pillHtml = '<span class="pill pill-yellow">Pwd Expired</span>';
+      document.getElementById('ud-status-pill').innerHTML = pillHtml;
+
+      // Meta grid
+      const meta = [
+        ['Email',       data.EmailAddress || data.UserPrincipalName || '—'],
+        ['Department',  data.Department   || '—'],
+        ['Title',       data.Title        || '—'],
+        ['Last Logon',  data.LastLogonDate ? data.LastLogonDate.slice(0, 10) : 'Never'],
+        ['Pwd Changed', data.PasswordLastSet ? data.PasswordLastSet.slice(0, 10) : '—'],
+        ['OU',          (data.DistinguishedName || '').match(/OU=([^,]+)/)?.[1] || '—'],
+      ];
+      document.getElementById('ud-meta-grid').innerHTML = meta.map(([k, v]) => `
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${k}</div>
+          <div style="font-size:13px;">${v}</div>
+        </div>`).join('');
+
+      // Groups
+      const groups = Array.isArray(data.MemberOf) ? data.MemberOf : (data.MemberOf ? [data.MemberOf] : []);
+      const groupNames = groups.map(dn => dn.match(/CN=([^,]+)/)?.[1] || dn);
+      document.getElementById('ud-groups').innerHTML = groupNames.length
+        ? groupNames.map(g => `<span class="pill pill-gray" style="font-size:11px;">${g}</span>`).join('')
+        : '<span style="color:var(--muted);font-size:12px;">No group memberships</span>';
+
+      // Action buttons
+      const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
+      if (isAdmin) {
+        const sam = data.SamAccountName || username;
+        let btns = `<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user-detail');openReset('${sam}')">🔑 Reset Password</button>`;
+        if (data.LockedOut)  btns += `<button class="btn btn-success btn-sm" onclick="closeModal('modal-user-detail');unlockUser('${sam}')">🔓 Unlock</button>`;
+        if (data.Enabled)    btns += `<button class="btn btn-danger btn-sm" onclick="closeModal('modal-user-detail');toggleEnabled('${sam}', true)">Disable</button>`;
+        else                 btns += `<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user-detail');toggleEnabled('${sam}', false)">Enable</button>`;
+        btns += `<button class="btn btn-ghost btn-sm" onclick="openMoveUser('${sam}')">📁 Move OU</button>`;
+        document.getElementById('ud-actions').innerHTML = btns;
+      }
+    } catch (e) {
+      toast('Could not load user details: ' + e.message, 'error');
+      closeModal('modal-user-detail');
+    }
+  }
+
+  async function submitCreateAdUser() {
+    const first    = document.getElementById('cu-first').value.trim();
+    const last     = document.getElementById('cu-last').value.trim();
+    const username = document.getElementById('cu-username').value.trim();
+    const ouEl     = document.getElementById('cu-ou');
+    const ou       = ouEl ? ouEl.value.trim() : '';
+    if (!first || !last || !username) { toast('First name, last name and username are required.', 'error'); return; }
+    closeModal('modal-create-ad-user');
+    toast(`Creating ${username}${ou ? ' in ' + ou : ''}...`, 'info');
+    try {
+      await run('create_user', [first, last, username, ou], username);
+      toast(`✅ ${username} created${ou ? ' in ' + ou : ''}.`, 'success');
+      cacheInvalidate('list_users[]', 'get_stats[]');
+      loadUsers(true); loadStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
+  // Audit log
+  // =========================================================
+
+  async function loadAudit() {
+    document.getElementById('audit-table-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const res  = await fetch('/dashboard/api/audit');
+      const json = await res.json();
+      const rows = json.data || [];
+      if (!rows.length) {
+        document.getElementById('audit-table-wrap').innerHTML =
+          '<div class="empty"><div class="empty-icon">📋</div>No audit log entries yet.</div>';
+        return;
+      }
+      let html = `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>`;
+      for (const r of rows) {
+        const ts = r.created_at ? r.created_at.replace('T', ' ').slice(0, 19) : '—';
+        const status = r.status === 'queued'
+          ? '<span class="pill pill-yellow">queued</span>'
+          : '<span class="pill pill-green">done</span>';
+        html += `<tr class="audit-row"><td>${ts}</td><td>${r.user_email}</td><td><code style="font-size:12px">${r.action}</code></td><td>${r.target || '—'}</td><td>${status}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('audit-table-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('audit-table-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  // =========================================================
+  // Team management
+  // =========================================================
+
+  async function loadTeam() {
+    document.getElementById('team-table-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const res  = await fetch('/dashboard/api/users');
+      const json = await res.json();
+      const users = json.data || [];
+      let html = `<table><thead><tr><th>Email</th><th>Role</th><th>Added</th></tr></thead><tbody>`;
+      for (const u of users) {
+        const ts = u.created_at ? u.created_at.slice(0, 10) : '—';
+        const role = u.role === 'admin'
+          ? '<span class="pill pill-green">admin</span>'
+          : '<span class="pill pill-gray">viewer</span>';
+        html += `<tr><td>${u.email}</td><td>${role}</td><td>${ts}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('team-table-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('team-table-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  function openAddUser() { openModal('modal-adduser'); }
+
+  async function submitAddUser() {
+    const email    = document.getElementById('new-user-email').value.trim();
+    const password = document.getElementById('new-user-password').value;
+    const role     = document.getElementById('new-user-role').value;
+    if (!email || !password) { toast('Email and password are required.', 'error'); return; }
+    closeModal('modal-adduser');
+    try {
+      const res  = await fetch('/dashboard/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, role })
+      });
+      const json = await res.json();
+      if (json.success) { toast(`${email} added.`, 'success'); loadTeam(); }
+      else toast(json.message, 'error');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
+  // Modal helpers
+  // =========================================================
+
+  function openModal(id)  { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+  });
+
+  // =========================================================
+  // Toast notifications
+  // =========================================================
+
+  function toast(msg, type = 'info') {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast toast-${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // =========================================================
+  // Tickets
+  // =========================================================
+
+  let _currentTicketId = null;
+
+  async function loadTickets() {
+    document.getElementById('tickets-table-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    const filter = document.getElementById('ticket-filter').value;
+    const url    = '/dashboard/api/tickets' + (filter ? `?status=${filter}` : '');
+    try {
+      const res  = await fetch(url);
+      const json = await res.json();
+      const tickets = json.data || [];
+
+      const open = tickets.filter(t => t.status === 'open').length;
+      const badge = document.getElementById('open-tickets-badge');
+      if (open > 0) { badge.textContent = open; badge.style.display = 'inline'; }
+      else badge.style.display = 'none';
+
+      if (!tickets.length) {
+        document.getElementById('tickets-table-wrap').innerHTML =
+          '<div class="empty"><div class="empty-icon">🎫</div>No tickets yet. Create one or connect your support email.</div>';
+        return;
+      }
+
+      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+      tickets.sort((a, b) => (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4));
+
+      let html = `<table><thead><tr><th>Title</th><th>Requester</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead><tbody>`;
+      for (const t of tickets) {
+        const statusPill = {
+          open:        '<span class="pill pill-red">Open</span>',
+          in_progress: '<span class="pill pill-yellow">In progress</span>',
+          resolved:    '<span class="pill pill-green">Resolved</span>',
+          closed:      '<span class="pill pill-gray">Closed</span>'
+        }[t.status] || t.status;
+
+        const priClass = `priority-${t.priority}`;
+        const date = t.created_at ? t.created_at.slice(0, 10) : '—';
+        const source = t.source === 'email' ? ' 📧' : '';
+        const hasJanus = t.janus_analysis ? ' ✨' : '';
+        const hasSecFlag = t.janus_analysis && (t.janus_analysis.includes('⚠️ Security flag') || t.janus_analysis.includes('🔒 Permission'));
+        const secBadge = hasSecFlag ? ' <span class="security-pill">⚠ Security</span>' : '';
+
+        html += `<tr class="ticket-row" onclick="openTicket('${t.id}')">
+          <td>${t.title}${source}${hasJanus}${secBadge}</td>
+          <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '—'}</td>
+          <td class="${priClass}">${t.priority}</td>
+          <td>${statusPill}</td>
+          <td style="font-size:12px;color:var(--muted)">${date}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('tickets-table-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('tickets-table-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  async function openTicket(ticketId) {
+    _currentTicketId = ticketId;
+    document.querySelectorAll('.ticket-row').forEach(r => r.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+
+    const wrap = document.getElementById('ticket-detail-wrap');
+    wrap.style.display = 'block';
+
+    const res  = await fetch(`/dashboard/api/tickets/${ticketId}`);
+    const json = await res.json();
+    if (!json.success) { toast('Could not load ticket.', 'error'); return; }
+
+    const t = json.data;
+    document.getElementById('td-title').textContent       = t.title;
+    document.getElementById('td-description').textContent = t.description;
+    document.getElementById('td-status').value            = t.status;
+    document.getElementById('td-priority').value          = t.priority;
+
+    const requester = [t.requester_name, t.requester_email].filter(Boolean).join(' · ');
+    const date      = t.created_at ? t.created_at.slice(0, 16).replace('T', ' ') : '';
+    document.getElementById('td-meta').textContent = `${requester ? requester + ' · ' : ''}${date} · via ${t.source}`;
+
+    const janusBox = document.getElementById('td-janus');
+    if (t.janus_analysis) {
+      document.getElementById('td-janus-text').textContent = t.janus_analysis;
+
+      // Highlight security flags with a warning border
+      const hasSecFlag = t.janus_analysis.includes('⚠️ Security flag') || t.janus_analysis.includes('🔒 Permission');
+      janusBox.style.borderColor = hasSecFlag ? 'rgba(248,113,113,0.5)' : 'rgba(99,102,241,0.25)';
+      janusBox.style.background  = hasSecFlag ? 'rgba(248,113,113,0.08)' : 'rgba(99,102,241,0.08)';
+      document.getElementById('td-janus').querySelector('.janus-label').style.color = hasSecFlag ? 'var(--red)' : 'var(--accent2)';
+
+      const actionDiv = document.getElementById('td-janus-action');
+      if (t.janus_action && t.status !== 'resolved' && t.status !== 'closed') {
+        actionDiv.style.display = 'block';
+        const btnLabel = `⚡ Apply: ${t.janus_action} ${JSON.parse(t.janus_action_args || '[]').join(', ')}`;
+        const btn = actionDiv.querySelector('button');
+        btn.textContent = btnLabel;
+        // If security flag, warn on the button
+        if (hasSecFlag) {
+          btn.className = 'btn btn-danger';
+          btn.style.width = '100%';
+          btn.title = 'Security concerns flagged — review carefully before applying';
+        } else {
+          btn.className = 'btn btn-primary';
+          btn.style.width = '100%';
+          btn.title = '';
+        }
+      } else {
+        actionDiv.style.display = 'none';
+      }
+      janusBox.style.display = 'block';
+    } else {
+      janusBox.style.display = 'none';
+    }
+
+    const actionsWrap = document.getElementById('td-actions');
+    actionsWrap.innerHTML = '';
+    const typeLabel = { comment: 'Comment', ad_action: 'AD action', status_change: 'Status', janus_analysis: '✨ Janus' };
+    for (const a of (t.actions || [])) {
+      const div  = document.createElement('div');
+      div.className = `action-entry ${a.type}`;
+      div.innerHTML = `<div>${a.content}</div><div class="action-meta">${typeLabel[a.type] || a.type} · ${a.user_email} · ${a.created_at.slice(0, 16).replace('T', ' ')}</div>`;
+      actionsWrap.appendChild(div);
+    }
+    actionsWrap.scrollTop = actionsWrap.scrollHeight;
+  }
+
+  async function updateTicketField(field) {
+    if (!_currentTicketId) return;
+    const value = document.getElementById(`td-${field}`).value;
+    await fetch(`/dashboard/api/tickets/${_currentTicketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value })
+    });
+    toast(`${field} updated.`, 'success');
+    loadTickets();
+  }
+
+  async function submitComment() {
+    if (!_currentTicketId) return;
+    const input   = document.getElementById('td-comment');
+    const content = input.value.trim();
+    if (!content) return;
+    input.value = '';
+    await fetch(`/dashboard/api/tickets/${_currentTicketId}/comment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    openTicket(_currentTicketId);
+  }
+
+  async function applyTicketFix() {
+    if (!_currentTicketId) return;
+    toast('Queueing fix...', 'info');
+
+    try {
+      // Step 1: Queue the fix — returns command_id immediately (202)
+      const res  = await fetch(`/dashboard/api/tickets/${_currentTicketId}/apply-fix`, { method: 'POST' });
+      const json = await res.json();
+      if (!json.success) { toast('Failed to queue fix: ' + json.message, 'error'); return; }
+
+      const { command_id, action, args } = json;
+      toast('Fix queued — waiting for agent...', 'info');
+
+      // Step 2: Poll until agent completes (up to 30s)
+      let resultData = null;
+      const deadline = Date.now() + 30000;
+      while (Date.now() < deadline) {
+        await sleep(700);
+        const pr   = await fetch(`/dashboard/api/result/${command_id}`);
+        const pj   = await pr.json();
+        if (!pj.pending) { resultData = pj.data; break; }
+      }
+
+      if (!resultData) {
+        toast('Agent timed out — is it running?', 'error');
+        return;
+      }
+
+      // Step 3: Report completion to server so it can resolve the ticket
+      await fetch(`/dashboard/api/tickets/${_currentTicketId}/apply-fix/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          success: resultData.success,
+          message: resultData.message,
+          action,
+          args
+        })
+      });
+
+      if (resultData.success) {
+        toast('✅ Fix applied — ticket resolved!', 'success');
+        cacheInvalidate('list_users[]', 'list_locked_accounts[]', 'get_stats[]');
+      } else {
+        toast('Fix failed: ' + (resultData.message || 'Unknown error'), 'error');
+      }
+
+      openTicket(_currentTicketId);
+      loadTickets();
+
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function submitNewTicket() {
+    const title       = document.getElementById('nt-title').value.trim();
+    const description = document.getElementById('nt-description').value.trim();
+    const name        = document.getElementById('nt-name').value.trim();
+    const email       = document.getElementById('nt-email').value.trim();
+    const priority    = document.getElementById('nt-priority').value;
+
+    if (!title || !description) { toast('Title and description are required.', 'error'); return; }
+
+    toast('Creating ticket and asking Janus to analyse...', 'info');
+    document.getElementById('new-ticket-panel').style.display = 'none';
+
+    const res  = await fetch('/dashboard/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, priority, requester_name: name, requester_email: email })
+    });
+    const json = await res.json();
+
+    if (json.success) {
+      const msg = json.data.auto_resolved
+        ? '✅ Ticket created and auto-resolved by Janus!'
+        : '🎫 Ticket created — Janus has analysed it.';
+      toast(msg, 'success');
+      ['nt-title','nt-description','nt-name','nt-email'].forEach(id => document.getElementById(id).value = '');
+      await loadTickets();
+      openTicket(json.data.id);
+    } else {
+      toast(json.message || 'Failed to create ticket.', 'error');
+    }
+  }
+
+  // =========================================================
+  // AI Chat
+  // =========================================================
+
+  let _chatHistory  = [];
+  let _chatBusy     = false;
+  let _chatSessionId = null;
+
+  function showPage(name, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    // Activate the nav item — either from an explicit el arg, or from the event target
+    const navEl = el || (typeof event !== 'undefined' && event && event.currentTarget) || null;
+    if (navEl && navEl.classList && navEl.classList.contains('nav-item')) navEl.classList.add('active');
+    else {
+      // Try to find nav item matching the page
+      document.querySelectorAll('.nav-item').forEach(n => {
+        if (n.getAttribute('onclick') && n.getAttribute('onclick').includes(`'${name}'`)) n.classList.add('active');
+      });
+    }
+    if (!pageLoaded[name]) {
+      pageLoaded[name] = true;
+      if (name === 'users')    loadUsers();
+      if (name === 'locked')   loadLocked();
+      if (name === 'expired')  loadExpired();
+      if (name === 'audit')    loadAudit();
+      if (name === 'team')     loadTeam();
+      if (name === 'tickets')  loadTickets();
+      if (name === 'activity') loadActivity();
+      if (name === 'settings') loadSettings();
+    }
+  }
+
+  // =========================================================
+  // Activity Feed
+  // =========================================================
+
+  const ACTIVITY_ICONS = {
+    ticket_created:   { emoji: '🎫', label: 'Ticket created' },
+    ticket_resolved:  { emoji: '✅', label: 'Ticket resolved' },
+    ad_action:        { emoji: '⚡', label: 'AD action' },
+    janus_action:     { emoji: '✨', label: 'Janus action' },
+    security_flag:    { emoji: '🚨', label: 'Security flag' },
+    settings_changed: { emoji: '⚙️', label: 'Settings changed' },
+    fix_failed:       { emoji: '❌', label: 'Fix failed' },
+  };
+
+  async function loadActivity(force = false) {
+    const wrap = document.getElementById('activity-wrap');
+    wrap.innerHTML = '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const res  = await fetch('/dashboard/api/activity?limit=100');
+      const json = await res.json();
+      const feed = json.data || [];
+
+      if (!feed.length) {
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No activity yet — actions and Janus events will appear here.</div>';
+        return;
+      }
+
+      let html = '';
+      for (const entry of feed) {
+        const info    = ACTIVITY_ICONS[entry.event_type] || { emoji: '•', label: entry.event_type };
+        const ts      = entry.created_at ? entry.created_at.slice(0, 16).replace('T', ' ') : '';
+        const isSec   = entry.event_type === 'security_flag';
+        const secBadge = isSec ? '<span class="security-pill">⚠ Security</span>' : '';
+
+        html += `
+          <div class="activity-entry">
+            <div class="activity-icon type-${entry.event_type}">${info.emoji}</div>
+            <div class="activity-body">
+              <div><strong>${info.label}</strong> by ${entry.actor}${entry.target ? ` → <code style="font-size:11px;color:var(--accent2)">${entry.target}</code>` : ''}${secBadge}</div>
+              ${entry.detail ? `<div class="activity-detail">${entry.detail}</div>` : ''}
+            </div>
+            <div class="activity-time">${ts}</div>
+          </div>`;
+      }
+      wrap.innerHTML = html;
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+    }
+  }
+
+  // =========================================================
+  // Settings
+  // =========================================================
+
+  let _settingsRoles = [];
+
+  async function loadSettings() {
+    try {
+      const res  = await fetch('/dashboard/api/settings');
+      const json = await res.json();
+      if (!json.success) return;
+      const s = json.data;
+
+      document.getElementById('s-janus-enabled').checked  = !!s.janus_enabled;
+      document.getElementById('s-scan-emails').checked    = !!s.janus_scan_emails;
+      document.getElementById('s-security-checks').checked = !!s.security_checks;
+      document.getElementById('s-email-domain').value     = s.email_domain || '';
+
+      const aa = s.janus_auto_actions || [];
+      document.getElementById('s-auto-unlock').checked  = aa.includes('unlock_account');
+      document.getElementById('s-auto-reset').checked   = aa.includes('reset_password');
+      document.getElementById('s-auto-enable').checked  = aa.includes('enable_account');
+      document.getElementById('s-auto-disable').checked = aa.includes('disable_account');
+
+      _settingsRoles = s.roles || [];
+      renderRoles();
+    } catch (e) {
+      toast('Could not load settings: ' + e.message, 'error');
+    }
+  }
+
+  function renderRoles() {
+    const list = document.getElementById('roles-list');
+    if (!_settingsRoles.length) {
+      list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 4px;">No roles configured — Janus will not perform permission checks.</div>';
+      return;
+    }
+    list.innerHTML = _settingsRoles.map((r, i) => `
+      <div class="role-entry">
+        <input class="search-input" value="${r.email_pattern || ''}" placeholder="*@it.company.com"
+               oninput="_settingsRoles[${i}].email_pattern = this.value" style="font-size:12px;padding:6px 10px;"/>
+        <input class="search-input" value="${r.role || ''}" placeholder="IT Admin"
+               oninput="_settingsRoles[${i}].role = this.value" style="font-size:12px;padding:6px 10px;"/>
+        <input class="search-input" value="${(r.allowed_actions || []).join(', ')}" placeholder="unlock_account, reset_password"
+               oninput="_settingsRoles[${i}].allowed_actions = this.value.split(',').map(x=>x.trim()).filter(Boolean)"
+               style="font-size:12px;padding:6px 10px;"/>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;cursor:pointer">
+          <input type="checkbox" ${r.can_request_for_others ? 'checked' : ''}
+                 onchange="_settingsRoles[${i}].can_request_for_others = this.checked"/>
+          Others
+        </label>
+        <button class="btn btn-danger btn-sm" onclick="removeRole(${i})">✕</button>
+      </div>`
+    ).join('');
+  }
+
+  function addRole() {
+    _settingsRoles.push({ email_pattern: '', role: '', can_request_for_others: false, allowed_actions: [] });
+    renderRoles();
+  }
+
+  function removeRole(i) {
+    _settingsRoles.splice(i, 1);
+    renderRoles();
+  }
+
+  async function saveSettings() {
+    const autoActions = [];
+    if (document.getElementById('s-auto-unlock').checked)  autoActions.push('unlock_account');
+    if (document.getElementById('s-auto-reset').checked)   autoActions.push('reset_password');
+    if (document.getElementById('s-auto-enable').checked)  autoActions.push('enable_account');
+    if (document.getElementById('s-auto-disable').checked) autoActions.push('disable_account');
+
+    const payload = {
+      janus_enabled:      document.getElementById('s-janus-enabled').checked,
+      janus_scan_emails:  document.getElementById('s-scan-emails').checked,
+      security_checks:    document.getElementById('s-security-checks').checked,
+      email_domain:       document.getElementById('s-email-domain').value.trim(),
+      janus_auto_actions: autoActions,
+      roles:              _settingsRoles,
+    };
+
+    try {
+      const res  = await fetch('/dashboard/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (json.success) toast('Settings saved.', 'success');
+      else toast(json.message || 'Failed to save.', 'error');
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  function chatKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  }
+
+  function sendSuggestion(el) {
+    document.getElementById('chat-input').value = el.textContent;
+    sendChat();
+  }
+
+  async function loadChatHistory() {
+    const res  = await fetch('/dashboard/api/chat/sessions');
+    const json = await res.json();
+    const sessions = json.data || [];
+    if (!sessions.length) { toast('No previous conversations.', 'info'); return; }
+
+    const msgs = document.getElementById('chat-messages');
+    const empty = document.getElementById('chat-empty');
+    if (empty) empty.remove();
+
+    // Show sessions as clickable list
+    let html = '<div style="padding:16px;display:flex;flex-direction:column;gap:8px;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:4px;">Past conversations</div>';
+    for (const s of sessions) {
+      const date = s.updated_at ? s.updated_at.slice(0, 16).replace('T', ' ') : '';
+      html += `<div class="chat-suggestion" style="text-align:left;border-radius:8px;padding:10px 14px;" onclick="loadSession('${s.id}')">
+        <div style="font-size:13px;color:var(--text)">${s.title}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${s.user_email} &middot; ${date}</div>
+      </div>`;
+    }
+    html += '</div>';
+    msgs.innerHTML = html;
+  }
+
+  async function loadSession(sessionId) {
+    const res  = await fetch(`/dashboard/api/chat/sessions/${sessionId}/messages`);
+    const json = await res.json();
+    if (!json.success) { toast('Could not load session.', 'error'); return; }
+
+    _chatSessionId = sessionId;
+    _chatHistory   = [];
+    const msgs = document.getElementById('chat-messages');
+    msgs.innerHTML = '';
+
+    for (const m of json.data) {
+      appendBubble(m.role, m.content, m.action || null);
+      _chatHistory.push({ role: m.role, content: m.content });
+    }
+  }
+
+  function clearChat() {
+    _chatHistory   = [];
+    _chatSessionId = null;
+    const msgs = document.getElementById('chat-messages');
+    msgs.innerHTML = `<div class="chat-empty" id="chat-empty">
+      <div class="chat-empty-icon">✨</div>
+      <h3>Ask me anything about your AD</h3>
+      <p>I can look up users, unlock accounts, reset passwords, check stats, and more — just ask in plain English.</p>
+      <div class="chat-suggestions">
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Show me domain stats</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Find users with expired passwords</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Look up jake.miller</span>
+      </div>
+    </div>`;
+  }
+
+  function appendThinkingBubble() {
+    const empty = document.getElementById('chat-empty');
+    if (empty) empty.remove();
+    const msgs = document.getElementById('chat-messages');
+    const div  = document.createElement('div');
+    div.className = 'chat-bubble assistant thinking';
+    div.innerHTML = `
+      <span class="thinking-dots"><span></span><span></span><span></span></span>
+      <span class="thinking-label">Janus is thinking...</span>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function appendBubble(role, content, actionTag = null) {
+    const empty = document.getElementById('chat-empty');
+    if (empty) empty.remove();
+
+    const msgs = document.getElementById('chat-messages');
+    const div  = document.createElement('div');
+    div.className = `chat-bubble ${role}`;
+
+    if (actionTag) {
+      const tag = document.createElement('div');
+      tag.className   = 'chat-action-tag';
+      tag.textContent = '⚡ ' + actionTag;
+      div.appendChild(tag);
+      div.appendChild(document.createElement('br'));
+    }
+
+    div.appendChild(document.createTextNode(content));
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  async function sendChat() {
+    if (_chatBusy) return;
+    const input = document.getElementById('chat-input');
+    const msg   = input.value.trim();
+    if (!msg) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    _chatBusy = true;
+    document.getElementById('chat-send').disabled = true;
+
+    appendBubble('user', msg);
+    _chatHistory.push({ role: 'user', content: msg });
+
+    const thinkingBubble = appendThinkingBubble();
+
+    try {
+      const res  = await fetch('/dashboard/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, history: _chatHistory.slice(-10), session_id: _chatSessionId })
+      });
+      const json = await res.json();
+
+      thinkingBubble.remove();
+
+      if (!json.success) {
+        appendBubble('assistant', '⚠️ ' + (json.message || 'Something went wrong.'));
+      } else {
+        if (json.session_id) _chatSessionId = json.session_id;
+        appendBubble('assistant', json.reply, json.action_taken);
+        _chatHistory.push({ role: 'assistant', content: json.reply });
+
+        // If a write action was taken, invalidate cache so panels refresh correctly
+        const writeActions = ['reset_password','unlock_account','enable_account','disable_account','create_user','move_user','add_to_group','remove_from_group'];
+        if (json.action_taken && writeActions.includes(json.action_taken)) {
+          cacheInvalidate('list_users[]', 'get_stats[]', 'list_locked_accounts[]');
+        }
+      }
+    } catch (e) {
+      thinkingBubble.remove();
+      appendBubble('assistant', '⚠️ Network error: ' + e.message);
+    }
+
+    _chatBusy = false;
+    document.getElementById('chat-send').disabled = false;
+    input.focus();
+  }
+
+  // =========================================================
+  // Init — sequential so we don't flood the agent queue
+  // =========================================================
+
+  (async () => {
+    pageLoaded['users'] = true;
+
+    // 1. Stats first — also confirms agent is alive
+    try {
+      await loadStats();
+      setAgentStatus(true);
+    } catch {
+      setAgentStatus(false);
+    }
+
+    // 2. Users table after stats are done
+    await loadUsers();
+
+    // 3. Check open ticket count for badge (non-blocking)
+    fetch('/dashboard/api/tickets?status=open')
+      .then(r => r.json())
+      .then(j => {
+        const open = (j.data || []).length;
+        const badge = document.getElementById('open-tickets-badge');
+        if (open > 0) { badge.textContent = open; badge.style.display = 'inline'; }
+      }).catch(() => {});
+
+    // 4. Auto-refresh stats every 2 minutes (uses cache so no extra AD hit)
+    setInterval(() => {
+      cacheInvalidate('get_stats[]');
+      loadStats();
+    }, 2 * 60 * 1000);
+  })();
+</script>
+</body>
+</html>

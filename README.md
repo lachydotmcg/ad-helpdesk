@@ -213,6 +213,56 @@ one-click unlock, password reset, group management, create user form, and audit 
 
 ---
 
+## Hosted dashboard (v0.5+)
+
+Deploy the cloud backend to Railway in one click — your customers get a real URL to log into instead of running anything locally.
+
+### 1. Deploy to Railway
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template)
+
+Or manually:
+
+```bash
+railway login
+railway init
+railway up
+```
+
+Set these environment variables in the Railway dashboard:
+
+```
+SECRET_KEY=any-long-random-string
+ADMIN_KEY=your-secret-admin-key
+```
+
+### 2. Create your first tenant + dashboard user
+
+```bash
+curl -X POST https://your-app.railway.app/admin/tenants \
+  -H "X-Admin-Key: your-admin-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Acme Corp", "email": "admin@acme.com", "password": "yourpassword"}'
+```
+
+This creates the tenant and a dashboard login in one call. The response includes the `api_key` your agent needs.
+
+### 3. Configure and run the agent on the customer's server
+
+```bash
+cp agent-config.example.json agent-config.json
+# fill in cloud_url and tenant_api_key from step 2
+python agent.py
+```
+
+The agent phones home, picks up commands queued from the dashboard, executes them against AD, and posts results back. No inbound ports needed.
+
+### 4. Log in
+
+Go to `https://your-app.railway.app/` and sign in with the email and password from step 2.
+
+---
+
 ## Cloud agent mode (v0.4+)
 
 For a fully hosted setup where the dashboard lives in the cloud and your server just runs
@@ -307,7 +357,7 @@ Every operation is appended to `ps-scripts/audit.log`:
 - [x] v0.2 — Web dashboard (Flask UI, REST API, live user panel, search, stats)
 - [x] v0.3 — Cowork skill for natural language AD management
 - [x] v0.4 — Cloud agent, multi-tenant backend, system tray app, setup wizard
-- [ ] v0.5 — Hosted dashboard with multi-user auth and per-tenant isolation
+- [x] v0.5 — Hosted dashboard with multi-user auth and per-tenant isolation
 - [ ] v0.6 — AI chat interface via Anthropic API
 - [ ] v0.7 — Ticketing system with AI auto-resolution
 - [ ] v1.0 — Windows Service installer, HTTPS, Stripe billing, demo mode
