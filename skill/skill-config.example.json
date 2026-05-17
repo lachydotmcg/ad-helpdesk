@@ -1,0 +1,6 @@
+{
+  "bridge_dir": "C:\\Users\\YourName\\ad-bridge",
+  "domain": "lab.local",
+  "netbios": "LAB",
+  "timeout_seconds": 15
+}

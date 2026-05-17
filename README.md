@@ -219,8 +219,8 @@ Every operation appended to `ps-scripts/audit.log`:
 ## Roadmap
 
 - [x] v0.1 — Core bridge (WinRM, CLI, PowerShell scripts, audit log, AI file queue)
-- [ ] v0.2 — Web dashboard (Flask UI, ticket queue, live user panel, activity feed)
-- [ ] v0.3 — Ticketing integration (Freshdesk, Jira Service Desk, Zendesk webhooks)
+- [x] v0.2 — Web dashboard (Flask UI, REST API, live user panel, search, stats)
+- [x] v0.3 — Cowork skill for natural language AD management
 - [ ] v1.0 — Docker image, HTTPS, role-based access, demo mode
 
 ---
