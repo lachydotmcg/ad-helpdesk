@@ -1,5 +1,7 @@
 # AD Helpdesk
 
+<img src="assets/logo.svg" alt="AD Helpdesk" width="480"/>
+
 **Plug Claude into your Active Directory server and manage it with plain English.**
 
 Unlock accounts, reset passwords, create users, move OUs, run bulk operations - all by
@@ -211,6 +213,50 @@ one-click unlock, password reset, group management, create user form, and audit 
 
 ---
 
+## Cloud agent mode (v0.4+)
+
+For a fully hosted setup where the dashboard lives in the cloud and your server just runs
+a lightweight agent, deploy `cloud/app.py` to any cloud platform (Railway, Render, fly.io):
+
+```
+cloud/app.py          -- multi-tenant Flask backend
+cloud/db.py           -- SQLite database (swap for PostgreSQL in production)
+cloud/requirements.txt
+cloud/.env.example
+```
+
+Then on the machine with WinRM access to your AD server, run the agent instead of watcher.py:
+
+```bash
+cp agent-config.example.json agent-config.json
+# fill in cloud_url and your tenant_api_key
+python agent.py
+```
+
+The agent phones home to the cloud, picks up commands, executes them against AD locally,
+and posts results back. No inbound ports required. Works behind NAT and across Tailscale.
+
+```
+Cloud backend (Railway / Render / VPS)
+    |  HTTPS
+    v
+agent.py (running on customer's PC or server)
+    |  WinRM
+    v
+Windows Server + Active Directory
+```
+
+To create a tenant (get an API key), call the admin endpoint:
+
+```bash
+curl -X POST https://your-app.railway.app/admin/tenants \
+  -H "X-Admin-Key: your-admin-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Acme Corp"}'
+```
+
+---
+
 ## REST API
 
 Start the server and authenticate with `X-API-Key: <your key>` on all requests.
@@ -260,7 +306,11 @@ Every operation is appended to `ps-scripts/audit.log`:
 - [x] v0.1 — Core bridge (WinRM, CLI, PowerShell scripts, audit log, file queue)
 - [x] v0.2 — Web dashboard (Flask UI, REST API, live user panel, search, stats)
 - [x] v0.3 — Cowork skill for natural language AD management
-- [ ] v1.0 — Docker image, HTTPS, role-based access, demo mode
+- [x] v0.4 — Cloud agent, multi-tenant backend, system tray app, setup wizard
+- [ ] v0.5 — Hosted dashboard with multi-user auth and per-tenant isolation
+- [ ] v0.6 — AI chat interface via Anthropic API
+- [ ] v0.7 — Ticketing system with AI auto-resolution
+- [ ] v1.0 — Windows Service installer, HTTPS, Stripe billing, demo mode
 
 ---
 

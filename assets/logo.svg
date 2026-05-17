@@ -1,0 +1,39 @@
+<svg width="100%" viewBox="0 0 680 280" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>AD Helpdesk</title>
+  <desc>AD Helpdesk logo - a shield with AD, followed by the product name and tagline</desc>
+
+  <!-- Shield body -->
+  <path d="M140 52 L196 52 L196 162 Q140 200 84 162 L84 52 Z"
+        fill="#1e1b4b" stroke="#6366f1" stroke-width="2.5"/>
+
+  <!-- Shield top accent bar -->
+  <rect x="84" y="52" width="112" height="8" fill="#6366f1" opacity="0.5"/>
+
+  <!-- AD text inside shield -->
+  <text x="140" y="148" text-anchor="middle"
+        font-family="'Segoe UI', Arial, sans-serif"
+        font-size="54" font-weight="700" fill="#c7d2fe" letter-spacing="-2">AD</text>
+
+  <!-- Underline inside shield -->
+  <rect x="106" y="155" width="68" height="2.5" rx="1.5" fill="#6366f1" opacity="0.7"/>
+
+  <!-- "AD" prefix label -->
+  <text x="230" y="100"
+        font-family="'Segoe UI', Arial, sans-serif"
+        font-size="24" font-weight="400" fill="#818cf8" letter-spacing="2">AD</text>
+
+  <!-- "Helpdesk" main wordmark -->
+  <text x="230" y="138"
+        font-family="'Segoe UI', Arial, sans-serif"
+        font-size="42" font-weight="700" fill="#e2e8f0" letter-spacing="-1">Helpdesk</text>
+
+  <!-- Tagline -->
+  <text x="230" y="162"
+        font-family="'Segoe UI', Arial, sans-serif"
+        font-size="14" font-weight="400" fill="#64748b" letter-spacing="0.5">Plug Claude into your Active Directory</text>
+
+  <!-- Decorative dots -->
+  <circle cx="230" cy="185" r="3" fill="#6366f1" opacity="0.5"/>
+  <circle cx="242" cy="185" r="3" fill="#6366f1" opacity="0.3"/>
+  <circle cx="254" cy="185" r="3" fill="#6366f1" opacity="0.15"/>
+</svg>
