@@ -1,6 +1,6 @@
 <svg width="100%" viewBox="0 0 680 280" role="img" xmlns="http://www.w3.org/2000/svg">
   <title>AD Helpdesk</title>
-  <desc>AD Helpdesk logo - a shield with AD, followed by the product name and tagline</desc>
+  <desc>AD Helpdesk logo - a shield with AID, followed by the product name and tagline</desc>
 
   <!-- Shield body -->
   <path d="M140 52 L196 52 L196 162 Q140 200 84 162 L84 52 Z"
@@ -9,13 +9,23 @@
   <!-- Shield top accent bar -->
   <rect x="84" y="52" width="112" height="8" fill="#6366f1" opacity="0.5"/>
 
-  <!-- AD text inside shield -->
-  <text x="140" y="148" text-anchor="middle"
-        font-family="'Segoe UI', Arial, sans-serif"
-        font-size="54" font-weight="700" fill="#c7d2fe" letter-spacing="-2">AD</text>
+  <!-- AID text inside shield - custom paths, open D has no closing vertical stroke -->
+  <g stroke="#c7d2fe" stroke-width="7" stroke-linecap="round" fill="none">
+    <!-- A -->
+    <line x1="107" y1="98" x2="92"  y2="148"/>
+    <line x1="107" y1="98" x2="122" y2="148"/>
+    <line x1="97"  y1="131" x2="117" y2="131"/>
+
+    <!-- I -->
+    <line x1="139" y1="98" x2="139" y2="148"/>
+
+    <!-- D (open — arc only, no right vertical stroke) -->
+    <line x1="156" y1="98" x2="156" y2="148"/>
+    <path d="M 156 98 Q 185 123 156 148"/>
+  </g>
 
   <!-- Underline inside shield -->
-  <rect x="106" y="155" width="68" height="2.5" rx="1.5" fill="#6366f1" opacity="0.7"/>
+  <rect x="97" y="155" width="86" height="2.5" rx="1.5" fill="#6366f1" opacity="0.7"/>
 
   <!-- "AD" prefix label -->
   <text x="230" y="100"
