@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AD Helpdesk - Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 14px;
+      padding: 40px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: #3b82f6;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo-text h1 { font-size: 17px; font-weight: 700; }
+    .logo-text p  { font-size: 12px; color: #64748b; margin-top: 1px; }
+
+    .error {
+      background: #450a0a;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    label { display: block; font-size: 12px; font-weight: 500; color: #94a3b8; margin-bottom: 6px; }
+    input[type="password"] {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #e2e8f0;
+      outline: none;
+      transition: border 0.15s;
+      margin-bottom: 20px;
+    }
+    input[type="password"]:focus { border-color: #3b82f6; }
+
+    button {
+      width: 100%;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.88; }
+
+    .hint { font-size: 11px; color: #475569; text-align: center; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">🏛</div>
+      <div class="logo-text">
+        <h1>AD Helpdesk</h1>
+        <p>lab.local administration</p>
+      </div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="error">{{ messages[0] }}</div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+      <label>Password</label>
+      <input type="password" name="password" autofocus placeholder="Enter dashboard password">
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="hint">Set DASHBOARD_PASSWORD in your .env file</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AD Helpdesk</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; background: #161b27; border-right: 1px solid #1e2535; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; bottom: 0; }
+    .logo { padding: 20px 16px; border-bottom: 1px solid #1e2535; display: flex; align-items: center; gap: 10px; }
+    .logo-icon { width: 32px; height: 32px; background: #3b82f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+    .logo h1 { font-size: 14px; font-weight: 700; }
+    .logo p  { font-size: 11px; color: #64748b; }
+
+    .nav { padding: 12px 8px; flex: 1; }
+    .nav-section { font-size: 10px; font-weight: 600; color: #475569; letter-spacing: 1px; text-transform: uppercase; padding: 10px 8px 4px; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px; font-size: 13px; color: #94a3b8; cursor: pointer; margin-bottom: 2px; transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
+    .nav-item:hover { background: #1e2535; color: #e2e8f0; }
+    .nav-item.active { background: #1e3a5f; color: #60a5fa; }
+    .nav-badge { margin-left: auto; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; min-width: 18px; text-align: center; }
+    .nav-badge.green { background: #16a34a; }
+
+    .sidebar-footer { padding: 12px; border-top: 1px solid #1e2535; }
+    .logout-btn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; font-size: 13px; color: #64748b; cursor: pointer; text-decoration: none; transition: all 0.15s; }
+    .logout-btn:hover { background: #1e2535; color: #e2e8f0; }
+
+    /* Main */
+    .main { flex: 1; margin-left: 220px; display: flex; flex-direction: column; min-height: 100vh; }
+    .topbar { background: #161b27; border-bottom: 1px solid #1e2535; padding: 12px 24px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
+    .page-title { font-size: 15px; font-weight: 600; }
+    .search-wrap { flex: 1; max-width: 360px; margin-left: auto; position: relative; }
+    .search-wrap input { width: 100%; background: #0f1117; border: 1px solid #1e2535; border-radius: 8px; padding: 8px 12px 8px 34px; font-size: 13px; color: #e2e8f0; outline: none; transition: border 0.15s; }
+    .search-wrap input:focus { border-color: #3b82f6; }
+    .search-wrap input::placeholder { color: #475569; }
+    .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #475569; font-size: 13px; pointer-events: none; }
+
+    .content { padding: 24px; flex: 1; }
+
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+    .stat { background: #161b27; border: 1px solid #1e2535; border-radius: 10px; padding: 16px; }
+    .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .stat-value { font-size: 28px; font-weight: 700; }
+    .stat-value.blue   { color: #60a5fa; }
+    .stat-value.green  { color: #4ade80; }
+    .stat-value.red    { color: #f87171; }
+    .stat-value.yellow { color: #fbbf24; }
+    .stat-sub { font-size: 11px; color: #475569; margin-top: 3px; }
+
+    /* Grid layout */
+    .grid { display: grid; grid-template-columns: 1fr 340px; gap: 18px; }
+
+    /* Cards */
+    .card { background: #161b27; border: 1px solid #1e2535; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+    .card-header { padding: 14px 18px; border-bottom: 1px solid #1e2535; display: flex; align-items: center; justify-content: space-between; }
+    .card-title { font-size: 13px; font-weight: 600; }
+    .card-meta  { font-size: 11px; color: #64748b; }
+
+    /* User table */
+    .user-table { width: 100%; border-collapse: collapse; }
+    .user-table th { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 18px; text-align: left; border-bottom: 1px solid #1e2535; }
+    .user-table td { padding: 11px 18px; font-size: 13px; border-bottom: 1px solid #1a2030; }
+    .user-table tr:last-child td { border-bottom: none; }
+    .user-table tr { cursor: pointer; transition: background 0.1s; }
+    .user-table tr:hover td { background: #1a2030; }
+    .user-table tr.selected td { background: #1e3a5f; }
+
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .pill.enabled  { background: #052e16; color: #4ade80; }
+    .pill.disabled { background: #1e2535; color: #64748b; }
+    .pill.locked   { background: #450a0a; color: #f87171; }
+    .pill.expired  { background: #422006; color: #fbbf24; }
+
+    /* User detail panel */
+    .detail-panel { position: sticky; top: 60px; }
+    .detail-avatar { width: 46px; height: 46px; border-radius: 50%; background: #3b82f6; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+    .detail-header { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #1e2535; }
+    .detail-name { font-size: 15px; font-weight: 600; }
+    .detail-sub  { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .detail-status { margin-left: auto; }
+
+    .detail-body { padding: 14px 18px; }
+    .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid #1a2030; font-size: 12px; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: #64748b; }
+    .detail-val   { color: #e2e8f0; font-weight: 500; text-align: right; max-width: 180px; word-break: break-all; }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .tag { background: #1e3a5f; color: #60a5fa; border: 1px solid #1e40af; padding: 3px 9px; border-radius: 20px; font-size: 11px; }
+
+    /* Quick actions */
+    .qa { padding: 14px 18px; border-top: 1px solid #1e2535; }
+    .qa-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .qa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .qa-btn { padding: 9px 8px; border-radius: 7px; border: 1px solid #1e2535; background: #1e2535; color: #94a3b8; font-size: 12px; font-weight: 500; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .qa-btn:hover { border-color: #3b82f6; color: #60a5fa; background: #1e3a5f; }
+    .qa-btn.danger:hover { border-color: #ef4444; color: #f87171; background: #450a0a; }
+    .qa-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Password reset form in panel */
+    .pw-form { padding: 14px 18px; border-top: 1px solid #1e2535; }
+    .pw-form label { font-size: 11px; color: #64748b; display: block; margin-bottom: 5px; }
+    .pw-form input { width: 100%; background: #0f1117; border: 1px solid #1e2535; border-radius: 7px; padding: 8px 10px; font-size: 13px; color: #e2e8f0; outline: none; margin-bottom: 8px; }
+    .pw-form input:focus { border-color: #3b82f6; }
+    .pw-form button { width: 100%; background: #d97706; color: #fff; border: none; border-radius: 7px; padding: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .pw-form button:hover { opacity: 0.88; }
+
+    /* Activity feed */
+    .activity-item { display: flex; gap: 10px; padding: 10px 18px; border-bottom: 1px solid #1a2030; font-size: 12px; align-items: flex-start; }
+    .activity-item:last-child { border-bottom: none; }
+    .a-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .a-green  { background: #4ade80; }
+    .a-blue   { background: #60a5fa; }
+    .a-yellow { background: #fbbf24; }
+    .a-red    { background: #f87171; }
+    .a-text   { flex: 1; color: #94a3b8; line-height: 1.5; }
+    .a-time   { color: #475569; flex-shrink: 0; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #161b27; border: 1px solid #1e2535; border-radius: 10px; padding: 12px 18px; font-size: 13px; color: #e2e8f0; z-index: 999; transform: translateY(80px); opacity: 0; transition: all 0.3s; max-width: 320px; }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.success { border-color: #16a34a; color: #4ade80; }
+    #toast.error   { border-color: #7f1d1d;  color: #f87171; }
+
+    /* Empty state */
+    .empty { padding: 40px; text-align: center; color: #475569; font-size: 13px; }
+
+    /* Loading */
+    .loading { padding: 40px; text-align: center; color: #475569; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🏛</div>
+    <div>
+      <h1>AD Helpdesk</h1>
+      <p>lab.local</p>
+    </div>
+  </div>
+  <div class="nav">
+    <div class="nav-section">Views</div>
+    <button class="nav-item active" onclick="showView('all')">👥 All Users <span class="nav-badge green" id="badge-total">-</span></button>
+    <button class="nav-item" onclick="showView('locked')">🔒 Locked <span class="nav-badge" id="badge-locked">-</span></button>
+    <button class="nav-item" onclick="showView('expired')">⏰ Expired Passwords <span class="nav-badge" id="badge-expired">-</span></button>
+    <div class="nav-section">Tools</div>
+    <button class="nav-item" onclick="showView('create')">➕ Create User</button>
+    <button class="nav-item" onclick="showView('audit')">📋 Audit Log</button>
+  </div>
+  <div class="sidebar-footer">
+    <a href="/logout" class="logout-btn">🚪 Sign out</a>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">All Users</div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input id="search-input" type="text" placeholder="Search by name or username..." oninput="onSearch(this.value)">
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Stats -->
+    <div class="stats" id="stats-row">
+      <div class="stat"><div class="stat-label">Total Users</div><div class="stat-value blue" id="s-total">-</div><div class="stat-sub">in directory</div></div>
+      <div class="stat"><div class="stat-label">Active</div><div class="stat-value green" id="s-enabled">-</div><div class="stat-sub">enabled accounts</div></div>
+      <div class="stat"><div class="stat-label">Locked Out</div><div class="stat-value red" id="s-locked">-</div><div class="stat-sub">need attention</div></div>
+      <div class="stat"><div class="stat-label">Expired Passwords</div><div class="stat-value yellow" id="s-expired">-</div><div class="stat-sub">need reset</div></div>
+    </div>
+
+    <!-- Main grid -->
+    <div class="grid">
+      <div>
+        <!-- User list -->
+        <div class="card" id="view-all">
+          <div class="card-header">
+            <div class="card-title">Users</div>
+            <div class="card-meta" id="user-count">Loading...</div>
+          </div>
+          <div id="user-list-body"><div class="loading">Loading users...</div></div>
+        </div>
+
+        <!-- Audit log -->
+        <div class="card" id="view-audit" style="display:none;">
+          <div class="card-header">
+            <div class="card-title">Audit Log</div>
+            <div class="card-meta">Last 50 entries</div>
+          </div>
+          <div id="audit-body"><div class="loading">Loading...</div></div>
+        </div>
+
+        <!-- Create user form -->
+        <div class="card" id="view-create" style="display:none;">
+          <div class="card-header"><div class="card-title">Create New User</div></div>
+          <div style="padding:20px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+              <div><label style="font-size:12px;color:#64748b;display:block;margin-bottom:5px;">First Name</label>
+                   <input id="c-first" type="text" placeholder="Sarah" style="width:100%;background:#0f1117;border:1px solid #1e2535;border-radius:7px;padding:8px 10px;font-size:13px;color:#e2e8f0;outline:none;"></div>
+              <div><label style="font-size:12px;color:#64748b;display:block;margin-bottom:5px;">Last Name</label>
+                   <input id="c-last" type="text" placeholder="Chen" style="width:100%;background:#0f1117;border:1px solid #1e2535;border-radius:7px;padding:8px 10px;font-size:13px;color:#e2e8f0;outline:none;"></div>
+            </div>
+            <div style="margin-bottom:12px;"><label style="font-size:12px;color:#64748b;display:block;margin-bottom:5px;">Username (SAM Account)</label>
+              <input id="c-username" type="text" placeholder="sarah.chen" style="width:100%;background:#0f1117;border:1px solid #1e2535;border-radius:7px;padding:8px 10px;font-size:13px;color:#e2e8f0;outline:none;"></div>
+            <div style="margin-bottom:20px;"><label style="font-size:12px;color:#64748b;display:block;margin-bottom:5px;">Organisational Unit</label>
+              <select id="c-ou" style="width:100%;background:#0f1117;border:1px solid #1e2535;border-radius:7px;padding:8px 10px;font-size:13px;color:#e2e8f0;outline:none;">
+                <option value="">Default Users container</option>
+                <option value="OU=IT,OU=Staff,DC=lab,DC=local">Staff - IT</option>
+                <option value="OU=Management,OU=Staff,DC=lab,DC=local">Staff - Management</option>
+                <option value="OU=Teachers,OU=Staff,DC=lab,DC=local">Staff - Teachers</option>
+                <option value="OU=Administration,OU=Staff,DC=lab,DC=local">Staff - Administration</option>
+                <option value="OU=Students,DC=lab,DC=local">Students</option>
+              </select>
+            </div>
+            <button onclick="createUser()" style="background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">Create User</button>
+            <p style="font-size:11px;color:#475569;margin-top:10px;text-align:center;">Default password: ChangeMe123! - user must change on first logon</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: User detail -->
+      <div class="detail-panel">
+        <div class="card" id="detail-panel">
+          <div style="padding:40px;text-align:center;color:#475569;font-size:13px;">
+            Select a user to view details
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  let allUsers = [];
+  let selectedUser = null;
+  let currentView = 'all';
+  let searchTimer = null;
+
+  // ---------------------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------------------
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+    loadUsers();
+  });
+
+  function loadStats() {
+    fetch('/api/stats').then(r => r.json()).then(r => {
+      if (r.success && r.data) {
+        document.getElementById('s-total').textContent   = r.data.total   ?? '-';
+        document.getElementById('s-enabled').textContent = r.data.enabled ?? '-';
+        document.getElementById('s-locked').textContent  = r.data.locked  ?? '-';
+        document.getElementById('s-expired').textContent = r.data.expired ?? '-';
+        document.getElementById('badge-total').textContent   = r.data.total  ?? '-';
+        document.getElementById('badge-locked').textContent  = r.data.locked  ?? 0;
+        document.getElementById('badge-expired').textContent = r.data.expired ?? 0;
+      }
+    }).catch(() => {});
+  }
+
+  // ---------------------------------------------------------------------------
+  // Views
+  // ---------------------------------------------------------------------------
+
+  function showView(view) {
+    currentView = view;
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+
+    document.getElementById('view-all').style.display    = 'none';
+    document.getElementById('view-audit').style.display  = 'none';
+    document.getElementById('view-create').style.display = 'none';
+    document.getElementById('search-input').value = '';
+
+    const titles = { all: 'All Users', locked: 'Locked Accounts', expired: 'Expired Passwords', create: 'Create User', audit: 'Audit Log' };
+    document.getElementById('page-title').textContent = titles[view] || 'Dashboard';
+
+    if (view === 'all') {
+      document.getElementById('view-all').style.display = 'block';
+      loadUsers();
+    } else if (view === 'locked') {
+      document.getElementById('view-all').style.display = 'block';
+      loadLocked();
+    } else if (view === 'expired') {
+      document.getElementById('view-all').style.display = 'block';
+      loadExpired();
+    } else if (view === 'audit') {
+      document.getElementById('view-audit').style.display = 'block';
+      loadAudit();
+    } else if (view === 'create') {
+      document.getElementById('view-create').style.display = 'block';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Data loaders
+  // ---------------------------------------------------------------------------
+
+  function loadUsers() {
+    setUserListLoading();
+    fetch('/api/users').then(r => r.json()).then(r => {
+      allUsers = r.data || [];
+      renderUserTable(allUsers);
+    }).catch(e => {
+      document.getElementById('user-list-body').innerHTML = '<div class="empty">Failed to load users. Is the VM reachable?</div>';
+    });
+  }
+
+  function loadLocked() {
+    setUserListLoading();
+    fetch('/api/users/locked').then(r => r.json()).then(r => {
+      allUsers = r.data || [];
+      renderUserTable(allUsers, true);
+    });
+  }
+
+  function loadExpired() {
+    setUserListLoading();
+    fetch('/api/users/expired').then(r => r.json()).then(r => {
+      allUsers = r.data || [];
+      renderUserTable(allUsers);
+    });
+  }
+
+  function loadAudit() {
+    document.getElementById('audit-body').innerHTML = '<div class="loading">Loading...</div>';
+    fetch('/api/audit').then(r => r.json()).then(r => {
+      const entries = r.data || [];
+      if (!entries.length) {
+        document.getElementById('audit-body').innerHTML = '<div class="empty">No audit entries yet.</div>';
+        return;
+      }
+      const colours = { SUCCESS: 'a-green', FAILED: 'a-red', SKIPPED: 'a-yellow' };
+      document.getElementById('audit-body').innerHTML = entries.map(e => `
+        <div class="activity-item">
+          <div class="a-dot ${colours[e.status] || 'a-blue'}"></div>
+          <div class="a-text"><strong>${e.user}</strong> - ${e.action} <span style="color:#64748b;">${e.detail}</span></div>
+          <div class="a-time">${e.timestamp.slice(11,16)}</div>
+        </div>
+      `).join('');
+    });
+  }
+
+  function setUserListLoading() {
+    document.getElementById('user-list-body').innerHTML = '<div class="loading">Loading...</div>';
+    document.getElementById('user-count').textContent = '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Search
+  // ---------------------------------------------------------------------------
+
+  function onSearch(q) {
+    clearTimeout(searchTimer);
+    if (!q) { renderUserTable(allUsers); return; }
+    searchTimer = setTimeout(() => {
+      fetch(`/api/users/search?q=${encodeURIComponent(q)}`).then(r => r.json()).then(r => {
+        renderUserTable(r.data || []);
+      });
+    }, 300);
+  }
+
+  // ---------------------------------------------------------------------------
+  // User table
+  // ---------------------------------------------------------------------------
+
+  function renderUserTable(users, showUnlock = false) {
+    document.getElementById('user-count').textContent = `${users.length} user${users.length !== 1 ? 's' : ''}`;
+    if (!users.length) {
+      document.getElementById('user-list-body').innerHTML = '<div class="empty">No users found.</div>';
+      return;
+    }
+    const rows = users.map(u => {
+      const statusPill = !u.Enabled ? '<span class="pill disabled">Disabled</span>'
+        : u.LockedOut ? '<span class="pill locked">Locked</span>'
+        : u.PasswordExpired ? '<span class="pill expired">Pwd Expired</span>'
+        : '<span class="pill enabled">Active</span>';
+      const unlockBtn = showUnlock
+        ? `<button onclick="quickUnlock(event,'${u.SamAccountName}')" style="background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:11px;cursor:pointer;">Unlock</button>`
+        : '';
+      const ou = u.OU || '-';
+      return `<tr onclick="selectUser('${u.SamAccountName}')">
+        <td><strong>${u.Name || u.SamAccountName}</strong></td>
+        <td style="color:#64748b;">${u.SamAccountName}</td>
+        <td>${ou}</td>
+        <td>${statusPill} ${unlockBtn}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('user-list-body').innerHTML = `
+      <table class="user-table">
+        <thead><tr><th>Name</th><th>Username</th><th>OU</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function quickUnlock(e, sam) {
+    e.stopPropagation();
+    apiAction(`/api/user/${sam}/unlock`, 'POST', null, `${sam} unlocked successfully.`);
+    setTimeout(() => { loadStats(); loadLocked(); }, 1500);
+  }
+
+  // ---------------------------------------------------------------------------
+  // User detail panel
+  // ---------------------------------------------------------------------------
+
+  function selectUser(sam) {
+    document.querySelectorAll('.user-table tr').forEach(tr => tr.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+    selectedUser = sam;
+    document.getElementById('detail-panel').innerHTML = '<div class="loading">Loading...</div>';
+    fetch(`/api/user/${sam}`).then(r => r.json()).then(r => {
+      if (!r.success) { document.getElementById('detail-panel').innerHTML = `<div class="empty">${r.message}</div>`; return; }
+      renderDetailPanel(r.data);
+    });
+  }
+
+  function renderDetailPanel(u) {
+    const initials = (u.Name || u.SamAccountName).split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+    const statusPill = !u.Enabled ? '<span class="pill disabled">Disabled</span>'
+      : u.LockedOut ? '<span class="pill locked">Locked</span>'
+      : '<span class="pill enabled">Active</span>';
+
+    const groups = (u.MemberOf || []).map(dn => {
+      const match = dn.match(/^CN=([^,]+)/);
+      return match ? `<span class="tag">${match[1]}</span>` : '';
+    }).join('');
+
+    const fmt = v => v ? new Date(v).toLocaleDateString('en-AU') : 'Never';
+
+    document.getElementById('detail-panel').innerHTML = `
+      <div class="detail-header">
+        <div class="detail-avatar">${initials}</div>
+        <div>
+          <div class="detail-name">${u.Name || u.SamAccountName}</div>
+          <div class="detail-sub">${u.UserPrincipalName || ''}</div>
+        </div>
+        <div class="detail-status">${statusPill}</div>
+      </div>
+      <div class="detail-body">
+        <div class="detail-row"><span class="detail-label">Username</span><span class="detail-val">${u.SamAccountName}</span></div>
+        <div class="detail-row"><span class="detail-label">Last logon</span><span class="detail-val">${fmt(u.LastLogonDate)}</span></div>
+        <div class="detail-row"><span class="detail-label">Password set</span><span class="detail-val">${fmt(u.PasswordLastSet)}</span></div>
+        <div class="detail-row"><span class="detail-label">Pwd expired</span><span class="detail-val" style="color:${u.PasswordExpired?'#fbbf24':'#4ade80'}">${u.PasswordExpired ? 'Yes' : 'No'}</span></div>
+        <div class="detail-row"><span class="detail-label">Locked out</span><span class="detail-val" style="color:${u.LockedOut?'#f87171':'#4ade80'}">${u.LockedOut ? 'Yes' : 'No'}</span></div>
+        ${groups ? `<div class="tags" style="padding-top:4px;">${groups}</div>` : ''}
+      </div>
+      <div class="qa">
+        <div class="qa-label">Quick Actions</div>
+        <div class="qa-grid">
+          <button class="qa-btn" onclick="panelAction('unlock')">🔓 Unlock</button>
+          <button class="qa-btn" onclick="panelAction('enable')">✅ Enable</button>
+          <button class="qa-btn danger" onclick="panelAction('disable')">🚫 Disable</button>
+          <button class="qa-btn" onclick="togglePwForm()">🔑 Reset Pwd</button>
+        </div>
+      </div>
+      <div class="pw-form" id="pw-form" style="display:none;">
+        <label>New temporary password</label>
+        <input id="pw-input" type="text" placeholder="TempPass123!">
+        <button onclick="panelAction('reset_password')">Set Password</button>
+      </div>`;
+  }
+
+  function togglePwForm() {
+    const f = document.getElementById('pw-form');
+    if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function panelAction(action) {
+    if (!selectedUser) return;
+    if (action === 'unlock')         apiAction(`/api/user/${selectedUser}/unlock`,  'POST', null, 'Account unlocked.');
+    else if (action === 'enable')    apiAction(`/api/user/${selectedUser}/enable`,  'POST', null, 'Account enabled.');
+    else if (action === 'disable')   apiAction(`/api/user/${selectedUser}/disable`, 'POST', null, 'Account disabled.');
+    else if (action === 'reset_password') {
+      const pw = document.getElementById('pw-input').value.trim();
+      if (!pw) { showToast('Enter a password first.', 'error'); return; }
+      apiAction(`/api/user/${selectedUser}/reset_password`, 'POST', { temp_password: pw }, 'Password reset.');
+    }
+    setTimeout(() => { selectUser(selectedUser); loadStats(); }, 1500);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Create user
+  // ---------------------------------------------------------------------------
+
+  function createUser() {
+    const first = document.getElementById('c-first').value.trim();
+    const last  = document.getElementById('c-last').value.trim();
+    const uname = document.getElementById('c-username').value.trim();
+    const ou    = document.getElementById('c-ou').value;
+    if (!first || !last || !uname) { showToast('All fields except OU are required.', 'error'); return; }
+    apiAction('/api/user', 'POST', { first, last, username: uname, ou }, `User ${uname} created.`);
+    setTimeout(loadStats, 2000);
+  }
+
+  // ---------------------------------------------------------------------------
+  // API helper + toast
+  // ---------------------------------------------------------------------------
+
+  function apiAction(url, method, body, successMsg) {
+    fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(r => r.json()).then(r => {
+      showToast(r.success ? successMsg : r.message, r.success ? 'success' : 'error');
+    }).catch(() => showToast('Request failed.', 'error'));
+  }
+
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `show ${type}`;
+    setTimeout(() => { t.className = ''; }, 3500);
+  }
+</script>
+</body>
+</html>
