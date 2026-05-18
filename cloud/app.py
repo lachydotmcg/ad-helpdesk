@@ -1641,6 +1641,27 @@ def admin_create_tenant_user(tenant_id):
     return jsonify({"success": True, "data": user}), 201
 
 
+@app.route("/admin/ui")
+def admin_ui():
+    """Browser-based admin panel — protected by ADMIN_KEY entered in the UI."""
+    return render_template("admin_panel.html")
+
+
+@app.route("/admin/tenants/<tenant_id>/set-plan", methods=["PATCH"])
+@require_admin
+def admin_set_tenant_plan(tenant_id):
+    """Set plan for a specific tenant by ID."""
+    plan = (request.get_json() or {}).get("plan", "").strip().lower()
+    if plan not in ("free", "pro", "enterprise"):
+        return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
+    ph = db._PH
+    with db.get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE tenants SET plan={ph} WHERE id={ph}", (plan, tenant_id))
+        conn.commit()
+    return jsonify({"success": True, "message": f"Plan set to '{plan}'"})
+
+
 @app.route("/admin/set-plan", methods=["POST"])
 @require_admin
 def admin_set_plan():

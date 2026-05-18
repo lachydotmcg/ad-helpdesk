@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AID Helpdesk — Admin Panel</title>
+  <link rel="icon" type="image/png" href="/logo.png"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0e1a; --surface: #1a1830; --surface2: #221f3a;
+      --accent: #6366f1; --accent2: #818cf8;
+      --text: #e2e8f0; --muted: #94a3b8;
+      --border: rgba(99,102,241,0.18);
+      --success: #4ade80; --warn: #fbbf24; --error: #f87171;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 48px; background: rgba(15,14,26,0.95);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .nav-logo img { width: 32px; height: 32px; object-fit: contain; }
+    .nav-logo span { font-weight: 700; }
+    .nav-logo em { color: var(--accent2); font-style: normal; }
+    .badge { background: rgba(248,113,113,0.15); color: var(--error); border: 1px solid rgba(248,113,113,0.3);
+             padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .page { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 1.6rem; font-weight: 800; margin-bottom: 6px; }
+    .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+
+    /* Auth wall */
+    #auth-wall { max-width: 400px; margin: 80px auto; }
+    .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 32px; }
+    .auth-card h2 { font-size: 1.2rem; margin-bottom: 6px; }
+    .auth-card p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .field input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 14px; outline: none; }
+    .field input:focus { border-color: var(--accent2); }
+
+    /* Panel */
+    #panel { display: none; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 16px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    td { padding: 10px 10px; border-bottom: 1px solid rgba(99,102,241,0.08); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(99,102,241,0.04); }
+
+    .plan-select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    .plan-select:focus { outline: none; border-color: var(--accent2); }
+
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px;
+           font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: background 0.15s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent2); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+    .btn-danger { background: rgba(248,113,113,0.15); color: var(--error); border: 1px solid rgba(248,113,113,0.3); }
+    .btn-sm { padding: 4px 12px; font-size: 12px; }
+
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .pill-free { background: rgba(148,163,184,0.15); color: var(--muted); }
+    .pill-pro { background: rgba(99,102,241,0.15); color: var(--accent2); }
+    .pill-enterprise { background: rgba(74,222,128,0.12); color: var(--success); }
+
+    #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface); border: 1px solid var(--border);
+             border-radius: 10px; padding: 12px 18px; font-size: 13px; font-weight: 600; z-index: 999;
+             display: none; max-width: 320px; }
+    .toast-success { border-color: rgba(74,222,128,0.4); color: var(--success); }
+    .toast-error   { border-color: rgba(248,113,113,0.4); color: var(--error); }
+
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat { background: var(--surface2); border-radius: 10px; padding: 16px; text-align: center; }
+    .stat-num { font-size: 28px; font-weight: 800; color: var(--accent2); }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<nav>
+  <a class="nav-logo" href="/dashboard">
+    <img src="/logo.png" alt="AID"/>
+    <span><em>AID</em> Helpdesk</span>
+  </a>
+  <span class="badge">Admin Panel</span>
+</nav>
+
+<!-- Auth wall -->
+<div id="auth-wall">
+  <div class="auth-card">
+    <h2>Admin access</h2>
+    <p>Enter your ADMIN_KEY to continue.</p>
+    <div class="field">
+      <label>Admin key</label>
+      <input type="password" id="admin-key-input" placeholder="••••••••••••" onkeydown="if(event.key==='Enter')authenticate()"/>
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="authenticate()">Sign in</button>
+    <div id="auth-error" style="color:var(--error);font-size:12px;margin-top:10px;display:none;">Invalid admin key.</div>
+  </div>
+</div>
+
+<!-- Admin panel (shown after auth) -->
+<div id="panel">
+  <div class="page">
+    <h1>Admin Panel</h1>
+    <p class="subtitle">Manage tenants, plans, and platform health.</p>
+
+    <div class="stats-row" id="stats-row">
+      <div class="stat"><div class="stat-num" id="stat-tenants">—</div><div class="stat-label">Tenants</div></div>
+      <div class="stat"><div class="stat-num" id="stat-pro">—</div><div class="stat-label">Pro</div></div>
+      <div class="stat"><div class="stat-num" id="stat-enterprise">—</div><div class="stat-label">Enterprise</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>All tenants</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadTenants()">↺ Refresh</button>
+      </div>
+      <div id="tenants-wrap">
+        <div style="color:var(--muted);font-size:13px;">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  let _adminKey = '';
+
+  function toast(msg, type = 'success') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `toast-${type}`;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 3000);
+  }
+
+  async function authenticate() {
+    const key = document.getElementById('admin-key-input').value.trim();
+    if (!key) return;
+    // Test the key against a real admin endpoint
+    const res = await fetch('/admin/tenants', { headers: { 'X-Admin-Key': key } });
+    if (res.status === 401) {
+      document.getElementById('auth-error').style.display = 'block';
+      return;
+    }
+    _adminKey = key;
+    document.getElementById('auth-wall').style.display = 'none';
+    document.getElementById('panel').style.display = 'block';
+    const json = await res.json();
+    renderTenants(json.data || []);
+    updateStats(json.data || []);
+  }
+
+  async function loadTenants() {
+    const res  = await fetch('/admin/tenants', { headers: { 'X-Admin-Key': _adminKey } });
+    const json = await res.json();
+    if (!json.success) { toast('Failed to load tenants', 'error'); return; }
+    renderTenants(json.data || []);
+    updateStats(json.data || []);
+  }
+
+  function updateStats(tenants) {
+    document.getElementById('stat-tenants').textContent    = tenants.length;
+    document.getElementById('stat-pro').textContent        = tenants.filter(t => t.plan === 'pro').length;
+    document.getElementById('stat-enterprise').textContent = tenants.filter(t => t.plan === 'enterprise').length;
+  }
+
+  function planPill(plan) {
+    const cls = { free: 'pill-free', pro: 'pill-pro', enterprise: 'pill-enterprise' }[plan] || 'pill-free';
+    return `<span class="pill ${cls}">${plan}</span>`;
+  }
+
+  function renderTenants(tenants) {
+    if (!tenants.length) {
+      document.getElementById('tenants-wrap').innerHTML = '<div style="color:var(--muted);font-size:13px;">No tenants yet.</div>';
+      return;
+    }
+    let html = `<table>
+      <thead><tr>
+        <th>Tenant</th><th>ID</th><th>Plan</th><th>Created</th><th>Change plan</th>
+      </tr></thead><tbody>`;
+    for (const t of tenants) {
+      const created = (t.created_at || '').slice(0, 10);
+      html += `<tr>
+        <td style="font-weight:600;">${escHtml(t.name)}</td>
+        <td style="font-size:11px;color:var(--muted);font-family:monospace;">${t.id.slice(0,8)}…</td>
+        <td>${planPill(t.plan || 'free')}</td>
+        <td style="color:var(--muted);font-size:12px;">${created}</td>
+        <td>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select class="plan-select" id="plan-${t.id}">
+              <option value="free"       ${(t.plan||'free')==='free'       ? 'selected' : ''}>Free</option>
+              <option value="pro"        ${(t.plan||'')==='pro'            ? 'selected' : ''}>Pro</option>
+              <option value="enterprise" ${(t.plan||'')==='enterprise'     ? 'selected' : ''}>Enterprise</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="setPlan('${t.id}')">Apply</button>
+          </div>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('tenants-wrap').innerHTML = html;
+  }
+
+  async function setPlan(tenantId) {
+    const plan = document.getElementById(`plan-${tenantId}`).value;
+    const res  = await fetch('/admin/tenants/' + tenantId + '/set-plan', {
+      method: 'PATCH',
+      headers: { 'X-Admin-Key': _adminKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan })
+    });
+    const json = await res.json();
+    if (json.success) { toast(`Plan updated to ${plan} ✓`); loadTenants(); }
+    else toast(json.message || 'Failed', 'error');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>
