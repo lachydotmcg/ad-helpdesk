@@ -251,6 +251,14 @@ def migrate_db():
             expires_at TEXT NOT NULL,
             used       INTEGER NOT NULL DEFAULT 0
         )""")
+        # v4: labels column on tickets (comma-separated label strings)
+        if _USE_PG:
+            cur.execute("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS labels TEXT")
+        else:
+            cur.execute("PRAGMA table_info(tickets)")
+            tcols = [r["name"] for r in cur.fetchall()]
+            if "labels" not in tcols:
+                cur.execute("ALTER TABLE tickets ADD COLUMN labels TEXT")
         conn.commit()
     except Exception:
         pass  # Safe to ignore — already exists
@@ -338,7 +346,7 @@ def list_tenants() -> list:
     conn = _get_conn()
     try:
         cur = _cur(conn)
-        cur.execute("SELECT id, name, api_key, created_at FROM tenants")
+        cur.execute("SELECT id, name, api_key, created_at, plan FROM tenants ORDER BY created_at DESC")
         return _rows(cur.fetchall())
     finally:
         conn.close()
@@ -733,7 +741,7 @@ def list_tickets(tenant_id: str, status: str = None, limit: int = 100) -> list:
 def update_ticket(ticket_id: str, tenant_id: str, **fields) -> None:
     now     = datetime.utcnow().isoformat()
     allowed = {"status", "priority", "assigned_to", "janus_analysis",
-               "janus_action", "janus_action_args", "resolved_at"}
+               "janus_action", "janus_action_args", "resolved_at", "labels"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     updates["updated_at"] = now
     if "status" in updates and updates["status"] == "resolved":
@@ -847,6 +855,9 @@ _SETTINGS_DEFAULTS = {
     "security_checks":    True,
     "email_domain":       "",
     "roles":              [],
+    "custom_statuses":    [],
+    "custom_priorities":  [],
+    "ticket_labels":      [],
 }
 
 

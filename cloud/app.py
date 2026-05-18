@@ -1258,7 +1258,7 @@ def update_ticket(ticket_id):
     if not ticket:
         return jsonify({"success": False, "message": "Ticket not found."}), 404
     data = request.get_json() or {}
-    allowed = {k: v for k, v in data.items() if k in {"status", "priority", "assigned_to"}}
+    allowed = {k: v for k, v in data.items() if k in {"status", "priority", "assigned_to", "labels"}}
     if allowed:
         db.update_ticket(ticket_id, g.tenant_id, **allowed)
         new_status = allowed.get("status")
@@ -1654,11 +1654,7 @@ def admin_set_tenant_plan(tenant_id):
     plan = (request.get_json() or {}).get("plan", "").strip().lower()
     if plan not in ("free", "pro", "enterprise"):
         return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
-    ph = db._PH
-    with db.get_conn() as conn:
-        cur = conn.cursor()
-        cur.execute(f"UPDATE tenants SET plan={ph} WHERE id={ph}", (plan, tenant_id))
-        conn.commit()
+    db.set_tenant_plan(tenant_id, plan)
     return jsonify({"success": True, "message": f"Plan set to '{plan}'"})
 
 
@@ -1676,25 +1672,10 @@ def admin_set_plan():
         return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
     if not email:
         return jsonify({"success": False, "message": "email is required"}), 400
-
-    ph = db._PH
-    with db.get_conn() as conn:
-        cur = conn.cursor()
-        # Find the tenant via the user email
-        cur.execute(
-            f"SELECT tenant_id FROM tenant_users WHERE LOWER(email)={ph} LIMIT 1",
-            (email,)
-        )
-        row = cur.fetchone()
-        if not row:
-            return jsonify({"success": False, "message": f"No user found with email {email}"}), 404
-        tenant_id = row["tenant_id"] if isinstance(row, dict) else row[0]
-        cur.execute(
-            f"UPDATE tenants SET plan={ph} WHERE id={ph}",
-            (plan, tenant_id)
-        )
-        conn.commit()
-
+    tenant = db.get_tenant_by_user_email(email)
+    if not tenant:
+        return jsonify({"success": False, "message": f"No user found with email {email}"}), 404
+    db.set_tenant_plan(tenant["id"], plan)
     return jsonify({"success": True, "message": f"Plan set to '{plan}' for tenant of {email}"})
 
 

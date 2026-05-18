@@ -421,10 +421,7 @@
 
     /* ---- Tickets ---- */
     .ticket-grid {
-      display: grid;
-      grid-template-columns: 1fr 380px;
-      gap: 20px;
-      align-items: start;
+      display: block;
     }
 
     .ticket-row { cursor: pointer; }
@@ -504,11 +501,30 @@
       padding: 8px 12px; resize: none; font-family: inherit; outline: none; line-height: 1.5;
     }
     .tm-reply textarea:focus { border-color: var(--accent2); }
+    /* Expanded / full-screen ticket modal */
+    #ticket-modal.expanded {
+      width: 100%; left: 0; right: 0; border-left: none;
+    }
+    #ticket-modal.expanded .tm-body {
+      grid-template-columns: 1fr 300px;
+    }
     @media (max-width: 640px) {
       #ticket-modal { width: 100%; }
       .tm-body { grid-template-columns: 1fr; }
       .tm-sidebar { display: none; }
     }
+    /* Label chips */
+    .label-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
+      background: rgba(99,102,241,0.15); color: var(--accent2);
+      border: 1px solid rgba(99,102,241,0.25); white-space: nowrap;
+    }
+    .label-chip .lc-rm {
+      background: none; border: none; color: inherit; cursor: pointer;
+      font-size: 12px; padding: 0; line-height: 1; opacity: 0.55; margin-left: 2px;
+    }
+    .label-chip .lc-rm:hover { opacity: 1; }
 
     .janus-box {
       background: rgba(99,102,241,0.08);
@@ -966,12 +982,27 @@
       </div>
 
       <!-- Usage this month card (inline, small) -->
-      <div id="usage-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;margin-bottom:14px;display:flex;gap:32px;align-items:center;flex-wrap:wrap;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);flex-shrink:0;">📊 This month</div>
-        <div style="display:flex;gap:24px;flex-wrap:wrap;">
-          <div><span id="usage-janus" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span><span style="font-size:11px;color:var(--muted);margin-left:4px;">Janus calls</span></div>
-          <div><span id="usage-tickets" style="font-size:18px;font-weight:800;color:var(--text);">—</span><span style="font-size:11px;color:var(--muted);margin-left:4px;">Tickets</span></div>
-          <div><span id="usage-month" style="font-size:11px;color:var(--muted);"></span></div>
+      <div id="usage-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;margin-bottom:14px;display:flex;gap:28px;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);flex-shrink:0;">📊 <span id="usage-month"></span></div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;">
+          <div>
+            <span id="usage-janus" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span>
+            <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-janus-limit"></span>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Janus scans</div>
+            <div style="margin-top:4px;background:var(--surface2);border-radius:99px;height:3px;width:80px;overflow:hidden;"><div id="usage-janus-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width 0.4s;"></div></div>
+          </div>
+          <div>
+            <span id="usage-commands" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span>
+            <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-commands-limit"></span>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">AD actions</div>
+            <div style="margin-top:4px;background:var(--surface2);border-radius:99px;height:3px;width:80px;overflow:hidden;"><div id="usage-commands-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width 0.4s;"></div></div>
+          </div>
+          <div>
+            <span id="usage-tickets" style="font-size:18px;font-weight:800;color:var(--text);">—</span>
+            <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-tickets-limit"></span>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Tickets</div>
+          </div>
+          <a href="/billing" style="font-size:11px;color:var(--accent2);text-decoration:none;margin-left:4px;" id="usage-plan-badge"></a>
         </div>
       </div>
 
@@ -1147,6 +1178,7 @@
           <option value="urgent">Urgent</option>
         </select>
         <button class="btn btn-ghost" style="font-size:12px;" onclick="rerunJanus()" title="Re-analyse with Janus">✨ Re-analyse</button>
+        <button class="btn btn-ghost" id="td-expand-btn" style="font-size:16px;padding:6px 10px;line-height:1;" onclick="toggleTicketExpand()" title="Minimize to panel">⤡</button>
         <button class="btn btn-ghost" style="font-size:18px;padding:6px 10px;line-height:1;" onclick="closeTicketModal()" title="Close">×</button>
       </div>
     </div>
@@ -1193,6 +1225,21 @@
         <div>
           <div class="tm-section-label">Details</div>
           <div id="td-sidebar-details" style="font-size:12px;color:var(--muted);line-height:2;"></div>
+        </div>
+        <div>
+          <div class="tm-section-label">Assigned to</div>
+          <select id="td-assignee" onchange="updateTicketField('assigned_to')"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;cursor:pointer;outline:none;">
+            <option value="">Unassigned</option>
+          </select>
+        </div>
+        <div id="td-labels-wrap">
+          <div class="tm-section-label">Labels</div>
+          <div id="td-labels" style="display:flex;flex-wrap:wrap;gap:5px;min-height:18px;"></div>
+          <select id="td-add-label" onchange="addTicketLabel()"
+                  style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);padding:5px 8px;font-size:11px;font-family:inherit;cursor:pointer;outline:none;">
+            <option value="">+ Add label</option>
+          </select>
         </div>
         <div id="td-sidebar-actions-wrap">
           <div class="tm-section-label">Actions</div>
@@ -1421,6 +1468,45 @@
               <div id="roles-list"></div>
               <button class="btn btn-ghost" style="margin-top:10px;font-size:12px;" onclick="addRole()">+ Add role</button>
               <div style="font-size:11px;color:var(--muted);margin-top:8px;">Email pattern examples: *@it.company.com, manager@company.com, *@hr.company.com</div>
+            </div>
+
+            <!-- Ticket Customisation -->
+            <div class="settings-section">
+              <div class="settings-section-title">🏷️ Ticket Customisation</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:18px;">Define custom statuses, priorities and labels your team can apply to tickets.</div>
+
+              <!-- Custom statuses -->
+              <div style="margin-bottom:18px;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Custom Statuses</div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Added alongside defaults: Open, In Progress, Resolved, Closed.</div>
+                <div id="custom-statuses-list"></div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <input class="search-input" id="new-custom-status" placeholder="e.g. Waiting on customer" style="font-size:12px;padding:6px 10px;flex:1;" onkeydown="if(event.key==='Enter')addCustomStatus()"/>
+                  <button class="btn btn-ghost" style="font-size:12px;" onclick="addCustomStatus()">+ Add</button>
+                </div>
+              </div>
+
+              <!-- Custom priorities -->
+              <div style="margin-bottom:18px;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Custom Priorities</div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Added alongside defaults: Low, Medium, High, Urgent.</div>
+                <div id="custom-priorities-list"></div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <input class="search-input" id="new-custom-priority" placeholder="e.g. Critical" style="font-size:12px;padding:6px 10px;flex:1;" onkeydown="if(event.key==='Enter')addCustomPriority()"/>
+                  <button class="btn btn-ghost" style="font-size:12px;" onclick="addCustomPriority()">+ Add</button>
+                </div>
+              </div>
+
+              <!-- Ticket labels -->
+              <div>
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Ticket Labels</div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Tags like Spam, Hardware, Warranty — applied per-ticket from the ticket detail panel.</div>
+                <div id="custom-labels-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:20px;margin-bottom:10px;"></div>
+                <div style="display:flex;gap:8px;">
+                  <input class="search-input" id="new-custom-label" placeholder="e.g. Hardware" style="font-size:12px;padding:6px 10px;flex:1;" onkeydown="if(event.key==='Enter')addCustomLabelSetting()"/>
+                  <button class="btn btn-ghost" style="font-size:12px;" onclick="addCustomLabelSetting()">+ Add</button>
+                </div>
+              </div>
             </div>
 
             <!-- Email Ticket Intake -->
@@ -1878,16 +1964,42 @@
         fetch('/dashboard/api/usage'),
         fetch('/dashboard/api/tickets'),
       ]);
-      const uJson = await uRes.json();
-      const tJson = await tRes.json();
-      const cur   = uJson.data?.current || {};
+      const uJson   = await uRes.json();
+      const tJson   = await tRes.json();
+      const cur     = uJson.data?.current  || {};
+      const limits  = uJson.data?.limits   || {};
+      const plan    = uJson.data?.plan     || 'free';
       const tickets = (tJson.data || []);
-      const month = cur.month || new Date().toISOString().slice(0, 7);
+
+      const month      = cur.month || new Date().toISOString().slice(0, 7);
       const monthLabel = new Date(month + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
-      document.getElementById('usage-janus').textContent   = cur.janus_calls ?? 0;
-      document.getElementById('usage-tickets').textContent = tickets.length;
-      document.getElementById('usage-month').textContent   = monthLabel;
-      document.getElementById('usage-bar').style.display   = 'flex';
+
+      function fmt(used, lim) { return lim != null ? ` / ${lim}` : ''; }
+      function pct(used, lim) { return lim ? Math.min(100, Math.round(used / lim * 100)) : 0; }
+      function barColor(p)    { return p >= 90 ? 'var(--error)' : p >= 70 ? 'var(--warn)' : 'var(--accent)'; }
+
+      const usedJ = cur.janus_calls  ?? 0;
+      const usedC = cur.ad_commands  ?? 0;
+      const limJ  = limits.janus_calls;
+      const limC  = limits.ad_commands;
+      const limT  = limits.tickets;
+      const pctJ  = pct(usedJ, limJ);
+      const pctC  = pct(usedC, limC);
+
+      document.getElementById('usage-month').textContent           = monthLabel;
+      document.getElementById('usage-janus').textContent           = usedJ;
+      document.getElementById('usage-janus-limit').textContent     = fmt(usedJ, limJ);
+      document.getElementById('usage-commands').textContent        = usedC;
+      document.getElementById('usage-commands-limit').textContent  = fmt(usedC, limC);
+      document.getElementById('usage-tickets').textContent         = tickets.length;
+      document.getElementById('usage-tickets-limit').textContent   = fmt(tickets.length, limT);
+      document.getElementById('usage-janus-bar').style.width       = pctJ + '%';
+      document.getElementById('usage-janus-bar').style.background  = barColor(pctJ);
+      document.getElementById('usage-commands-bar').style.width    = pctC + '%';
+      document.getElementById('usage-commands-bar').style.background = barColor(pctC);
+      const planLabels = { free: 'Free plan', pro: 'Pro', enterprise: 'Enterprise' };
+      document.getElementById('usage-plan-badge').textContent      = planLabels[plan] || plan;
+      document.getElementById('usage-bar').style.display           = 'flex';
     } catch { /* silently skip */ }
   }
 
@@ -2557,7 +2669,53 @@
   // =========================================================
 
   let _currentTicketId = null;
-  let _allTickets = [];
+  let _allTickets      = [];
+  let _ticketExpanded  = true;          // true = full-screen, false = sidebar panel
+  let _customStatuses   = [];
+  let _customPriorities = [];
+  let _ticketLabels     = [];
+  let _teamMembers      = [];           // cached team member list for assignee dropdown
+
+  function toggleTicketExpand() {
+    _ticketExpanded = !_ticketExpanded;
+    const modal   = document.getElementById('ticket-modal');
+    const overlay = document.getElementById('ticket-modal-overlay');
+    const btn     = document.getElementById('td-expand-btn');
+    if (_ticketExpanded) {
+      modal.classList.add('expanded');
+      overlay.style.background = 'transparent';
+      overlay.style.pointerEvents = 'none';
+      btn.textContent = '⤡'; btn.title = 'Minimize to panel';
+    } else {
+      modal.classList.remove('expanded');
+      overlay.style.background = 'rgba(0,0,0,0.45)';
+      overlay.style.pointerEvents = '';
+      btn.textContent = '⤢'; btn.title = 'Expand fullscreen';
+    }
+  }
+
+  function populateStatusSelect(currentStatus) {
+    const sel = document.getElementById('td-status');
+    const defaults = [
+      { v: 'open',        l: 'Open' },
+      { v: 'in_progress', l: 'In progress' },
+      { v: 'resolved',    l: 'Resolved' },
+      { v: 'closed',      l: 'Closed' },
+    ];
+    const custom = (_customStatuses || []).map(s => ({ v: s, l: s }));
+    sel.innerHTML = [...defaults, ...custom].map(({ v, l }) =>
+      `<option value="${v}" ${v === currentStatus ? 'selected' : ''}>${l}</option>`
+    ).join('');
+  }
+
+  function populatePrioritySelect(currentPriority) {
+    const sel = document.getElementById('td-priority');
+    const defaults = ['low','medium','high','urgent'];
+    const custom   = _customPriorities || [];
+    sel.innerHTML = [...defaults, ...custom].map(p =>
+      `<option value="${p}" ${p === currentPriority ? 'selected' : ''}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>`
+    ).join('');
+  }
 
   function renderTicketTable(tickets) {
     if (!tickets.length) {
@@ -2663,10 +2821,17 @@
   }
 
   function closeTicketModal(e) {
-    if (e && e.target !== document.getElementById('ticket-modal-overlay')) return;
-    document.getElementById('ticket-modal-overlay').style.display = 'none';
+    // In sidebar mode, clicks on the overlay backdrop close the modal.
+    // In expanded mode, the overlay has pointerEvents:none so this fires only from the × button (no e).
+    const overlay = document.getElementById('ticket-modal-overlay');
+    if (e && e.target !== overlay) return;
+    overlay.style.display = 'none';
+    overlay.style.background = '';
+    overlay.style.pointerEvents = '';
+    document.getElementById('ticket-modal').classList.remove('expanded');
     document.querySelectorAll('.ticket-row').forEach(r => r.classList.remove('selected'));
     _currentTicketId = null;
+    _ticketExpanded  = true; // reset to full-screen for next open
   }
 
   async function rerunJanus() {
@@ -2683,9 +2848,18 @@
     document.querySelectorAll('.ticket-row').forEach(r => r.classList.remove('selected'));
     if (event?.currentTarget) event.currentTarget.classList.add('selected');
 
-    // Show modal immediately with loading state
+    // Show modal in expanded (full-screen) mode by default
     const overlay = document.getElementById('ticket-modal-overlay');
-    overlay.style.display = 'block';
+    const modal   = document.getElementById('ticket-modal');
+    const btn     = document.getElementById('td-expand-btn');
+    overlay.style.display      = 'block';
+    overlay.style.background   = 'transparent';
+    overlay.style.pointerEvents = 'none';
+    modal.classList.add('expanded');
+    _ticketExpanded   = true;
+    btn.textContent   = '⤡';
+    btn.title         = 'Minimize to panel';
+
     document.getElementById('td-title').textContent = 'Loading…';
     document.getElementById('td-number').textContent = '#' + ticketId.slice(0, 6).toUpperCase();
     document.getElementById('td-actions').innerHTML = '';
@@ -2699,8 +2873,8 @@
     // Header
     document.getElementById('td-number').textContent  = '#' + ticketId.slice(0, 6).toUpperCase();
     document.getElementById('td-title').textContent   = t.title;
-    document.getElementById('td-status').value        = t.status;
-    document.getElementById('td-priority').value      = t.priority;
+    populateStatusSelect(t.status);
+    populatePrioritySelect(t.priority);
 
     const date = t.created_at ? t.created_at.slice(0, 16).replace('T', ' ') : '';
     document.getElementById('td-meta').textContent =
@@ -2726,6 +2900,33 @@
       `<div><span style="color:var(--muted);">Source</span> &nbsp;${t.source}</div>` +
       `<div><span style="color:var(--muted);">Priority</span> &nbsp;${t.priority}</div>` +
       `<div><span style="color:var(--muted);">Status</span> &nbsp;${t.status}</div>`;
+
+    // Assigned to — populate from cached team list (refreshed lazily)
+    const assignSel = document.getElementById('td-assignee');
+    const buildAssigneeSel = (members) => {
+      assignSel.innerHTML = '<option value="">Unassigned</option>' +
+        members.map(u => `<option value="${u.email}" ${u.email === t.assigned_to ? 'selected' : ''}>${u.email}</option>`).join('');
+    };
+    if (_teamMembers.length) {
+      buildAssigneeSel(_teamMembers);
+    } else {
+      fetch('/dashboard/api/users').then(r => r.json()).then(j => {
+        _teamMembers = j.data || [];
+        buildAssigneeSel(_teamMembers);
+      }).catch(() => {});
+    }
+
+    // Labels
+    const currentLabels = t.labels ? t.labels.split(',').map(l => l.trim()).filter(Boolean) : [];
+    const labelsDiv = document.getElementById('td-labels');
+    labelsDiv.innerHTML = currentLabels.length
+      ? currentLabels.map(l => `<span class="label-chip">${escHtml(l)}<button class="lc-rm" onclick="removeTicketLabel('${escHtml(l)}')" title="Remove">✕</button></span>`).join('')
+      : '<span style="font-size:11px;color:var(--muted);">None</span>';
+    const addLabelSel = document.getElementById('td-add-label');
+    const available = (_ticketLabels || []).filter(l => !currentLabels.includes(l));
+    addLabelSel.innerHTML = '<option value="">+ Add label</option>' +
+      available.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
+    addLabelSel.parentElement.style.display = ''; // always show wrap
 
     // Janus box
     const janusBox = document.getElementById('td-janus');
@@ -2813,6 +3014,39 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content })
+    });
+    openTicket(_currentTicketId);
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function addTicketLabel() {
+    const sel   = document.getElementById('td-add-label');
+    const label = sel.value.trim();
+    if (!label || !_currentTicketId) { sel.value = ''; return; }
+    sel.value = '';
+    const res  = await fetch(`/dashboard/api/tickets/${_currentTicketId}`);
+    const json = await res.json();
+    const cur  = (json.data?.labels || '').split(',').map(l => l.trim()).filter(Boolean);
+    if (!cur.includes(label)) cur.push(label);
+    await fetch(`/dashboard/api/tickets/${_currentTicketId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ labels: cur.join(',') })
+    });
+    openTicket(_currentTicketId);
+  }
+
+  async function removeTicketLabel(label) {
+    if (!_currentTicketId) return;
+    const res  = await fetch(`/dashboard/api/tickets/${_currentTicketId}`);
+    const json = await res.json();
+    const cur  = (json.data?.labels || '').split(',').map(l => l.trim()).filter(Boolean);
+    const next = cur.filter(l => l !== label);
+    await fetch(`/dashboard/api/tickets/${_currentTicketId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ labels: next.join(',') })
     });
     openTicket(_currentTicketId);
   }
@@ -3145,6 +3379,57 @@
     markSettingsDirty();
   }
 
+  // =========================================================
+  // Ticket customisation settings helpers
+  // =========================================================
+
+  function _renderTagList(containerId, arr, removeFn) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!arr.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0;">None configured.</div>';
+      return;
+    }
+    el.innerHTML = arr.map((v, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(45,43,78,0.3);">
+        <span style="flex:1;font-size:13px;">${escHtml(v)}</span>
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:rgba(248,113,113,0.3);" onclick="${removeFn}(${i})">✕</button>
+      </div>`).join('');
+  }
+
+  function renderCustomStatuses()   { _renderTagList('custom-statuses-list',  _customStatuses,   'removeCustomStatus');   }
+  function renderCustomPriorities() { _renderTagList('custom-priorities-list', _customPriorities, 'removeCustomPriority'); }
+
+  function renderCustomLabels() {
+    const el = document.getElementById('custom-labels-list');
+    if (!el) return;
+    if (!_ticketLabels.length) {
+      el.innerHTML = '<span style="font-size:12px;color:var(--muted);">No labels yet.</span>';
+      return;
+    }
+    el.innerHTML = _ticketLabels.map((l, i) => `
+      <span class="label-chip">${escHtml(l)}<button class="lc-rm" onclick="removeCustomLabel(${i})" title="Remove">✕</button></span>`).join('');
+  }
+
+  function _addToList(arr, inputId, renderFn, label) {
+    const input = document.getElementById(inputId);
+    const val   = (input?.value || '').trim();
+    if (!val) { toast(`Enter a ${label} name.`, 'error'); return; }
+    if (arr.includes(val)) { toast(`"${val}" already exists.`, 'error'); return; }
+    arr.push(val);
+    if (input) input.value = '';
+    renderFn();
+    markSettingsDirty();
+  }
+
+  function addCustomStatus()   { _addToList(_customStatuses,   'new-custom-status',   renderCustomStatuses,   'status');   }
+  function addCustomPriority() { _addToList(_customPriorities, 'new-custom-priority', renderCustomPriorities, 'priority'); }
+  function addCustomLabelSetting() { _addToList(_ticketLabels, 'new-custom-label',    renderCustomLabels,     'label');    }
+
+  function removeCustomStatus(i)   { _customStatuses.splice(i, 1);   renderCustomStatuses();   markSettingsDirty(); }
+  function removeCustomPriority(i) { _customPriorities.splice(i, 1); renderCustomPriorities(); markSettingsDirty(); }
+  function removeCustomLabel(i)    { _ticketLabels.splice(i, 1);     renderCustomLabels();     markSettingsDirty(); }
+
   let _settingsSnapshot = null;
 
   function _captureSettingsSnapshot() {
@@ -3159,6 +3444,9 @@
       auto_enable:       el('s-auto-enable')?.checked,
       auto_disable:      el('s-auto-disable')?.checked,
       roles:             JSON.stringify(_settingsRoles),
+      custom_statuses:   JSON.stringify(_customStatuses),
+      custom_priorities: JSON.stringify(_customPriorities),
+      ticket_labels:     JSON.stringify(_ticketLabels),
     });
   }
 
