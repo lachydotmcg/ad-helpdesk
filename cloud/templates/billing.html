@@ -203,12 +203,10 @@
       <a class="btn btn-primary" href="#" id="checkout-btn">Subscribe — A$29/month</a>
       <p style="font-size:12px;color:var(--muted);margin-top:10px;">Secured by Stripe. Your card details never touch our servers.</p>
     {% else %}
-      <p style="font-size:14px;color:var(--muted);margin-bottom:16px;">
-        Billing is not yet configured on this deployment. Set <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">STRIPE_PUBLIC_KEY</code> and <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">STRIPE_PRICE_ID</code> in your Railway environment variables to enable online billing.
+      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
+        Online payment is coming soon. In the meantime, reach out and we'll get you sorted.
       </p>
-      <p style="font-size:13px;color:var(--muted);">
-        In the meantime, contact <a href="mailto:billing@aidhelpdesk.com" style="color:var(--accent2);">billing@aidhelpdesk.com</a> to arrange payment.
-      </p>
+      <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com?subject=AID%20Helpdesk%20subscription%20%E2%80%94%20{{ tenant_name | urlencode }}">Contact us to subscribe</a>
     {% endif %}
   </div>
 

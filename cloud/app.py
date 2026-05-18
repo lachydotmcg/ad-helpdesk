@@ -68,6 +68,21 @@ def _gen_password(length: int = 16) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _normalize_domain(domain: str) -> str:
+    """Normalise a trusted domain setting.
+    Strips leading '@', lowercases, and appends '.com' if no dot is present.
+    e.g. 'superlab' -> 'superlab.com'  |  '@acme.co.uk' -> 'acme.co.uk'
+    """
+    d = domain.strip().lstrip("@").lower()
+    if d and "." not in d:
+        d += ".com"
+    return d
+
+
+# ---------------------------------------------------------------------------
 # Email helper
 # ---------------------------------------------------------------------------
 
@@ -1020,13 +1035,17 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
         security_checks = settings.get("security_checks", True)
         security_context = ""
         if security_checks and trusted_domain:
+            nd = _normalize_domain(trusted_domain)
             security_context = (
-                f"\n\nSECURITY: Trusted domain is '{trusted_domain}'. Flag typosquatting, "
-                f"lookalike domains, or unauthorised cross-user requests."
+                f"\n\nSECURITY: This organisation's trusted email domain is '{nd}'. "
+                f"Emails from @{nd} (and subdomains like *.{nd}) are legitimate staff — do NOT flag them. "
+                f"Flag emails from any other domain as potential spoofing or impersonation unless "
+                f"that sender has an explicitly configured requester role above."
             )
         elif security_checks:
             security_context = (
-                "\n\nSECURITY: Flag spoofed/suspicious requester emails or impersonation attempts."
+                "\n\nSECURITY: No trusted domain is configured. Flag clearly spoofed or suspicious "
+                "requester emails and obvious impersonation attempts."
             )
 
         prompt = f"""You are {ai_name}, an AI assistant for Active Directory management at {tenant_name or 'this organisation'}.
@@ -1236,17 +1255,23 @@ def update_ticket(ticket_id):
                 requester_email = ticket.get("requester_email", "")
                 requester_name  = ticket.get("requester_name", "")
                 title           = ticket.get("title", "Your request")
+                janus_analysis  = ticket.get("janus_analysis", "")
                 if requester_email:
-                    action_map = {
-                        "resolved": "Your request has been resolved",
-                        "closed":   "Your ticket has been closed",
-                    }
+                    if new_status == "resolved":
+                        summary = "Your request has been reviewed and resolved by our IT helpdesk."
+                        if janus_analysis:
+                            # Strip security/permission flags from the requester-facing summary
+                            clean = janus_analysis.split("\n\n⚠️")[0].split("\n\n🔒")[0].strip()
+                            summary += f"\n\nSummary: {clean}"
+                        summary += "\n\nIf you need further assistance, please submit a new ticket or reply to this email."
+                    else:
+                        summary = "Your support ticket has been closed. If your issue was not resolved, please submit a new ticket."
                     send_ticket_email(
                         to_email=requester_email,
                         to_name=requester_name or "",
                         ticket_title=title,
-                        action_taken="",
-                        message=f"{action_map[new_status]}. If you need further assistance, please submit a new ticket."
+                        action_taken=new_status.capitalize(),
+                        message=summary
                     )
     return jsonify({"success": True})
 
@@ -1574,6 +1599,42 @@ def admin_create_tenant_user(tenant_id):
         return jsonify({"success": False, "message": "email and password are required."}), 400
     user = db.create_tenant_user(tenant_id, email, password, role)
     return jsonify({"success": True, "data": user}), 201
+
+
+@app.route("/admin/set-plan", methods=["POST"])
+@require_admin
+def admin_set_plan():
+    """
+    Set a tenant's plan by user email.
+    Body: { "email": "admin@example.com", "plan": "enterprise" }
+    """
+    data  = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    plan  = data.get("plan", "").strip().lower()
+    if plan not in ("free", "pro", "enterprise"):
+        return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
+    if not email:
+        return jsonify({"success": False, "message": "email is required"}), 400
+
+    ph = db._PH
+    with db.get_conn() as conn:
+        cur = conn.cursor()
+        # Find the tenant via the user email
+        cur.execute(
+            f"SELECT tenant_id FROM tenant_users WHERE LOWER(email)={ph} LIMIT 1",
+            (email,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": f"No user found with email {email}"}), 404
+        tenant_id = row["tenant_id"] if isinstance(row, dict) else row[0]
+        cur.execute(
+            f"UPDATE tenants SET plan={ph} WHERE id={ph}",
+            (plan, tenant_id)
+        )
+        conn.commit()
+
+    return jsonify({"success": True, "message": f"Plan set to '{plan}' for tenant of {email}"})
 
 
 # ---------------------------------------------------------------------------

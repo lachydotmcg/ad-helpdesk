@@ -1084,7 +1084,8 @@
               <div class="janus-label">✨ Janus analysis</div>
               <div id="td-janus-text"></div>
               <div id="td-janus-action" style="margin-top:10px;display:none">
-                <button class="btn btn-primary" style="width:100%" onclick="applyTicketFix()">⚡ Apply suggested fix</button>
+                <button class="btn btn-primary" id="td-apply-btn" style="width:100%" onclick="applyTicketFix()">⚡ Apply suggested fix</button>
+                <button class="btn btn-ghost" id="td-override-btn" style="width:100%;margin-top:6px;display:none;font-size:12px;" onclick="overrideAndApply()">✓ Not fraudulent — proceed anyway</button>
               </div>
             </div>
 
@@ -1199,7 +1200,7 @@
         <div class="panel">
           <div class="panel-header">
             <span class="panel-title">⚙️ Janus Settings</span>
-            <button class="btn btn-primary" onclick="saveSettings()">Save changes</button>
+            <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()" disabled style="opacity:0.45;cursor:default;">Save changes</button>
           </div>
           <div style="padding:24px;">
 
@@ -2567,21 +2568,24 @@
       janusBox.style.background  = hasSecFlag ? 'rgba(248,113,113,0.08)' : 'rgba(99,102,241,0.08)';
       document.getElementById('td-janus').querySelector('.janus-label').style.color = hasSecFlag ? 'var(--red)' : 'var(--accent2)';
 
-      const actionDiv = document.getElementById('td-janus-action');
+      const actionDiv   = document.getElementById('td-janus-action');
+      const applyBtn    = document.getElementById('td-apply-btn');
+      const overrideBtn = document.getElementById('td-override-btn');
       if (t.janus_action && t.status !== 'resolved' && t.status !== 'closed') {
         actionDiv.style.display = 'block';
-        const btnLabel = `⚡ Apply: ${t.janus_action} ${JSON.parse(t.janus_action_args || '[]').join(', ')}`;
-        const btn = actionDiv.querySelector('button');
-        btn.textContent = btnLabel;
-        // If security flag, warn on the button
+        const args     = JSON.parse(t.janus_action_args || '[]');
+        const btnLabel = `⚡ Apply: ${t.janus_action} ${args.join(', ')}`;
+        applyBtn.textContent = btnLabel;
         if (hasSecFlag) {
-          btn.className = 'btn btn-danger';
-          btn.style.width = '100%';
-          btn.title = 'Security concerns flagged — review carefully before applying';
+          applyBtn.className    = 'btn btn-danger';
+          applyBtn.style.width  = '100%';
+          applyBtn.title        = 'Security concerns flagged — review carefully before applying';
+          overrideBtn.style.display = 'block';
         } else {
-          btn.className = 'btn btn-primary';
-          btn.style.width = '100%';
-          btn.title = '';
+          applyBtn.className    = 'btn btn-primary';
+          applyBtn.style.width  = '100%';
+          applyBtn.title        = '';
+          overrideBtn.style.display = 'none';
         }
       } else {
         actionDiv.style.display = 'none';
@@ -2718,6 +2722,17 @@
     } catch (e) {
       toast('Error: ' + e.message, 'error');
     }
+  }
+
+  async function overrideAndApply() {
+    if (!_currentTicketId) return;
+    // Post an admin override comment, then apply the fix
+    await fetch(`/dashboard/api/tickets/${_currentTicketId}/comment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: '✓ Admin review: security flag dismissed — proceeding with fix.' })
+    });
+    applyTicketFix();
   }
 
   async function submitNewTicket() {
@@ -2906,6 +2921,11 @@
         const whEl = document.getElementById('email-webhook-url');
         if (whEl) whEl.value = `${location.origin}/webhook/email/${apiKey}`;
       }
+
+      // Snapshot current state so dirty tracking works from here
+      _bindSettingsDirtyListeners();
+      _settingsSnapshot = _captureSettingsSnapshot();
+      markSettingsDirty();
     } catch (e) {
       toast('Could not load settings: ' + e.message, 'error');
     }
@@ -2968,28 +2988,71 @@
   function addRole() {
     _settingsRoles.push({ email_pattern: '', role: '', can_request_for_others: false, allowed_actions: [] });
     renderRoles();
+    markSettingsDirty();
   }
 
   function removeRole(i) {
     _settingsRoles.splice(i, 1);
     renderRoles();
+    markSettingsDirty();
+  }
+
+  let _settingsSnapshot = null;
+
+  function _captureSettingsSnapshot() {
+    const el = id => document.getElementById(id);
+    return JSON.stringify({
+      janus_enabled:     el('s-janus-enabled')?.checked,
+      janus_scan_emails: el('s-scan-emails')?.checked,
+      security_checks:   el('s-security-checks')?.checked,
+      email_domain:      el('s-email-domain')?.value.trim(),
+      auto_unlock:       el('s-auto-unlock')?.checked,
+      auto_reset:        el('s-auto-reset')?.checked,
+      auto_enable:       el('s-auto-enable')?.checked,
+      auto_disable:      el('s-auto-disable')?.checked,
+      roles:             JSON.stringify(_settingsRoles),
+    });
+  }
+
+  function markSettingsDirty() {
+    const btn   = document.getElementById('settings-save-btn');
+    const dirty = _settingsSnapshot !== null && _captureSettingsSnapshot() !== _settingsSnapshot;
+    btn.disabled      = !dirty;
+    btn.style.opacity = dirty ? '1' : '0.45';
+    btn.style.cursor  = dirty ? 'pointer' : 'default';
+  }
+
+  // Hook onto all settings inputs so dirty is detected immediately
+  function _bindSettingsDirtyListeners() {
+    ['s-janus-enabled','s-scan-emails','s-security-checks',
+     's-auto-unlock','s-auto-reset','s-auto-enable','s-auto-disable'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', markSettingsDirty);
+    });
+    const domainEl = document.getElementById('s-email-domain');
+    if (domainEl) domainEl.addEventListener('input', markSettingsDirty);
   }
 
   async function saveSettings() {
+    const el = id => document.getElementById(id);
     const autoActions = [];
-    if (document.getElementById('s-auto-unlock').checked)  autoActions.push('unlock_account');
-    if (document.getElementById('s-auto-reset').checked)   autoActions.push('reset_password');
-    if (document.getElementById('s-auto-enable').checked)  autoActions.push('enable_account');
-    if (document.getElementById('s-auto-disable').checked) autoActions.push('disable_account');
+    if (el('s-auto-unlock')?.checked)  autoActions.push('unlock_account');
+    if (el('s-auto-reset')?.checked)   autoActions.push('reset_password');
+    if (el('s-auto-enable')?.checked)  autoActions.push('enable_account');
+    if (el('s-auto-disable')?.checked) autoActions.push('disable_account');
 
     const payload = {
-      janus_enabled:      document.getElementById('s-janus-enabled').checked,
-      janus_scan_emails:  document.getElementById('s-scan-emails').checked,
-      security_checks:    document.getElementById('s-security-checks').checked,
-      email_domain:       document.getElementById('s-email-domain').value.trim(),
+      janus_enabled:      el('s-janus-enabled').checked,
+      janus_scan_emails:  el('s-scan-emails').checked,
+      security_checks:    el('s-security-checks').checked,
+      email_domain:       el('s-email-domain').value.trim(),
       janus_auto_actions: autoActions,
       roles:              _settingsRoles,
     };
+
+    const btn = document.getElementById('settings-save-btn');
+    btn.textContent = 'Saving…';
+    btn.disabled = true;
 
     try {
       const res  = await fetch('/dashboard/api/settings', {
@@ -2998,10 +3061,19 @@
         body: JSON.stringify(payload)
       });
       const json = await res.json();
-      if (json.success) toast('Settings saved.', 'success');
-      else toast(json.message || 'Failed to save.', 'error');
+      if (json.success) {
+        btn.textContent = 'Saved ✓';
+        _settingsSnapshot = _captureSettingsSnapshot();
+        setTimeout(() => { btn.textContent = 'Save changes'; markSettingsDirty(); }, 2000);
+      } else {
+        toast(json.message || 'Failed to save.', 'error');
+        btn.textContent = 'Save changes';
+        markSettingsDirty();
+      }
     } catch (e) {
       toast('Error: ' + e.message, 'error');
+      btn.textContent = 'Save changes';
+      markSettingsDirty();
     }
   }
 
