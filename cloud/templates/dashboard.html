@@ -922,13 +922,17 @@
         <button class="btn btn-ghost" style="font-size:12px;" onclick="showPage('audit')">📋 Audit Log</button>
       </div>
 
-      <!-- Janus AI insight card -->
-      <div id="janus-insight-card" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;">
-        <span style="font-size:20px;flex-shrink:0;">✨</span>
-        <div>
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent2);margin-bottom:4px;">Janus Insight</div>
-          <div id="janus-insight-text" style="font-size:13px;color:var(--text);line-height:1.5;"></div>
+      <!-- Janus AI insight card (manual trigger) -->
+      <div style="margin-bottom:16px;">
+        <div id="janus-insight-card" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px;display:flex;align-items:flex-start;gap:12px;">
+          <span style="font-size:20px;flex-shrink:0;">✨</span>
+          <div style="flex:1;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent2);margin-bottom:4px;">Janus Insight</div>
+            <div id="janus-insight-text" style="font-size:13px;color:var(--text);line-height:1.5;"></div>
+          </div>
+          <button class="btn btn-ghost" style="font-size:11px;flex-shrink:0;" onclick="document.getElementById('janus-insight-card').style.display='none';document.getElementById('janus-insight-btn').style.display='inline-block';">✕</button>
         </div>
+        <button id="janus-insight-btn" class="btn btn-ghost" style="font-size:12px;" onclick="triggerInsight()">✨ Get Janus Insight</button>
       </div>
 
       <div class="panel">
@@ -1742,6 +1746,16 @@
         document.getElementById('janus-insight-card').style.display = 'flex';
       }
     } catch { /* silently skip if Janus not configured */ }
+  }
+
+  async function triggerInsight() {
+    const btn = document.getElementById('janus-insight-btn');
+    btn.textContent = '✨ Asking Janus...';
+    btn.disabled = true;
+    await loadInsights();
+    btn.style.display = 'none';
+    btn.textContent = '✨ Get Janus Insight';
+    btn.disabled = false;
   }
 
   function renderUsers(users) {
@@ -3125,8 +3139,7 @@
         }
       }).catch(() => {});
 
-    // 4. Load Janus insight + usage bar (non-blocking)
-    loadInsights();
+    // 4. Load usage bar (non-blocking). Janus insight is on-demand to save tokens.
     loadUsageBar();
 
     // 5. Auto-refresh stats every 2 minutes (uses cache so no extra AD hit)
