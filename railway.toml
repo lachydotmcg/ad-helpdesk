@@ -1,5 +1,6 @@
 [build]
 builder = "nixpacks"
+nixpacksConfigPath = "nixpacks.toml"
 
 [deploy]
 startCommand = "python cloud/app.py"
