@@ -20,6 +20,9 @@ import os
 import json
 import time
 import smtplib
+import secrets
+import string
+from collections import defaultdict
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import wraps
@@ -38,6 +41,30 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 
 db.init_db()
+db.migrate_db()
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting (in-memory, resets on deploy — good enough for abuse prevention)
+# ---------------------------------------------------------------------------
+
+_rate_store: dict[str, list[float]] = defaultdict(list)
+
+def _rate_limit(key: str, max_calls: int, window_seconds: int) -> bool:
+    """Return True if allowed, False if rate-limited. key = e.g. 'signup:1.2.3.4'"""
+    now  = time.time()
+    hits = _rate_store[key]
+    _rate_store[key] = [t for t in hits if now - t < window_seconds]
+    if len(_rate_store[key]) >= max_calls:
+        return False
+    _rate_store[key].append(now)
+    return True
+
+
+def _gen_password(length: int = 16) -> str:
+    """Generate a secure random password."""
+    chars = string.ascii_letters + string.digits + "!@#$%"
+    return "".join(secrets.choice(chars) for _ in range(length))
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +128,30 @@ Your request "{ticket_title}" has been resolved.{action_line}
         print(f"[email] Failed to send to {to_email}: {e}")
 
 
+def send_email(to_email: str, subject: str, body_text: str, body_html: str):
+    """Generic email helper for system emails (password reset, etc.). Skips silently if SMTP not configured."""
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+    if not smtp_host or not smtp_user or not to_email:
+        return
+    try:
+        msg            = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = f"AID Helpdesk <{smtp_from}>"
+        msg["To"]      = to_email
+        msg.attach(MIMEText(body_text, "plain"))
+        msg.attach(MIMEText(body_html, "html"))
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.ehlo(); server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+    except Exception as e:
+        print(f"[email] send_email failed to {to_email}: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Auth decorators
 # ---------------------------------------------------------------------------
@@ -149,6 +200,18 @@ def require_dashboard_user(f):
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "service": "ad-helpdesk-cloud"})
+
+
+@app.route("/robots.txt")
+def robots():
+    from flask import Response
+    return Response("User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /admin\n",
+                    mimetype="text/plain")
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return redirect(url_for("logo"), code=301)
 
 
 @app.route("/logo.png")
@@ -206,10 +269,123 @@ def login():
     return render_template("login.html", error=error)
 
 
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if "tenant_id" in session:
+        return redirect(url_for("dashboard"))
+
+    error = None
+    if request.method == "POST":
+        ip       = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        if not _rate_limit(f"signup:{ip}", max_calls=5, window_seconds=3600):
+            error = "Too many sign-up attempts. Please try again in an hour."
+            return render_template("signup.html", error=error), 429
+
+        company  = request.form.get("company", "").strip()
+        email    = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        confirm  = request.form.get("confirm", "")
+
+        if not company or not email or not password:
+            error = "All fields are required."
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters."
+        elif password != confirm:
+            error = "Passwords do not match."
+        else:
+            try:
+                tenant = db.create_tenant(company)
+                user   = db.create_tenant_user(tenant["id"], email, password, role="admin")
+                # Seed settings with trial start date
+                import datetime as _dt
+                db.update_settings(tenant["id"], {
+                    **db._SETTINGS_DEFAULTS,
+                    "trial_started_at": _dt.datetime.utcnow().isoformat(),
+                })
+                db.log_activity(tenant["id"], "tenant_created", email,
+                                detail=f"New tenant: {company}")
+                # Auto-login
+                session.permanent = True
+                session["tenant_id"]   = tenant["id"]
+                session["user_email"]  = email
+                session["user_role"]   = "admin"
+                session["tenant_name"] = company
+                return redirect(url_for("dashboard"))
+            except Exception:
+                error = "An account with that email already exists."
+
+    return render_template("signup.html", error=error)
+
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """Show forgot-password form and send a reset email if SMTP is configured."""
+    error   = None
+    success = None
+    if request.method == "POST":
+        email  = request.form.get("email", "").strip().lower()
+        if not email:
+            error = "Please enter your email address."
+        else:
+            # Look up user across all tenants
+            tenant = db.get_tenant_by_user_email(email)
+            if tenant:
+                user = db.get_tenant_user_by_email(tenant["id"], email)
+                if user:
+                    token = db.create_password_reset_token(user["id"], tenant["id"])
+                    reset_url = request.host_url.rstrip("/") + f"/reset-password/{token}"
+                    send_email(
+                        to_email=email,
+                        subject="Reset your AID Helpdesk password",
+                        body_text=(
+                            f"You requested a password reset for your AID Helpdesk account.\n\n"
+                            f"Click the link below to set a new password. This link expires in 1 hour.\n\n"
+                            f"{reset_url}\n\n"
+                            f"If you didn't request this, you can safely ignore this email."
+                        ),
+                        body_html=(
+                            f"<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e;padding:20px;'>"
+                            f"<div style='background:#1a1830;border-radius:12px;padding:20px 24px;margin-bottom:20px;'>"
+                            f"<span style='color:#818cf8;font-size:18px;font-weight:700;'>AID</span>"
+                            f"<span style='color:#e2e8f0;font-size:18px;'> Helpdesk</span></div>"
+                            f"<p>Hi,</p>"
+                            f"<p>You requested a password reset for your <strong>AID Helpdesk</strong> account.</p>"
+                            f"<p><a href='{reset_url}' style='background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block;'>Reset Password</a></p>"
+                            f"<p style='color:#64748b;font-size:13px;'>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>"
+                            f"</body></html>"
+                        )
+                    )
+            # Always show success to prevent email enumeration
+            success = "If that email is registered, you'll receive a reset link shortly."
+    return render_template("forgot_password.html", error=error, success=success)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    """Allow user to set a new password using a valid reset token."""
+    error   = None
+    success = None
+    if request.method == "POST":
+        pw      = request.form.get("password", "")
+        pw_conf = request.form.get("confirm", "")
+        if len(pw) < 8:
+            error = "Password must be at least 8 characters."
+        elif pw != pw_conf:
+            error = "Passwords do not match."
+        else:
+            result = db.consume_password_reset_token(token)
+            if not result:
+                error = "This reset link is invalid or has expired. Please request a new one."
+            else:
+                db.update_user_password_by_id(result["user_id"], pw)
+                success = "Password updated! You can now sign in."
+    return render_template("reset_password.html", token=token, error=error, success=success)
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +399,51 @@ def dashboard():
                            tenant_name=g.tenant_name,
                            user_email=g.user_email,
                            user_role=g.user_role)
+
+
+@app.route("/billing")
+@require_dashboard_user
+def billing():
+    settings = db.get_settings(g.tenant_id)
+    stripe_key = os.getenv("STRIPE_PUBLIC_KEY", "")
+    return render_template("billing.html",
+                           tenant_name=g.tenant_name,
+                           user_email=g.user_email,
+                           settings=settings,
+                           stripe_key=stripe_key)
+
+
+@app.route("/dashboard/api/onboarding")
+@require_dashboard_user
+def dashboard_onboarding():
+    """Return checklist status for the getting-started panel."""
+    import datetime as _dt
+    settings   = db.get_settings(g.tenant_id)
+    agent      = db.get_agent_status(g.tenant_id)
+    tickets    = db.list_tickets(g.tenant_id, limit=1)
+    team       = db.list_tenant_users(g.tenant_id)
+
+    trial_start = settings.get("trial_started_at")
+    trial_days_left = None
+    if trial_start:
+        try:
+            start = _dt.datetime.fromisoformat(trial_start)
+            elapsed = (_dt.datetime.utcnow() - start).days
+            trial_days_left = max(0, 14 - elapsed)
+        except Exception:
+            pass
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "agent_connected":    agent["online"],
+            "email_domain_set":   bool(settings.get("email_domain")),
+            "first_ticket":       len(tickets) > 0,
+            "team_member_added":  len(team) > 1,
+            "dismissed":          settings.get("onboarding_dismissed", False),
+            "trial_days_left":    trial_days_left,
+        }
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -508,6 +729,45 @@ def dashboard_update_settings():
     return jsonify({"success": True, "data": current})
 
 
+@app.route("/dashboard/api/users/<user_id>", methods=["DELETE"])
+@require_dashboard_user
+def dashboard_delete_user(user_id):
+    """Remove a team member (admin only). Cannot remove yourself."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    # Prevent self-deletion
+    users = db.list_tenant_users(g.tenant_id)
+    target = next((u for u in users if u["id"] == user_id), None)
+    if not target:
+        return jsonify({"success": False, "message": "User not found."}), 404
+    if target["email"] == g.user_email:
+        return jsonify({"success": False, "message": "You cannot remove your own account."}), 400
+    db.delete_tenant_user(g.tenant_id, user_id)
+    db.log_activity(g.tenant_id, "team_member_removed", g.user_email,
+                    target=target["email"], detail=f"Removed team member: {target['email']}")
+    return jsonify({"success": True})
+
+
+@app.route("/dashboard/api/change-password", methods=["POST"])
+@require_dashboard_user
+def dashboard_change_password():
+    """Allow the logged-in user to change their own password."""
+    data         = request.get_json() or {}
+    current_pw   = data.get("current_password", "")
+    new_pw       = data.get("new_password", "")
+    if not current_pw or not new_pw:
+        return jsonify({"success": False, "message": "Both fields are required."}), 400
+    if len(new_pw) < 8:
+        return jsonify({"success": False, "message": "Password must be at least 8 characters."}), 400
+    # Verify current password
+    user = db.verify_tenant_user(g.user_email, current_pw)
+    if not user:
+        return jsonify({"success": False, "message": "Current password is incorrect."}), 403
+    db.update_user_password(g.tenant_id, g.user_email, new_pw)
+    db.log_activity(g.tenant_id, "password_changed", g.user_email, detail="Dashboard password changed")
+    return jsonify({"success": True})
+
+
 @app.route("/dashboard/api/tenant")
 @require_dashboard_user
 def dashboard_tenant_info():
@@ -611,7 +871,7 @@ def create_ticket():
                     "impersonating IT staff (e.g. 'it@' from an unusual domain)."
                 )
 
-            analysis_prompt = f"""You are {ai_name}, an AI assistant for Active Directory management.
+            analysis_prompt = f"""You are {ai_name}, an AI assistant for Active Directory management at {g.tenant_name or 'this organisation'}.
 An IT support ticket has just come in. Analyse it carefully.
 
 Ticket title: {title}
@@ -759,9 +1019,27 @@ def update_ticket(ticket_id):
     allowed = {k: v for k, v in data.items() if k in {"status", "priority", "assigned_to"}}
     if allowed:
         db.update_ticket(ticket_id, g.tenant_id, **allowed)
-        if "status" in allowed:
+        new_status = allowed.get("status")
+        if new_status:
             db.add_ticket_action(ticket_id, g.tenant_id, "status_change",
-                                 f"Status changed to {allowed['status']}", g.user_email)
+                                 f"Status changed to {new_status}", g.user_email)
+            # Send email notification when ticket is resolved or closed
+            if new_status in ("resolved", "closed"):
+                requester_email = ticket.get("requester_email", "")
+                requester_name  = ticket.get("requester_name", "")
+                title           = ticket.get("title", "Your request")
+                if requester_email:
+                    action_map = {
+                        "resolved": "Your request has been resolved",
+                        "closed":   "Your ticket has been closed",
+                    }
+                    send_ticket_email(
+                        to_email=requester_email,
+                        to_name=requester_name or "",
+                        ticket_title=title,
+                        action_taken="",
+                        message=f"{action_map[new_status]}. If you need further assistance, please submit a new ticket."
+                    )
     return jsonify({"success": True})
 
 
@@ -900,12 +1178,73 @@ def chat_session_messages(session_id):
     return jsonify({"success": True, "data": messages, "session": chat_session})
 
 
+@app.route("/dashboard/api/insights")
+@require_dashboard_user
+def dashboard_insights():
+    """Return a Janus AI health summary of recent AD stats + tickets."""
+    try:
+        import anthropic
+        api_key  = os.getenv("ANTHROPIC_API_KEY", "")
+        ai_name  = os.getenv("AI_NAME", "Janus")
+        settings = db.get_settings(g.tenant_id)
+        if not api_key or not settings.get("janus_enabled", True):
+            return jsonify({"success": True, "data": {"message": None}})
+
+        # Collect context: recent tickets + activity
+        tickets     = db.get_tickets(g.tenant_id, limit=20)
+        open_count  = sum(1 for t in tickets if t.get("status") == "open")
+        recent_act  = db.get_activity_feed(g.tenant_id, limit=10)
+        recent_desc = "; ".join(
+            f"{a.get('event_type','?')} on {a.get('target','?')}"
+            for a in recent_act[:5]
+        ) or "none"
+
+        prompt = (
+            f"You are {ai_name}, an Active Directory assistant. "
+            f"Summarise the current AD health for {g.tenant_name or 'this organisation'} "
+            f"in exactly 1–2 sentences (≤30 words). Be specific, practical, and encouraging. "
+            f"Data: {open_count} open support tickets; "
+            f"recent activity: {recent_desc}. "
+            f"Highlight the most important thing the admin should do or note right now."
+        )
+        client   = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        message = response.content[0].text.strip()
+        return jsonify({"success": True, "data": {"message": message}})
+    except Exception as e:
+        return jsonify({"success": True, "data": {"message": None}})
+
+
 @app.route("/dashboard/api/audit")
 @require_dashboard_user
 def dashboard_audit():
     """Return recent audit log entries for this tenant."""
     log = db.get_audit_log(g.tenant_id, limit=100)
     return jsonify({"success": True, "data": log})
+
+
+@app.route("/dashboard/api/audit/export")
+@require_dashboard_user
+def dashboard_audit_export():
+    """Download the full audit log as a CSV file."""
+    import csv, io
+    from flask import Response
+    log = db.get_audit_log(g.tenant_id, limit=10000)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["created_at", "user_email", "action", "target", "status"])
+    writer.writeheader()
+    for row in log:
+        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+    filename = f"audit-log-{g.tenant_name.lower().replace(' ', '-')}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @app.route("/dashboard/api/users")
@@ -921,22 +1260,41 @@ def dashboard_users():
 @app.route("/dashboard/api/users", methods=["POST"])
 @require_dashboard_user
 def dashboard_create_user():
-    """Create a new dashboard user for this tenant (admin only)."""
+    """Create a new dashboard user for this tenant (admin only).
+    If no password is provided, one is auto-generated and returned once."""
     if g.user_role != "admin":
         return jsonify({"success": False, "message": "Admin only."}), 403
-    data     = request.get_json() or {}
-    email    = data.get("email", "").strip()
-    password = data.get("password", "")
-    role     = data.get("role", "viewer")
-    if not email or not password:
-        return jsonify({"success": False, "message": "email and password are required."}), 400
+    data          = request.get_json() or {}
+    email         = data.get("email", "").strip()
+    password      = data.get("password", "").strip()
+    role          = data.get("role", "viewer")
+    auto_password = not bool(password)
+    if not email:
+        return jsonify({"success": False, "message": "email is required."}), 400
+    if auto_password:
+        password = _gen_password()
     if role not in ("admin", "viewer"):
         return jsonify({"success": False, "message": "role must be admin or viewer."}), 400
     try:
         user = db.create_tenant_user(g.tenant_id, email, password, role)
-        return jsonify({"success": True, "data": user}), 201
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 409
+        db.log_activity(g.tenant_id, "team_member_added", g.user_email,
+                        target=email, detail=f"Added {role}: {email}")
+        response = {"success": True, "data": user}
+        if auto_password:
+            response["generated_password"] = password  # shown once in UI, never stored plain
+        return jsonify(response), 201
+    except Exception:
+        return jsonify({"success": False, "message": "An account with that email already exists."}), 409
+
+
+@app.route("/dashboard/api/onboarding/dismiss", methods=["POST"])
+@require_dashboard_user
+def dashboard_onboarding_dismiss():
+    """Mark the onboarding checklist as dismissed for this tenant."""
+    settings = db.get_settings(g.tenant_id)
+    settings["onboarding_dismissed"] = True
+    db.update_settings(g.tenant_id, settings)
+    return jsonify({"success": True})
 
 
 # ---------------------------------------------------------------------------
@@ -1001,10 +1359,19 @@ def admin_create_tenant_user(tenant_id):
 # Agent endpoints -- called by agent.py running on the customer's server
 # ---------------------------------------------------------------------------
 
+@app.route("/dashboard/api/agent/status")
+@require_dashboard_user
+def dashboard_agent_status():
+    """Return whether the Windows agent is currently connected."""
+    status = db.get_agent_status(g.tenant_id)
+    return jsonify({"success": True, "data": status})
+
+
 @app.route("/agent/poll", methods=["GET"])
 @require_tenant
 def agent_poll():
     """Agent calls this every 0.5s to check for pending commands."""
+    db.update_agent_ping(g.tenant["id"])
     command = db.get_pending_command(g.tenant["id"])
     return jsonify({"success": True, "command": command})
 
@@ -1049,6 +1416,20 @@ def get_result(command_id):
     if not result:
         return jsonify({"success": False, "message": "Result not ready yet.", "data": None}), 202
     return jsonify({"success": True, "data": result})
+
+
+# ---------------------------------------------------------------------------
+# Error handlers
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("404.html"), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return render_template("500.html"), 500
 
 
 if __name__ == "__main__":

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AID Helpdesk — Billing</title>
+  <link rel="icon" type="image/png" href="/logo.png"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f0e1a; --surface: #1a1830; --surface2: #221f3a;
+      --accent:  #6366f1; --accent2: #818cf8;
+      --text:    #e2e8f0; --muted:   #94a3b8;
+      --border:  rgba(99,102,241,0.18);
+      --success: #4ade80; --warn: #fbbf24; --error: #f87171;
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 48px; background: rgba(15,14,26,0.9);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .nav-logo img { width: 36px; height: 36px; object-fit: contain; }
+    .nav-logo span { font-weight: 700; }
+    .nav-logo em { color: var(--accent2); font-style: normal; }
+    .nav-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+    .nav-right a { color: var(--muted); text-decoration: none; }
+    .nav-right a:hover { color: var(--accent2); }
+
+    .page { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-size: 1.8rem; font-weight: 800; margin-bottom: 6px; }
+    .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 40px; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 28px; margin-bottom: 20px;
+    }
+    .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase;
+                  letter-spacing: 0.06em; color: var(--muted); margin-bottom: 16px; }
+
+    .plan-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .plan-name { font-size: 1.2rem; font-weight: 700; }
+    .plan-price { font-size: 1.5rem; font-weight: 800; color: var(--accent2); }
+    .plan-price span { font-size: 14px; font-weight: 400; color: var(--muted); }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700;
+    }
+    .badge-trial { background: rgba(251,191,36,0.15); color: var(--warn); border: 1px solid rgba(251,191,36,0.3); }
+    .badge-active { background: rgba(74,222,128,0.12); color: var(--success); border: 1px solid rgba(74,222,128,0.25); }
+
+    .trial-bar-wrap { margin: 16px 0 8px; }
+    .trial-bar-bg { background: var(--surface2); border-radius: 99px; height: 6px; overflow: hidden; }
+    .trial-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 99px; transition: width 0.4s; }
+    .trial-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+    .feature { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+    .feature .check { color: var(--accent2); font-size: 14px; }
+
+    .btn {
+      display: inline-block; padding: 11px 24px; border-radius: 9px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      text-decoration: none; border: none; transition: background 0.2s, transform 0.1s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent2); }
+    .btn-ghost {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    .faq-item { border-bottom: 1px solid var(--border); padding: 16px 0; }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-q { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .faq-a { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    @media (max-width: 600px) {
+      nav { padding: 12px 16px; }
+      .page { padding: 32px 16px; }
+      .features { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/dashboard">
+    <img src="/logo.png" alt="AID"/>
+    <span><em>AID</em> Helpdesk</span>
+  </a>
+  <div class="nav-right">
+    <span>{{ user_email }}</span>
+    <a href="/dashboard">← Dashboard</a>
+    <a href="/logout">Sign out</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h1>Billing &amp; Plan</h1>
+  <p class="subtitle">Managing billing for <strong>{{ tenant_name }}</strong></p>
+
+  <!-- Current Plan -->
+  <div class="card">
+    <div class="card-title">Current Plan</div>
+    <div class="plan-row">
+      <div>
+        <div class="plan-name">
+          Pro Plan &nbsp;
+          {% set trial_start = settings.get('trial_started_at') %}
+          {% if trial_start %}
+            <span class="badge badge-trial">Free Trial</span>
+          {% else %}
+            <span class="badge badge-active">Active</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="plan-price">£29 <span>/ month</span></div>
+    </div>
+
+    {% if settings.get('trial_started_at') %}
+    <div class="trial-bar-wrap" id="trial-bar-wrap">
+      <div class="trial-bar-bg">
+        <div class="trial-bar-fill" id="trial-bar" style="width:100%"></div>
+      </div>
+      <div class="trial-label" id="trial-label">Calculating trial...</div>
+    </div>
+    {% endif %}
+
+    <div class="features">
+      <div class="feature"><span class="check">✓</span> Unlimited AD users</div>
+      <div class="feature"><span class="check">✓</span> Janus AI — natural language</div>
+      <div class="feature"><span class="check">✓</span> Smart ticket system</div>
+      <div class="feature"><span class="check">✓</span> Activity feed &amp; audit log</div>
+      <div class="feature"><span class="check">✓</span> Up to 5 team members</div>
+      <div class="feature"><span class="check">✓</span> Security &amp; impersonation checks</div>
+    </div>
+  </div>
+
+  <!-- Payment -->
+  <div class="card">
+    <div class="card-title">Payment</div>
+    {% if stripe_key %}
+      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
+        Subscribe to keep access after your trial ends. Cancel any time — no questions asked.
+      </p>
+      <a class="btn btn-primary" href="#" id="checkout-btn">Subscribe — £29/month</a>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;">Secured by Stripe. Your card details never touch our servers.</p>
+    {% else %}
+      <p style="font-size:14px;color:var(--muted);margin-bottom:16px;">
+        Billing is not yet configured on this deployment. Set <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">STRIPE_PUBLIC_KEY</code> and <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">STRIPE_PRICE_ID</code> in your Railway environment variables to enable online billing.
+      </p>
+      <p style="font-size:13px;color:var(--muted);">
+        In the meantime, contact <a href="mailto:billing@aidhelpdesk.com" style="color:var(--accent2);">billing@aidhelpdesk.com</a> to arrange payment.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- FAQ -->
+  <div class="card">
+    <div class="card-title">Billing FAQ</div>
+    <div class="faq-item">
+      <div class="faq-q">When does my trial end?</div>
+      <div class="faq-a">Your free trial lasts 14 days from when you created your account. You'll see the countdown above.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Do I need a credit card for the trial?</div>
+      <div class="faq-a">No. Your trial is completely free with no card required. We'll only ask for payment details when you're ready to subscribe.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Can I cancel any time?</div>
+      <div class="faq-a">Yes — cancel any time from this page. Your access continues until the end of the billing period.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">What happens to my data if I cancel?</div>
+      <div class="faq-a">Your data is retained for 30 days after cancellation. You can export your audit log and ticket history at any time.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Calculate trial days remaining
+  const trialStart = {{ settings.get('trial_started_at', 'null') | tojson }};
+  if (trialStart) {
+    const start    = new Date(trialStart);
+    const now      = new Date();
+    const elapsed  = Math.floor((now - start) / 86400000);
+    const daysLeft = Math.max(0, 14 - elapsed);
+    const pct      = Math.max(0, (daysLeft / 14) * 100);
+
+    const bar   = document.getElementById('trial-bar');
+    const label = document.getElementById('trial-label');
+    if (bar)   bar.style.width = pct + '%';
+    if (label) label.textContent = daysLeft > 0
+      ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining in your free trial`
+      : 'Your trial has ended — subscribe to continue using AID Helpdesk';
+    if (label && daysLeft === 0) label.style.color = 'var(--error)';
+    if (bar && daysLeft <= 3)    bar.style.background = 'var(--error)';
+    else if (bar && daysLeft <= 7) bar.style.background = 'var(--warn)';
+  }
+</script>
+</body>
+</html>

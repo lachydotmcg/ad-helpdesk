@@ -4,6 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AID Helpdesk — Manage Active Directory with plain English</title>
+  <meta name="description" content="AID Helpdesk lets IT admins unlock accounts, reset passwords, and manage users by describing what they need in plain English. Janus AI handles the rest."/>
+  <link rel="icon" type="image/png" href="/logo.png"/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:title" content="AID Helpdesk — Manage Active Directory with plain English"/>
+  <meta property="og:description" content="Unlock accounts, reset passwords, manage users — just describe what you need. Janus AI handles the rest. 14-day free trial, no card required."/>
+  <meta property="og:image" content="/logo.png"/>
+  <meta name="twitter:card" content="summary"/>
+  <meta name="twitter:title" content="AID Helpdesk"/>
+  <meta name="twitter:description" content="Manage Active Directory with plain English. Powered by Janus AI."/>
+  <meta name="twitter:image" content="/logo.png"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -38,7 +48,7 @@
       border-bottom: 1px solid var(--border);
     }
     .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-    .nav-logo img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+    .nav-logo img { width: 38px; height: 38px; object-fit: contain; }
     .nav-logo span { font-size: 16px; font-weight: 700; color: var(--text); }
     .nav-logo span em { color: var(--accent2); font-style: normal; }
     .nav-cta {
@@ -170,7 +180,10 @@
     <img src="/logo.png" alt="AID Helpdesk logo" />
     <span><em>AID</em> Helpdesk</span>
   </a>
-  <a class="nav-cta" href="/login">Sign in</a>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <a href="/login" style="font-size:14px;color:var(--muted);text-decoration:none;">Sign in</a>
+    <a class="nav-cta" href="/signup">Get started</a>
+  </div>
 </nav>
 
 <!-- ── Hero ── -->
@@ -179,7 +192,7 @@
   <h1>Manage Active Directory<br />with plain English</h1>
   <p>AID Helpdesk lets you unlock accounts, reset passwords, and manage users just by describing what you need. Janus AI handles the rest.</p>
   <div class="hero-btns">
-    <a class="btn-primary" href="/login">Get started free</a>
+    <a class="btn-primary" href="/signup">Start free trial</a>
     <a class="btn-secondary" href="#features">See how it works</a>
   </div>
 </section>
@@ -236,6 +249,74 @@
   </div>
 </section>
 
+<!-- ── FAQ ── -->
+<section id="faq" style="padding-top:0;">
+  <div class="section-label">FAQ</div>
+  <div class="section-title">Common questions</div>
+  <div style="display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;">
+    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        Does it work with on-premises Active Directory? <span style="color:var(--accent2);">+</span>
+      </summary>
+      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
+        Yes. AID Helpdesk is built specifically for on-premises Windows Active Directory.
+        A lightweight agent runs on your AD server and connects outbound to the cloud —
+        no inbound firewall rules or VPN changes needed.
+      </p>
+    </details>
+    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        Is Azure AD / Entra ID supported? <span style="color:var(--accent2);">+</span>
+      </summary>
+      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
+        Not yet — Azure AD / Entra ID support is on the roadmap. The current version targets
+        on-premises AD environments running Windows Server. Join the waitlist on signup to be notified.
+      </p>
+    </details>
+    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        How secure is it? <span style="color:var(--accent2);">+</span>
+      </summary>
+      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
+        All communication is over HTTPS. The agent polls the cloud using a per-tenant API key —
+        your AD is never directly exposed to the internet. Janus AI also actively flags
+        impersonation attempts and suspicious requests before any action is taken.
+        Every write operation is logged in a tamper-evident audit trail.
+      </p>
+    </details>
+    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        What AD actions can Janus perform? <span style="color:var(--accent2);">+</span>
+      </summary>
+      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
+        Unlock accounts, reset passwords, enable/disable accounts, add/remove group membership,
+        move users between OUs, create new user accounts, and retrieve user info.
+        More actions are added regularly.
+      </p>
+    </details>
+    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        Can my whole team use it? <span style="color:var(--accent2);">+</span>
+      </summary>
+      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
+        Yes. The Pro plan includes up to 5 dashboard users per tenant with role-based access —
+        admin (full control) or viewer (read-only). Additional seats coming soon.
+      </p>
+    </details>
+    <details style="padding:20px 24px;cursor:pointer;">
+      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        How do I get started? <span style="color:var(--accent2);">+</span>
+      </summary>
+      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
+        Create a free account, copy your API key from Settings, drop it into
+        <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">agent-config.json</code>
+        on your Windows server, and run <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">python agent.py</code>.
+        The whole setup takes under 5 minutes.
+      </p>
+    </details>
+  </div>
+</section>
+
 <!-- ── Pricing ── -->
 <section id="pricing">
   <div class="section-label">Pricing</div>
@@ -252,7 +333,7 @@
       <li><span class="check">✓</span> Team access — up to 5 dashboard users</li>
       <li><span class="check">✓</span> Security checks &amp; impersonation detection</li>
     </ul>
-    <a class="btn-pricing" href="/login">Start free for 14 days</a>
+    <a class="btn-pricing" href="/signup">Start free for 14 days</a>
     <p class="trial-note">No credit card required. Cancel any time.</p>
   </div>
 </section>
@@ -260,7 +341,10 @@
 <!-- ── Footer ── -->
 <footer>
   <span>AID Helpdesk — Manage Active Directory with plain English</span>
-  <a href="/login">Sign in →</a>
+  <div style="display:flex;gap:16px;">
+    <a href="/login">Sign in</a>
+    <a href="/signup" style="color:var(--accent2);">Get started →</a>
+  </div>
 </footer>
 
 </body>

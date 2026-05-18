@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AID Helpdesk — Dashboard</title>
+  <link rel="icon" type="image/png" href="/logo.png"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -19,6 +20,21 @@
       --green:     #34d399;
       --red:       #f87171;
       --yellow:    #fbbf24;
+    }
+
+    /* Light mode theme */
+    body.light-mode {
+      --bg:       #f1f5f9;
+      --surface:  #ffffff;
+      --surface2: #f8fafc;
+      --border:   #e2e8f0;
+      --text:     #0f172a;
+      --muted:    #64748b;
+      --accent:   #6366f1;
+      --accent2:  #4f46e5;
+      --green:    #16a34a;
+      --red:      #dc2626;
+      --yellow:   #d97706;
     }
 
     body {
@@ -790,7 +806,7 @@
 <!-- Top nav -->
 <nav>
   <div class="nav-logo">
-    <img src="/logo.png" alt="AID" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"/>
+    <img src="/logo.png" alt="AID" style="width:38px;height:38px;object-fit:contain;"/>
     AID <span>&nbsp;Helpdesk</span>
   </div>
   <div class="nav-right">
@@ -800,6 +816,9 @@
     </div>
     <div class="tenant-badge">{{ tenant_name }}</div>
     <span>{{ user_email }}</span>
+    <a href="/billing" class="logout-btn" title="Billing &amp; Plan">💳</a>
+    <button id="theme-toggle" onclick="toggleTheme()" class="logout-btn" title="Toggle light/dark mode" style="background:none;border:none;cursor:pointer;font-size:15px;padding:0;line-height:1;">🌙</button>
+    <button onclick="openModal('modal-shortcuts')" class="logout-btn" title="Keyboard shortcuts (?)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;">⌨</button>
     <a href="/logout" class="logout-btn">Sign out</a>
   </div>
 </nav>
@@ -849,6 +868,19 @@
 
     <!-- ===== USERS PAGE ===== -->
     <div class="page active" id="page-users">
+
+      <!-- Onboarding checklist (hidden once dismissed or all done) -->
+      <div id="onboarding-panel" style="display:none;background:var(--surface);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div style="font-size:15px;font-weight:700;">🚀 Getting started</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;" id="onboard-trial-label"></div>
+          </div>
+          <button onclick="dismissOnboarding()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;" title="Dismiss">×</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;" id="onboard-steps"></div>
+      </div>
+
       <!-- Smart alert banners — shown when there are issues -->
       <div id="alert-banners" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;"></div>
       <div class="stats">
@@ -867,6 +899,35 @@
         <div class="stat-card">
           <div class="stat-label">Pwd Expired</div>
           <div class="stat-value yellow" id="stat-expired">—</div>
+        </div>
+      </div>
+
+      <!-- Usage this month card (inline, small) -->
+      <div id="usage-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;margin-bottom:14px;display:flex;gap:32px;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);flex-shrink:0;">📊 This month</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;">
+          <div><span id="usage-janus" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span><span style="font-size:11px;color:var(--muted);margin-left:4px;">Janus calls</span></div>
+          <div><span id="usage-tickets" style="font-size:18px;font-weight:800;color:var(--text);">—</span><span style="font-size:11px;color:var(--muted);margin-left:4px;">Tickets</span></div>
+          <div><span id="usage-month" style="font-size:11px;color:var(--muted);"></span></div>
+        </div>
+      </div>
+
+      <!-- Quick actions bar -->
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" style="font-size:12px;" onclick="cacheInvalidate('list_users[]');loadUsers(true);" title="Force refresh from Active Directory">↺ Force Refresh</button>
+        {% if user_role == 'admin' %}
+        <button class="btn btn-ghost" id="quick-unlock-all" style="font-size:12px;display:none;" onclick="unlockAll()">🔓 Unlock All Locked (<span id="quick-locked-count">?</span>)</button>
+        {% endif %}
+        <button class="btn btn-ghost" style="font-size:12px;" onclick="showPage('tickets')">🎫 View Tickets</button>
+        <button class="btn btn-ghost" style="font-size:12px;" onclick="showPage('audit')">📋 Audit Log</button>
+      </div>
+
+      <!-- Janus AI insight card -->
+      <div id="janus-insight-card" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:20px;flex-shrink:0;">✨</span>
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent2);margin-bottom:4px;">Janus Insight</div>
+          <div id="janus-insight-text" style="font-size:13px;color:var(--text);line-height:1.5;"></div>
         </div>
       </div>
 
@@ -971,9 +1032,10 @@
           <div class="panel">
             <div class="panel-header">
               <span class="panel-title">Tickets</span>
-              <div style="display:flex;gap:8px;">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input class="search-input" id="ticket-search" placeholder="Search tickets..." oninput="filterTickets()" style="width:160px;padding:6px 10px;font-size:12px;"/>
                 <select class="btn btn-ghost" id="ticket-filter" onchange="loadTickets()" style="font-size:12px;padding:6px 10px;">
-                  <option value="">All</option>
+                  <option value="">All status</option>
                   <option value="open">Open</option>
                   <option value="in_progress">In progress</option>
                   <option value="resolved">Resolved</option>
@@ -1078,7 +1140,10 @@
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">Audit Log</span>
-          <button class="btn btn-ghost" onclick="loadAudit()">↺ Refresh</button>
+          <div style="display:flex;gap:8px;">
+            <a class="btn btn-ghost" href="/dashboard/api/audit/export" download="audit-log.csv" style="font-size:13px;">⬇ Export CSV</a>
+            <button class="btn btn-ghost" onclick="loadAudit()">↺ Refresh</button>
+          </div>
         </div>
         <div id="audit-table-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -1104,7 +1169,19 @@
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">⚡ Activity Feed</span>
-          <button class="btn btn-ghost" onclick="loadActivity(true)">↺ Refresh</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input class="search-input" id="activity-search" placeholder="Search activity..." oninput="filterActivity()" style="width:160px;padding:6px 10px;font-size:12px;"/>
+            <select class="btn btn-ghost" id="activity-type-filter" onchange="filterActivity()" style="font-size:12px;padding:6px 10px;">
+              <option value="">All events</option>
+              <option value="ticket_created">Tickets</option>
+              <option value="ad_action">AD actions</option>
+              <option value="security_flag">Security</option>
+              <option value="team_member_added">Team</option>
+              <option value="settings_changed">Settings</option>
+              <option value="janus_action">Janus AI</option>
+            </select>
+            <button class="btn btn-ghost" onclick="loadActivity(true)">↺ Refresh</button>
+          </div>
         </div>
         <div id="activity-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -1234,6 +1311,10 @@
                 Your Windows agent needs this API key to connect to your account.
                 Paste it into <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">agent-config.json</code> on your server.
               </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                <div id="settings-agent-dot" class="status-dot"></div>
+                <span id="settings-agent-label" style="font-size:13px;color:var(--muted);">Checking...</span>
+              </div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <input id="tenant-api-key" class="search-input" readonly
                        style="flex:1;min-width:200px;max-width:420px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
@@ -1241,7 +1322,19 @@
                 <button class="btn btn-ghost" style="font-size:12px;" onclick="copyApiKey()">Copy</button>
               </div>
               <div style="font-size:12px;color:var(--muted);margin-top:12px;">
-                Cloud URL: <code id="cloud-url-display" style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;font-size:11px;">{{ request.host_url.rstrip('/') }}</code>
+                Cloud URL: <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;font-size:11px;">{{ request.host_url.rstrip('/') }}</code>
+              </div>
+            </div>
+
+            <!-- Change Password -->
+            <div class="settings-section">
+              <div class="settings-section-title">Change Password</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Update your dashboard login password.</div>
+              <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;">
+                <input type="password" id="cp-current" class="search-input" placeholder="Current password"/>
+                <input type="password" id="cp-new" class="search-input" placeholder="New password (min 8 chars)"/>
+                <input type="password" id="cp-confirm" class="search-input" placeholder="Confirm new password"/>
+                <button class="btn btn-primary" style="align-self:flex-start;font-size:13px;" onclick="submitChangePassword()">Update password</button>
               </div>
             </div>
 
@@ -1261,6 +1354,16 @@
               </div>
             </div>
 
+            <!-- Billing -->
+            <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
+              <div class="settings-section-title">Billing &amp; Plan</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                You are on the <strong style="color:var(--accent2);">Pro Plan</strong> — £29/month.
+                Manage your subscription, view trial status, and update payment details.
+              </div>
+              <a href="/billing" class="btn btn-ghost" style="font-size:13px;">💳 Manage Billing</a>
+            </div>
+
           </div>
         </div>
       </div>
@@ -1271,6 +1374,31 @@
 
 <!-- Toast container -->
 <div id="toast-container"></div>
+
+<!-- Keyboard shortcuts modal -->
+<div class="modal-overlay" id="modal-shortcuts">
+  <div class="modal" style="max-width:440px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <h2 style="font-size:16px;">Keyboard Shortcuts</h2>
+      <button onclick="closeModal('modal-shortcuts')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;">
+      <div style="font-size:13px;color:var(--muted);">Navigate to</div><div></div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">U</kbd> All Users</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">T</kbd> Tickets</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">J</kbd> Janus AI Chat</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">A</kbd> Audit Log</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">S</kbd> Settings</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">M</kbd> Team Members</div>
+      <div></div><div></div>
+      <div style="font-size:13px;color:var(--muted);">Actions</div><div></div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">/</kbd> Focus search</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">Esc</kbd> Close modal</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">?</kbd> This guide</div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:20px;">Shortcuts are disabled when typing in a text field.</p>
+  </div>
+</div>
 
 <!-- Move user modal -->
 <div class="modal-overlay" id="modal-move-user">
@@ -1318,14 +1446,10 @@
 <div class="modal-overlay" id="modal-adduser">
   <div class="modal">
     <h2>Add Team Member</h2>
-    <p>Give someone access to this AD Helpdesk dashboard.</p>
+    <p>A secure password will be generated automatically. Share it with the new member — it won't be shown again.</p>
     <div class="field">
       <label>Email</label>
       <input type="email" id="new-user-email" placeholder="colleague@company.com"/>
-    </div>
-    <div class="field">
-      <label>Password</label>
-      <input type="password" id="new-user-password" placeholder="••••••••"/>
     </div>
     <div class="field">
       <label>Role</label>
@@ -1337,6 +1461,34 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-adduser')">Cancel</button>
       <button class="btn btn-primary" onclick="submitAddUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generated password reveal modal -->
+<div class="modal-overlay" id="modal-invite-password">
+  <div class="modal">
+    <h2>Team member added ✓</h2>
+    <p>Share these credentials with <strong id="invite-email-label"></strong>. The password won't be shown again.</p>
+    <div class="field" style="margin-top:16px;">
+      <label>Temporary password</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="invite-password-box" class="search-input" readonly
+               style="font-family:'Courier New',monospace;font-size:13px;color:var(--accent2);flex:1;"/>
+        <button class="btn btn-ghost" style="font-size:12px;flex-shrink:0;"
+                onclick="navigator.clipboard.writeText(document.getElementById('invite-password-box').value).then(()=>toast('Copied!','success'))">Copy</button>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-ghost" style="font-size:12px;width:100%;" onclick="copyInviteMessage()">
+        📋 Copy full invite message
+      </button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px;">
+      💡 Ask them to change their password after first login via Settings.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal('modal-invite-password')">Done</button>
     </div>
   </div>
 </div>
@@ -1472,10 +1624,19 @@
 
   function setAgentStatus(online) {
     _agentOnline = online;
+    const cls  = 'status-dot ' + (online ? 'online' : 'offline');
+    const text = online ? 'Agent connected' : 'Agent offline';
+    // Nav header dot
     const dot   = document.getElementById('agent-dot');
     const label = document.getElementById('agent-label');
-    dot.className   = 'status-dot ' + (online ? 'online' : 'offline');
-    label.textContent = online ? 'Agent connected' : 'Agent offline';
+    if (dot)   dot.className    = cls;
+    if (label) label.textContent = text;
+    // Settings page dot (may not exist yet)
+    const sdot   = document.getElementById('settings-agent-dot');
+    const slabel = document.getElementById('settings-agent-label');
+    if (sdot)   sdot.className    = cls;
+    if (slabel) slabel.textContent = text;
+    if (slabel) slabel.style.color = online ? 'var(--success, #4ade80)' : 'var(--error, #f87171)';
   }
 
   // =========================================================
@@ -1523,6 +1684,14 @@
       const badge = document.getElementById('locked-badge');
       if (lc > 0) { badge.textContent = lc; badge.style.display = 'inline'; }
 
+      // Show/hide quick unlock-all button
+      const unlockAllBtn = document.getElementById('quick-unlock-all');
+      const lcCountEl    = document.getElementById('quick-locked-count');
+      if (unlockAllBtn) {
+        unlockAllBtn.style.display = lc > 0 ? 'inline-block' : 'none';
+        if (lcCountEl) lcCountEl.textContent = lc;
+      }
+
       // Alert banners on users page
       const bannerWrap = document.getElementById('alert-banners');
       if (bannerWrap) {
@@ -1542,6 +1711,37 @@
     } catch (e) {
       console.warn('Stats failed:', e.message);
     }
+  }
+
+  async function loadUsageBar() {
+    try {
+      const [uRes, tRes] = await Promise.all([
+        fetch('/dashboard/api/usage'),
+        fetch('/dashboard/api/tickets'),
+      ]);
+      const uJson = await uRes.json();
+      const tJson = await tRes.json();
+      const cur   = uJson.data?.current || {};
+      const tickets = (tJson.data || []);
+      const month = cur.month || new Date().toISOString().slice(0, 7);
+      const monthLabel = new Date(month + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+      document.getElementById('usage-janus').textContent   = cur.janus_calls ?? 0;
+      document.getElementById('usage-tickets').textContent = tickets.length;
+      document.getElementById('usage-month').textContent   = monthLabel;
+      document.getElementById('usage-bar').style.display   = 'flex';
+    } catch { /* silently skip */ }
+  }
+
+  async function loadInsights() {
+    try {
+      const res  = await fetch('/dashboard/api/insights');
+      const json = await res.json();
+      const msg  = json.data && json.data.message;
+      if (msg) {
+        document.getElementById('janus-insight-text').textContent = msg;
+        document.getElementById('janus-insight-card').style.display = 'flex';
+      }
+    } catch { /* silently skip if Janus not configured */ }
   }
 
   function renderUsers(users) {
@@ -1947,28 +2147,58 @@
   // Audit log
   // =========================================================
 
+  let _auditRows  = [];
+  let _auditPage  = 0;
+  const AUDIT_PER_PAGE = 50;
+
+  function renderAuditPage() {
+    const start = _auditPage * AUDIT_PER_PAGE;
+    const slice = _auditRows.slice(start, start + AUDIT_PER_PAGE);
+    const total = _auditRows.length;
+    const pages = Math.ceil(total / AUDIT_PER_PAGE);
+
+    let html = `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>`;
+    for (const r of slice) {
+      const ts = r.created_at ? r.created_at.replace('T', ' ').slice(0, 19) : '—';
+      const status = r.status === 'error'
+        ? '<span class="pill pill-red">error</span>'
+        : '<span class="pill pill-green">done</span>';
+      html += `<tr class="audit-row"><td>${ts}</td><td>${r.user_email}</td><td><code style="font-size:12px">${r.action}</code></td><td>${r.target || '—'}</td><td>${status}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+    if (pages > 1) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">
+        <span>Showing ${start + 1}–${Math.min(start + AUDIT_PER_PAGE, total)} of ${total}</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="auditPrev()" ${_auditPage === 0 ? 'disabled style="opacity:0.4;"' : ''}>← Prev</button>
+          <span style="padding:6px 10px;">Page ${_auditPage + 1} / ${pages}</span>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="auditNext()" ${_auditPage >= pages - 1 ? 'disabled style="opacity:0.4;"' : ''}>Next →</button>
+        </div>
+      </div>`;
+    }
+    document.getElementById('audit-table-wrap').innerHTML = html;
+  }
+
+  function auditPrev() { if (_auditPage > 0) { _auditPage--; renderAuditPage(); } }
+  function auditNext() {
+    const pages = Math.ceil(_auditRows.length / AUDIT_PER_PAGE);
+    if (_auditPage < pages - 1) { _auditPage++; renderAuditPage(); }
+  }
+
   async function loadAudit() {
     document.getElementById('audit-table-wrap').innerHTML =
       '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    _auditPage = 0;
     try {
       const res  = await fetch('/dashboard/api/audit');
       const json = await res.json();
-      const rows = json.data || [];
-      if (!rows.length) {
+      _auditRows = json.data || [];
+      if (!_auditRows.length) {
         document.getElementById('audit-table-wrap').innerHTML =
           '<div class="empty"><div class="empty-icon">📋</div>No audit log entries yet.</div>';
         return;
       }
-      let html = `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>`;
-      for (const r of rows) {
-        const ts = r.created_at ? r.created_at.replace('T', ' ').slice(0, 19) : '—';
-        const status = r.status === 'queued'
-          ? '<span class="pill pill-yellow">queued</span>'
-          : '<span class="pill pill-green">done</span>';
-        html += `<tr class="audit-row"><td>${ts}</td><td>${r.user_email}</td><td><code style="font-size:12px">${r.action}</code></td><td>${r.target || '—'}</td><td>${status}</td></tr>`;
-      }
-      html += '</tbody></table>';
-      document.getElementById('audit-table-wrap').innerHTML = html;
+      renderAuditPage();
     } catch (e) {
       document.getElementById('audit-table-wrap').innerHTML =
         `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
@@ -1986,13 +2216,17 @@
       const res  = await fetch('/dashboard/api/users');
       const json = await res.json();
       const users = json.data || [];
-      let html = `<table><thead><tr><th>Email</th><th>Role</th><th>Added</th></tr></thead><tbody>`;
+      const me = '{{ user_email }}';
+      let html = `<table><thead><tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody>`;
       for (const u of users) {
         const ts = u.created_at ? u.created_at.slice(0, 10) : '—';
         const role = u.role === 'admin'
           ? '<span class="pill pill-green">admin</span>'
           : '<span class="pill pill-gray">viewer</span>';
-        html += `<tr><td>${u.email}</td><td>${role}</td><td>${ts}</td></tr>`;
+        const removeBtn = u.email !== me
+          ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:rgba(248,113,113,0.3);" onclick="removeUser('${u.id}','${u.email}')">Remove</button>`
+          : `<span style="font-size:11px;color:var(--muted);">You</span>`;
+        html += `<tr><td>${u.email}</td><td>${role}</td><td>${ts}</td><td style="text-align:right;">${removeBtn}</td></tr>`;
       }
       html += '</tbody></table>';
       document.getElementById('team-table-wrap').innerHTML = html;
@@ -2005,21 +2239,115 @@
   function openAddUser() { openModal('modal-adduser'); }
 
   async function submitAddUser() {
-    const email    = document.getElementById('new-user-email').value.trim();
-    const password = document.getElementById('new-user-password').value;
-    const role     = document.getElementById('new-user-role').value;
-    if (!email || !password) { toast('Email and password are required.', 'error'); return; }
+    const email = document.getElementById('new-user-email').value.trim();
+    const role  = document.getElementById('new-user-role').value;
+    if (!email) { toast('Email is required.', 'error'); return; }
     closeModal('modal-adduser');
     try {
       const res  = await fetch('/dashboard/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, role })
+        body: JSON.stringify({ email, role })   // no password — server generates one
       });
       const json = await res.json();
-      if (json.success) { toast(`${email} added.`, 'success'); loadTeam(); }
-      else toast(json.message, 'error');
+      if (json.success) {
+        loadTeam();
+        if (json.generated_password) {
+          // Show the password once
+          document.getElementById('invite-email-label').textContent  = email;
+          document.getElementById('invite-password-box').value        = json.generated_password;
+          openModal('modal-invite-password');
+        } else {
+          toast(`${email} added.`, 'success');
+        }
+      } else {
+        toast(json.message || 'Failed to add user.', 'error');
+      }
     } catch (e) { toast(e.message, 'error'); }
+  }
+
+  function copyInviteMessage() {
+    const email    = document.getElementById('invite-email-label').textContent;
+    const password = document.getElementById('invite-password-box').value;
+    const url      = window.location.origin + '/login';
+    const message  = `You've been invited to AID Helpdesk!\n\nSign in at: ${url}\nEmail: ${email}\nTemporary password: ${password}\n\nPlease change your password after first login via Settings → Change Password.`;
+    navigator.clipboard.writeText(message).then(() => toast('Invite message copied to clipboard!', 'success'));
+  }
+
+  async function removeUser(userId, email) {
+    if (!confirm(`Remove ${email} from your team? They will lose access immediately.`)) return;
+    try {
+      const res  = await fetch(`/dashboard/api/users/${userId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        toast(`${email} removed.`, 'success');
+        loadTeam();
+      } else {
+        toast(json.message || 'Failed to remove user.', 'error');
+      }
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
+  // Onboarding checklist
+  // =========================================================
+
+  async function loadOnboarding() {
+    try {
+      const res  = await fetch('/dashboard/api/onboarding');
+      const json = await res.json();
+      if (!json.success) return;
+      const d = json.data;
+      if (d.dismissed) return;
+
+      const steps = [
+        { key: 'agent_connected',   done: d.agent_connected,   label: 'Connect the Windows agent',  action: () => showPage('settings'), tip: 'Copy your API key from Settings → Agent Config' },
+        { key: 'email_domain_set',  done: d.email_domain_set,  label: 'Set your email domain',       action: () => showPage('settings'), tip: 'Settings → Trusted Email Domain' },
+        { key: 'first_ticket',      done: d.first_ticket,      label: 'Create your first ticket',    action: () => showPage('tickets'),  tip: 'Try the Tickets page' },
+        { key: 'team_member_added', done: d.team_member_added, label: 'Invite a team member',        action: () => showPage('team'),     tip: 'Settings → Team tab' },
+      ];
+
+      const allDone = steps.every(s => s.done);
+      if (allDone) return;  // checklist complete — hide it
+
+      const panel = document.getElementById('onboarding-panel');
+      const stepsEl = document.getElementById('onboard-steps');
+      const trialEl = document.getElementById('onboard-trial-label');
+
+      if (d.trial_days_left !== null) {
+        trialEl.textContent = d.trial_days_left > 0
+          ? `${d.trial_days_left} days left in your free trial`
+          : 'Your trial has ended';
+        trialEl.style.color = d.trial_days_left <= 3 ? 'var(--error)' : 'var(--muted)';
+      }
+
+      stepsEl.innerHTML = steps.map(s => `
+        <div onclick="${s.done ? '' : `(${s.action.toString()})()`}"
+             style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+                    background:var(--surface2);border-radius:10px;
+                    border:1px solid ${s.done ? 'rgba(74,222,128,0.2)' : 'var(--border)'};
+                    cursor:${s.done ? 'default' : 'pointer'};transition:border-color 0.2s;"
+             ${s.done ? '' : 'onmouseenter="this.style.borderColor=\'var(--accent2)\'" onmouseleave="this.style.borderColor=\'var(--border)\'"'}>
+          <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;
+                      background:${s.done ? 'rgba(74,222,128,0.15)' : 'rgba(99,102,241,0.1)'};
+                      border:1.5px solid ${s.done ? 'var(--success)' : 'var(--border)'};
+                      display:flex;align-items:center;justify-content:center;font-size:12px;">
+            ${s.done ? '✓' : ''}
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:${s.done ? 'var(--muted)' : 'var(--text)'};
+                        ${s.done ? 'text-decoration:line-through;' : ''}">${s.label}</div>
+            ${s.done ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${s.tip}</div>`}
+          </div>
+        </div>`).join('');
+
+      panel.style.display = 'block';
+    } catch { /* non-critical */ }
+  }
+
+  async function dismissOnboarding() {
+    document.getElementById('onboarding-panel').style.display = 'none';
+    await fetch('/dashboard/api/onboarding/dismiss', { method: 'POST' }).catch(() => {});
   }
 
   // =========================================================
@@ -2051,6 +2379,52 @@
   // =========================================================
 
   let _currentTicketId = null;
+  let _allTickets = [];
+
+  function renderTicketTable(tickets) {
+    if (!tickets.length) {
+      document.getElementById('tickets-table-wrap').innerHTML =
+        '<div class="empty"><div class="empty-icon">🎫</div>No tickets match your search.</div>';
+      return;
+    }
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+    tickets.sort((a, b) => (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4));
+    let html = `<table><thead><tr><th>Title</th><th>Requester</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead><tbody>`;
+    for (const t of tickets) {
+      const statusPill = {
+        open:        '<span class="pill pill-red">Open</span>',
+        in_progress: '<span class="pill pill-yellow">In progress</span>',
+        resolved:    '<span class="pill pill-green">Resolved</span>',
+        closed:      '<span class="pill pill-gray">Closed</span>'
+      }[t.status] || t.status;
+      const priClass = `priority-${t.priority}`;
+      const date = t.created_at ? t.created_at.slice(0, 10) : '—';
+      const source = t.source === 'email' ? ' 📧' : '';
+      const hasJanus = t.janus_analysis ? ' ✨' : '';
+      const hasSecFlag = t.janus_analysis && (t.janus_analysis.includes('⚠️ Security flag') || t.janus_analysis.includes('🔒 Permission'));
+      const secBadge = hasSecFlag ? ' <span class="security-pill">⚠ Security</span>' : '';
+      html += `<tr class="ticket-row" onclick="openTicket('${t.id}')">
+        <td>${t.title}${source}${hasJanus}${secBadge}</td>
+        <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '—'}</td>
+        <td class="${priClass}">${t.priority}</td>
+        <td>${statusPill}</td>
+        <td style="font-size:12px;color:var(--muted)">${date}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('tickets-table-wrap').innerHTML = html;
+  }
+
+  function filterTickets() {
+    const q = (document.getElementById('ticket-search')?.value || '').toLowerCase();
+    if (!q) { renderTicketTable(_allTickets); return; }
+    const filtered = _allTickets.filter(t =>
+      (t.title || '').toLowerCase().includes(q) ||
+      (t.requester_name || '').toLowerCase().includes(q) ||
+      (t.requester_email || '').toLowerCase().includes(q)
+    );
+    renderTicketTable(filtered);
+  }
 
   async function loadTickets() {
     document.getElementById('tickets-table-wrap').innerHTML =
@@ -2060,48 +2434,27 @@
     try {
       const res  = await fetch(url);
       const json = await res.json();
-      const tickets = json.data || [];
+      _allTickets = json.data || [];
 
-      const open = tickets.filter(t => t.status === 'open').length;
-      const badge = document.getElementById('open-tickets-badge');
-      if (open > 0) { badge.textContent = open; badge.style.display = 'inline'; }
-      else badge.style.display = 'none';
+      const openTickets  = _allTickets.filter(t => t.status === 'open');
+      const open         = openTickets.length;
+      const hasUrgent    = openTickets.some(t => t.priority === 'urgent' || t.priority === 'high');
+      const badge        = document.getElementById('open-tickets-badge');
+      if (open > 0) {
+        badge.textContent  = open;
+        badge.style.display = 'inline';
+        badge.style.color   = hasUrgent ? 'var(--red)' : 'var(--yellow)';
+        badge.title         = hasUrgent ? `${open} open — urgent/high priority!` : `${open} open tickets`;
+      } else {
+        badge.style.display = 'none';
+      }
 
-      if (!tickets.length) {
+      if (!_allTickets.length) {
         document.getElementById('tickets-table-wrap').innerHTML =
           '<div class="empty"><div class="empty-icon">🎫</div>No tickets yet. Create one or connect your support email.</div>';
         return;
       }
-
-      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-      tickets.sort((a, b) => (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4));
-
-      let html = `<table><thead><tr><th>Title</th><th>Requester</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead><tbody>`;
-      for (const t of tickets) {
-        const statusPill = {
-          open:        '<span class="pill pill-red">Open</span>',
-          in_progress: '<span class="pill pill-yellow">In progress</span>',
-          resolved:    '<span class="pill pill-green">Resolved</span>',
-          closed:      '<span class="pill pill-gray">Closed</span>'
-        }[t.status] || t.status;
-
-        const priClass = `priority-${t.priority}`;
-        const date = t.created_at ? t.created_at.slice(0, 10) : '—';
-        const source = t.source === 'email' ? ' 📧' : '';
-        const hasJanus = t.janus_analysis ? ' ✨' : '';
-        const hasSecFlag = t.janus_analysis && (t.janus_analysis.includes('⚠️ Security flag') || t.janus_analysis.includes('🔒 Permission'));
-        const secBadge = hasSecFlag ? ' <span class="security-pill">⚠ Security</span>' : '';
-
-        html += `<tr class="ticket-row" onclick="openTicket('${t.id}')">
-          <td>${t.title}${source}${hasJanus}${secBadge}</td>
-          <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '—'}</td>
-          <td class="${priClass}">${t.priority}</td>
-          <td>${statusPill}</td>
-          <td style="font-size:12px;color:var(--muted)">${date}</td>
-        </tr>`;
-      }
-      html += '</tbody></table>';
-      document.getElementById('tickets-table-wrap').innerHTML = html;
+      filterTickets();
     } catch (e) {
       document.getElementById('tickets-table-wrap').innerHTML =
         `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
@@ -2167,10 +2520,46 @@
     const actionsWrap = document.getElementById('td-actions');
     actionsWrap.innerHTML = '';
     const typeLabel = { comment: 'Comment', ad_action: 'AD action', status_change: 'Status', janus_analysis: '✨ Janus' };
+
+    function relativeTime(isoStr) {
+      if (!isoStr) return '—';
+      const diff = Date.now() - new Date(isoStr);
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1)   return 'just now';
+      if (mins < 60)  return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24)   return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      if (days < 7)   return `${days}d ago`;
+      return isoStr.slice(0, 10);
+    }
+
+    function initials(email) {
+      if (!email) return '?';
+      const parts = email.split('@')[0].split(/[.\-_]/);
+      return parts.length > 1
+        ? (parts[0][0] + parts[1][0]).toUpperCase()
+        : email.slice(0, 2).toUpperCase();
+    }
+
     for (const a of (t.actions || [])) {
       const div  = document.createElement('div');
       div.className = `action-entry ${a.type}`;
-      div.innerHTML = `<div>${a.content}</div><div class="action-meta">${typeLabel[a.type] || a.type} · ${a.user_email} · ${a.created_at.slice(0, 16).replace('T', ' ')}</div>`;
+      const ini  = initials(a.user_email);
+      const rel  = relativeTime(a.created_at);
+      const full = a.created_at ? a.created_at.slice(0, 16).replace('T', ' ') : '';
+      div.innerHTML = `
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">${ini}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;display:flex;gap:8px;align-items:center;">
+              <span>${a.user_email}</span>
+              <span style="background:var(--surface2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.04em;">${typeLabel[a.type] || a.type}</span>
+              <span title="${full}" style="margin-left:auto;">${rel}</span>
+            </div>
+            <div style="font-size:13px;line-height:1.5;">${a.content}</div>
+          </div>
+        </div>`;
       actionsWrap.appendChild(div);
     }
     actionsWrap.scrollTop = actionsWrap.scrollHeight;
@@ -2337,37 +2726,58 @@
     fix_failed:       { emoji: '❌', label: 'Fix failed' },
   };
 
+  let _activityFeed = [];
+
+  function renderActivityFeed(feed) {
+    const wrap = document.getElementById('activity-wrap');
+    if (!feed.length) {
+      wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No matching activity.</div>';
+      return;
+    }
+    let html = '';
+    for (const entry of feed) {
+      const info    = ACTIVITY_ICONS[entry.event_type] || { emoji: '•', label: entry.event_type };
+      const ts      = entry.created_at ? entry.created_at.slice(0, 16).replace('T', ' ') : '';
+      const isSec   = entry.event_type === 'security_flag';
+      const secBadge = isSec ? '<span class="security-pill">⚠ Security</span>' : '';
+      html += `
+        <div class="activity-entry">
+          <div class="activity-icon type-${entry.event_type}">${info.emoji}</div>
+          <div class="activity-body">
+            <div><strong>${info.label}</strong> by ${entry.actor}${entry.target ? ` → <code style="font-size:11px;color:var(--accent2)">${entry.target}</code>` : ''}${secBadge}</div>
+            ${entry.detail ? `<div class="activity-detail">${entry.detail}</div>` : ''}
+          </div>
+          <div class="activity-time">${ts}</div>
+        </div>`;
+    }
+    wrap.innerHTML = html;
+  }
+
+  function filterActivity() {
+    const q    = (document.getElementById('activity-search')?.value || '').toLowerCase();
+    const type = document.getElementById('activity-type-filter')?.value || '';
+    let filtered = _activityFeed;
+    if (type) filtered = filtered.filter(e => e.event_type === type || e.event_type.startsWith(type));
+    if (q)    filtered = filtered.filter(e =>
+      (e.actor || '').toLowerCase().includes(q) ||
+      (e.target || '').toLowerCase().includes(q) ||
+      (e.detail || '').toLowerCase().includes(q)
+    );
+    renderActivityFeed(filtered);
+  }
+
   async function loadActivity(force = false) {
     const wrap = document.getElementById('activity-wrap');
     wrap.innerHTML = '<div class="loading"><span class="spinner"></span>Loading...</div>';
     try {
-      const res  = await fetch('/dashboard/api/activity?limit=100');
+      const res  = await fetch('/dashboard/api/activity?limit=200');
       const json = await res.json();
-      const feed = json.data || [];
-
-      if (!feed.length) {
+      _activityFeed = json.data || [];
+      if (!_activityFeed.length) {
         wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No activity yet — actions and Janus events will appear here.</div>';
         return;
       }
-
-      let html = '';
-      for (const entry of feed) {
-        const info    = ACTIVITY_ICONS[entry.event_type] || { emoji: '•', label: entry.event_type };
-        const ts      = entry.created_at ? entry.created_at.slice(0, 16).replace('T', ' ') : '';
-        const isSec   = entry.event_type === 'security_flag';
-        const secBadge = isSec ? '<span class="security-pill">⚠ Security</span>' : '';
-
-        html += `
-          <div class="activity-entry">
-            <div class="activity-icon type-${entry.event_type}">${info.emoji}</div>
-            <div class="activity-body">
-              <div><strong>${info.label}</strong> by ${entry.actor}${entry.target ? ` → <code style="font-size:11px;color:var(--accent2)">${entry.target}</code>` : ''}${secBadge}</div>
-              ${entry.detail ? `<div class="activity-detail">${entry.detail}</div>` : ''}
-            </div>
-            <div class="activity-time">${ts}</div>
-          </div>`;
-      }
-      wrap.innerHTML = html;
+      filterActivity();
     } catch (e) {
       wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
     }
@@ -2417,6 +2827,29 @@
     const el = document.getElementById('tenant-api-key');
     if (!el.value) return;
     navigator.clipboard.writeText(el.value).then(() => toast('API key copied!', 'success'));
+  }
+
+  async function submitChangePassword() {
+    const current = document.getElementById('cp-current').value;
+    const newpw   = document.getElementById('cp-new').value;
+    const confirm = document.getElementById('cp-confirm').value;
+    if (!current || !newpw) { toast('All fields are required.', 'error'); return; }
+    if (newpw.length < 8)   { toast('New password must be at least 8 characters.', 'error'); return; }
+    if (newpw !== confirm)  { toast('Passwords do not match.', 'error'); return; }
+    try {
+      const res  = await fetch('/dashboard/api/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: current, new_password: newpw })
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast('Password updated successfully.', 'success');
+        ['cp-current','cp-new','cp-confirm'].forEach(id => document.getElementById(id).value = '');
+      } else {
+        toast(json.message || 'Failed to update password.', 'error');
+      }
+    } catch (e) { toast(e.message, 'error'); }
   }
 
   function renderRoles() {
@@ -2639,35 +3072,102 @@
   // Init — sequential so we don't flood the agent queue
   // =========================================================
 
-  (async () => {
-    pageLoaded['users'] = true;
-
-    // 1. Stats first — also confirms agent is alive
+  async function pollAgentStatus() {
     try {
-      await loadStats();
-      setAgentStatus(true);
+      const res  = await fetch('/dashboard/api/agent/status');
+      const json = await res.json();
+      if (json.success) setAgentStatus(json.data.online);
     } catch {
       setAgentStatus(false);
     }
+  }
 
-    // 2. Users table after stats are done
+  (async () => {
+    pageLoaded['users'] = true;
+
+    // 1. Check agent status via dedicated endpoint (not reliant on AD being reachable)
+    await pollAgentStatus();
+    setInterval(pollAgentStatus, 30 * 1000);  // refresh every 30s
+
+    // 2. Load onboarding checklist (non-blocking)
+    loadOnboarding();
+
+    // 3. Load stats and users
+    loadStats();
     await loadUsers();
 
     // 3. Check open ticket count for badge (non-blocking)
     fetch('/dashboard/api/tickets?status=open')
       .then(r => r.json())
       .then(j => {
-        const open = (j.data || []).length;
-        const badge = document.getElementById('open-tickets-badge');
-        if (open > 0) { badge.textContent = open; badge.style.display = 'inline'; }
+        const tickets   = j.data || [];
+        const open      = tickets.length;
+        const hasUrgent = tickets.some(t => t.priority === 'urgent' || t.priority === 'high');
+        const badge     = document.getElementById('open-tickets-badge');
+        if (open > 0) {
+          badge.textContent   = open;
+          badge.style.display = 'inline';
+          badge.style.color   = hasUrgent ? 'var(--red)' : 'var(--yellow)';
+          badge.title         = hasUrgent ? `${open} open — urgent/high priority!` : `${open} open tickets`;
+        }
       }).catch(() => {});
 
-    // 4. Auto-refresh stats every 2 minutes (uses cache so no extra AD hit)
+    // 4. Load Janus insight + usage bar (non-blocking)
+    loadInsights();
+    loadUsageBar();
+
+    // 5. Auto-refresh stats every 2 minutes (uses cache so no extra AD hit)
     setInterval(() => {
       cacheInvalidate('get_stats[]');
       loadStats();
     }, 2 * 60 * 1000);
   })();
+
+  // =========================================================
+  // Light / Dark mode toggle
+  // =========================================================
+
+  function toggleTheme() {
+    const isLight = document.body.classList.toggle('light-mode');
+    document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+    try { localStorage.setItem('aid_theme', isLight ? 'light' : 'dark'); } catch {}
+  }
+
+  // Apply saved preference on load
+  (function applyTheme() {
+    try {
+      if (localStorage.getItem('aid_theme') === 'light') {
+        document.body.classList.add('light-mode');
+        const btn = document.getElementById('theme-toggle');
+        if (btn) btn.textContent = '☀️';
+      }
+    } catch {}
+  })();
+
+  // =========================================================
+  // Keyboard shortcuts
+  // =========================================================
+
+  document.addEventListener('keydown', function(e) {
+    // Don't fire inside inputs, textareas, selects, or content-editable
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' ||
+        document.activeElement?.isContentEditable) return;
+
+    // Don't fire if a modifier key is held
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    const k = e.key;
+    if      (k === '?')      { e.preventDefault(); openModal('modal-shortcuts'); }
+    else if (k === 'Escape') { document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open')); }
+    else if (k === '/')      { e.preventDefault(); const s = document.getElementById('user-search'); if (s) { showPage('users'); s.focus(); } }
+    else if (k === 'u' || k === 'U') showPage('users');
+    else if (k === 't' || k === 'T') showPage('tickets');
+    else if (k === 'j' || k === 'J') showPage('chat');
+    else if (k === 'a' || k === 'A') showPage('audit');
+    else if (k === 's' || k === 'S') showPage('settings');
+    else if (k === 'm' || k === 'M') showPage('team');
+  });
 </script>
 </body>
 </html>

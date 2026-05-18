@@ -190,6 +190,16 @@ _SCHEMA = [
         created_at  TEXT NOT NULL,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL,
+        tenant_id  TEXT NOT NULL,
+        token      TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        used       INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (user_id)   REFERENCES tenant_users(id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    )""",
 ]
 
 
@@ -205,9 +215,73 @@ def init_db():
         conn.close()
 
 
+def migrate_db():
+    """Apply incremental schema changes for existing databases (safe to re-run)."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        # v1: add last_agent_ping column
+        if _USE_PG:
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS last_agent_ping TEXT")
+        else:
+            cur.execute("PRAGMA table_info(tenants)")
+            cols = [r["name"] for r in cur.fetchall()]
+            if "last_agent_ping" not in cols:
+                cur.execute("ALTER TABLE tenants ADD COLUMN last_agent_ping TEXT")
+        # v2: password reset tokens table (idempotent — CREATE TABLE IF NOT EXISTS)
+        cur.execute("""CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id         TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL,
+            tenant_id  TEXT NOT NULL,
+            token      TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            used       INTEGER NOT NULL DEFAULT 0
+        )""")
+        conn.commit()
+    except Exception:
+        pass  # Safe to ignore — already exists
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Tenant helpers
 # ---------------------------------------------------------------------------
+
+def update_agent_ping(tenant_id: str) -> None:
+    """Record that the agent just polled. Throttled: only writes once per 60s per tenant."""
+    from datetime import timedelta
+    now    = datetime.utcnow().isoformat()
+    cutoff = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE tenants SET last_agent_ping = {_PH} "
+            f"WHERE id = {_PH} AND (last_agent_ping IS NULL OR last_agent_ping < {_PH})",
+            (now, tenant_id, cutoff)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_agent_status(tenant_id: str) -> dict:
+    """Return whether the agent is online (pinged within last 35 seconds)."""
+    from datetime import timedelta
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"SELECT last_agent_ping FROM tenants WHERE id = {_PH}", (tenant_id,))
+        row = _row(cur.fetchone())
+    finally:
+        conn.close()
+    if not row or not row.get("last_agent_ping"):
+        return {"online": False, "last_ping": None}
+    last   = row["last_agent_ping"]
+    cutoff = (datetime.utcnow() - timedelta(seconds=35)).isoformat()
+    return {"online": last > cutoff, "last_ping": last}
+
 
 def create_tenant(name: str) -> dict:
     tenant_id = str(uuid.uuid4())
@@ -298,6 +372,37 @@ def verify_tenant_user(email: str, password: str) -> dict | None:
     if not check_password_hash(row["password_hash"], password):
         return None
     return row
+
+
+def delete_tenant_user(tenant_id: str, user_id: str) -> bool:
+    """Remove a dashboard user. Returns True if a row was deleted."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"DELETE FROM tenant_users WHERE id = {_PH} AND tenant_id = {_PH}",
+            (user_id, tenant_id)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def update_user_password(tenant_id: str, email: str, new_password: str) -> None:
+    """Update the password for a dashboard user."""
+    pw_hash = generate_password_hash(new_password)
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE tenant_users SET password_hash = {_PH} WHERE tenant_id = {_PH} AND email = {_PH}",
+            (pw_hash, tenant_id, email.lower().strip())
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def list_tenant_users(tenant_id: str) -> list:
@@ -799,6 +904,104 @@ def get_first_tenant_id() -> str | None:
         cur.execute("SELECT id FROM tenants ORDER BY created_at ASC LIMIT 1")
         row = _row(cur.fetchone())
         return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Password reset tokens
+# ---------------------------------------------------------------------------
+
+def create_password_reset_token(user_id: str, tenant_id: str) -> str:
+    """Create a time-limited password reset token. Returns the token string."""
+    import secrets as _sec
+    from datetime import timedelta
+    token      = _sec.token_urlsafe(32)
+    expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    row_id     = str(uuid.uuid4())
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        # Invalidate any existing unused tokens for this user
+        cur.execute(
+            f"UPDATE password_reset_tokens SET used = 1 WHERE user_id = {_PH} AND used = 0",
+            (user_id,)
+        )
+        cur.execute(
+            f"INSERT INTO password_reset_tokens (id, user_id, tenant_id, token, expires_at, used) "
+            f"VALUES ({_PH},{_PH},{_PH},{_PH},{_PH},0)",
+            (row_id, user_id, tenant_id, token, expires_at)
+        )
+        conn.commit()
+        return token
+    finally:
+        conn.close()
+
+
+def consume_password_reset_token(token: str) -> dict | None:
+    """Validate and consume a reset token. Returns {user_id, tenant_id} or None if invalid/expired."""
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM password_reset_tokens WHERE token = {_PH} AND used = 0 AND expires_at > {_PH}",
+            (token, now)
+        )
+        row = _row(cur.fetchone())
+        if not row:
+            return None
+        cur.execute(
+            f"UPDATE password_reset_tokens SET used = 1 WHERE id = {_PH}",
+            (row["id"],)
+        )
+        conn.commit()
+        return {"user_id": row["user_id"], "tenant_id": row["tenant_id"]}
+    finally:
+        conn.close()
+
+
+def update_user_password_by_id(user_id: str, new_password: str) -> None:
+    """Update the password for a tenant_user by their user id."""
+    pw_hash = generate_password_hash(new_password)
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE tenant_users SET password_hash = {_PH} WHERE id = {_PH}",
+            (pw_hash, user_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tenant_user_by_email(tenant_id: str, email: str) -> dict | None:
+    """Look up a tenant_user by email (case-insensitive). Returns dict or None."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM tenant_users WHERE tenant_id = {_PH} AND LOWER(email) = LOWER({_PH})",
+            (tenant_id, email)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def get_tenant_by_user_email(email: str) -> dict | None:
+    """Find the tenant record for a user by their email (across all tenants). Returns dict or None."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT t.* FROM tenants t "
+            f"JOIN tenant_users u ON u.tenant_id = t.id "
+            f"WHERE LOWER(u.email) = LOWER({_PH}) LIMIT 1",
+            (email,)
+        )
+        return _row(cur.fetchone())
     finally:
         conn.close()
 

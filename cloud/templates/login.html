@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AID Helpdesk — Sign In</title>
+  <meta name="description" content="Sign in to AID Helpdesk — manage Active Directory with plain English."/>
+  <link rel="icon" type="image/png" href="/logo.png"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -134,7 +136,7 @@
 <body>
   <div class="card">
     <div class="logo">
-      <img src="/logo.png" alt="AID" style="width:44px;height:44px;border-radius:50%;object-fit:cover;"/>
+      <img src="/logo.png" alt="AID" style="width:52px;height:52px;object-fit:contain;"/>
       <div class="logo-text">AID <span>Helpdesk</span></div>
     </div>
 
@@ -151,7 +153,10 @@
         <input type="email" id="email" name="email" placeholder="you@company.com" required autofocus/>
       </div>
       <div class="field">
-        <label for="password">Password</label>
+        <label for="password" style="display:flex;justify-content:space-between;align-items:center;">
+          Password
+          <a href="/forgot-password" style="font-size:11px;color:#818cf8;text-decoration:none;font-weight:400;">Forgot password?</a>
+        </label>
         <input type="password" id="password" name="password" placeholder="••••••••" required/>
       </div>
       <button type="submit">Sign in</button>
