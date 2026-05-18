@@ -1,8 +1,10 @@
-# AD Helpdesk
+# AID Helpdesk
 
-<img src="assets/logo.svg" alt="AD Helpdesk" width="480"/>
+<p align="center">
+  <img src="cloud/static/AIDLogo.png" alt="AID Helpdesk" width="120"/>
+</p>
 
-**Plug Claude into your Active Directory server and manage it with plain English.**
+**Plug AI into your Active Directory server and manage it with plain English.**
 
 Unlock accounts, reset passwords, create users, move OUs, run bulk operations - all by
 talking to Claude in Cowork. No clicking through MMC consoles, no scripting, no expensive

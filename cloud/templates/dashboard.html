@@ -924,15 +924,15 @@
 
       <!-- Janus AI insight card (manual trigger) -->
       <div style="margin-bottom:16px;">
-        <div id="janus-insight-card" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px;display:flex;align-items:flex-start;gap:12px;">
+        <button id="janus-insight-btn" class="btn btn-ghost" style="font-size:12px;" onclick="triggerInsight()">✨ Get Janus Insight</button>
+        <div id="janus-insight-card" style="display:none;margin-top:10px;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px;align-items:flex-start;gap:12px;">
           <span style="font-size:20px;flex-shrink:0;">✨</span>
           <div style="flex:1;">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent2);margin-bottom:4px;">Janus Insight</div>
             <div id="janus-insight-text" style="font-size:13px;color:var(--text);line-height:1.5;"></div>
           </div>
-          <button class="btn btn-ghost" style="font-size:11px;flex-shrink:0;" onclick="document.getElementById('janus-insight-card').style.display='none';document.getElementById('janus-insight-btn').style.display='inline-block';">✕</button>
+          <button class="btn btn-ghost" style="font-size:11px;flex-shrink:0;padding:4px 8px;" onclick="document.getElementById('janus-insight-card').style.display='none';document.getElementById('janus-insight-btn').style.display='inline-block';">✕</button>
         </div>
-        <button id="janus-insight-btn" class="btn btn-ghost" style="font-size:12px;" onclick="triggerInsight()">✨ Get Janus Insight</button>
       </div>
 
       <div class="panel">
@@ -941,7 +941,7 @@
           <span class="panel-count" id="users-count">loading...</span>
         </div>
         <div class="search-row">
-          <input class="search-input" id="user-search" placeholder="Search by name or username..." oninput="filterUsers()" autocomplete="off" autocorrect="off" spellcheck="false"/>
+          <input class="search-input" id="user-search" type="search" placeholder="Search by name or display name..." oninput="filterUsers()" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" spellcheck="false"/>
           <button class="btn btn-ghost" onclick="loadUsers()">↺ Refresh</button>
           {% if user_role == 'admin' %}
           <button class="btn btn-primary" onclick="openCreateUser()">+ New User</button>
@@ -1749,13 +1749,19 @@
   }
 
   async function triggerInsight() {
-    const btn = document.getElementById('janus-insight-btn');
+    const btn  = document.getElementById('janus-insight-btn');
+    const card = document.getElementById('janus-insight-card');
     btn.textContent = '✨ Asking Janus...';
     btn.disabled = true;
     await loadInsights();
-    btn.style.display = 'none';
     btn.textContent = '✨ Get Janus Insight';
     btn.disabled = false;
+    // Only hide the button if a result actually appeared
+    if (card.style.display !== 'none') {
+      btn.style.display = 'none';
+    } else {
+      toast('Janus insight unavailable — check ANTHROPIC_API_KEY in Railway.', 'error');
+    }
   }
 
   function renderUsers(users) {
