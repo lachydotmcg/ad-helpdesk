@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://aidhelpdesk.com">aidhelpdesk.com</a> &nbsp;·&nbsp;
-  <a href="https://aidhelpdesk.com/signup">Get started free</a>
+  <a href="https://web-production-01ecc.up.railway.app">Live demo</a> &nbsp;·&nbsp;
+  <a href="https://web-production-01ecc.up.railway.app/signup">Get started free</a>
 </p>
 
 ---
@@ -50,7 +50,7 @@ The **AID Agent** is a lightweight Windows process that runs on your server. It 
 
 ### 1. Create an account
 
-Sign up free at [aidhelpdesk.com/signup](https://aidhelpdesk.com/signup). No credit card needed.
+Sign up free at [web-production-01ecc.up.railway.app/signup](https://web-production-01ecc.up.railway.app/signup). No credit card needed.
 
 ### 2. Copy your API key
 
@@ -64,7 +64,7 @@ Download and run the agent installer from your dashboard. When prompted, paste y
 > aid-agent-setup.exe
 AID Helpdesk Agent Setup
 Enter your API key: ••••••••••••••••
-✓ Connected to aidhelpdesk.com
+✓ Connected to web-production-01ecc.up.railway.app
 ✓ Active Directory found: LAB.local
 ✓ Agent registered as Windows Service
 ✓ Done — your dashboard is live
@@ -181,7 +181,7 @@ See `cloud/.env.example` for all environment variables.
 ## Architecture
 
 ```
-aidhelpdesk.com  (cloud/app.py — Railway / any VPS)
+web-production-01ecc.up.railway.app  (cloud/app.py — Railway / any VPS)
     │  HTTPS polling
     ▼
 agent.py  (runs on customer's Windows machine or server)
@@ -236,4 +236,4 @@ PRs welcome on the agent, PowerShell scripts, and skill. Please open an issue fi
 
 **Cloud SaaS backend** (`cloud/`): MIT + [Commons Clause](https://commonsclause.com/)
 
-The Commons Clause means: you may use, modify, and self-host the cloud backend freely, but you may not sell it — i.e. offer a hosted version of AID Helpdesk as a subscription service to others — without a separate commercial agreement. Contact [hello@aidhelpdesk.com](mailto:hello@aidhelpdesk.com) if you want to discuss licensing.
+The Commons Clause means: you may use, modify, and self-host the cloud backend freely, but you may not sell it — i.e. offer a hosted version of AID Helpdesk as a subscription service to others — without a separate commercial agreement. Contact [hello@web-production-01ecc.up.railway.app](mailto:hello@web-production-01ecc.up.railway.app) if you want to discuss licensing.
