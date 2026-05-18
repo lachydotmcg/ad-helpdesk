@@ -71,10 +71,12 @@ def _rows(rows):
 
 _SCHEMA = [
     """CREATE TABLE IF NOT EXISTS tenants (
-        id          TEXT PRIMARY KEY,
-        name        TEXT NOT NULL,
-        api_key     TEXT NOT NULL UNIQUE,
-        created_at  TEXT NOT NULL
+        id             TEXT PRIMARY KEY,
+        name           TEXT NOT NULL,
+        api_key        TEXT NOT NULL UNIQUE,
+        created_at     TEXT NOT NULL,
+        plan           TEXT NOT NULL DEFAULT 'free',
+        last_agent_ping TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS tenant_users (
         id            TEXT PRIMARY KEY,
@@ -169,6 +171,7 @@ _SCHEMA = [
         tenant_id   TEXT NOT NULL,
         month       TEXT NOT NULL,
         janus_calls INTEGER NOT NULL DEFAULT 0,
+        ad_commands INTEGER NOT NULL DEFAULT 0,
         updated_at  TEXT NOT NULL,
         UNIQUE(tenant_id, month),
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
@@ -220,15 +223,26 @@ def migrate_db():
     conn = _get_conn()
     try:
         cur = _cur(conn)
-        # v1: add last_agent_ping column
+        # v1: add last_agent_ping + plan columns
         if _USE_PG:
             cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS last_agent_ping TEXT")
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free'")
         else:
             cur.execute("PRAGMA table_info(tenants)")
             cols = [r["name"] for r in cur.fetchall()]
             if "last_agent_ping" not in cols:
                 cur.execute("ALTER TABLE tenants ADD COLUMN last_agent_ping TEXT")
-        # v2: password reset tokens table (idempotent — CREATE TABLE IF NOT EXISTS)
+            if "plan" not in cols:
+                cur.execute("ALTER TABLE tenants ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'")
+        # v2: ad_commands column on usage table
+        if _USE_PG:
+            cur.execute("ALTER TABLE usage ADD COLUMN IF NOT EXISTS ad_commands INTEGER NOT NULL DEFAULT 0")
+        else:
+            cur.execute("PRAGMA table_info(usage)")
+            ucols = [r["name"] for r in cur.fetchall()]
+            if "ad_commands" not in ucols:
+                cur.execute("ALTER TABLE usage ADD COLUMN ad_commands INTEGER NOT NULL DEFAULT 0")
+        # v3: password reset tokens table (idempotent — CREATE TABLE IF NOT EXISTS)
         cur.execute("""CREATE TABLE IF NOT EXISTS password_reset_tokens (
             id         TEXT PRIMARY KEY,
             user_id    TEXT NOT NULL,
@@ -904,6 +918,55 @@ def get_first_tenant_id() -> str | None:
         cur.execute("SELECT id FROM tenants ORDER BY created_at ASC LIMIT 1")
         row = _row(cur.fetchone())
         return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Plan limits
+# ---------------------------------------------------------------------------
+
+PLAN_LIMITS = {
+    "free": {
+        "janus_calls":    10,   # Janus AI scans per month
+        "ad_commands":    5,    # AD actions (unlock, reset pwd, etc.) per month
+        "team_members":   1,    # Max dashboard users (just the owner)
+        "tickets":        20,   # Max tickets stored
+        "label":          "Free",
+        "price":          "£0",
+    },
+    "pro": {
+        "janus_calls":    500,
+        "ad_commands":    200,
+        "team_members":   5,
+        "tickets":        None,  # unlimited
+        "label":          "Pro",
+        "price":          "£29/month",
+    },
+}
+
+
+def get_plan_limits(plan: str) -> dict:
+    return PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+
+
+def get_tenant_plan(tenant_id: str) -> str:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"SELECT plan FROM tenants WHERE id = {_PH}", (tenant_id,))
+        row = _row(cur.fetchone())
+        return (row or {}).get("plan", "free")
+    finally:
+        conn.close()
+
+
+def set_tenant_plan(tenant_id: str, plan: str) -> None:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"UPDATE tenants SET plan = {_PH} WHERE id = {_PH}", (plan, tenant_id))
+        conn.commit()
     finally:
         conn.close()
 

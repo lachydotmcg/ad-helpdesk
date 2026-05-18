@@ -111,36 +111,76 @@
     <div class="plan-row">
       <div>
         <div class="plan-name">
-          Pro Plan &nbsp;
-          {% set trial_start = settings.get('trial_started_at') %}
-          {% if trial_start %}
-            <span class="badge badge-trial">Free Trial</span>
+          {{ plan_label }} &nbsp;
+          {% if tenant_plan == 'free' %}
+            <span class="badge badge-trial">Free</span>
           {% else %}
             <span class="badge badge-active">Active</span>
           {% endif %}
         </div>
       </div>
-      <div class="plan-price">£29 <span>/ month</span></div>
+      <div class="plan-price">
+        {% if tenant_plan == 'free' %}£0 <span>/ month</span>
+        {% else %}£29 <span>/ month</span>{% endif %}
+      </div>
     </div>
 
-    {% if settings.get('trial_started_at') %}
-    <div class="trial-bar-wrap" id="trial-bar-wrap">
-      <div class="trial-bar-bg">
-        <div class="trial-bar-fill" id="trial-bar" style="width:100%"></div>
+    <!-- Usage this month -->
+    <div style="margin:20px 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Janus AI scans</div>
+        <div style="font-size:22px;font-weight:800;color:var(--accent2);">{{ usage_janus }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">of {{ limits_janus }} this month</div>
+        <div style="margin-top:8px;background:var(--bg);border-radius:99px;height:4px;overflow:hidden;">
+          <div style="height:100%;background:var(--accent);border-radius:99px;width:{{ janus_pct }}%;"></div>
+        </div>
       </div>
-      <div class="trial-label" id="trial-label">Calculating trial...</div>
+      <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">AD actions</div>
+        <div style="font-size:22px;font-weight:800;color:var(--accent2);">{{ usage_commands }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">of {{ limits_commands }} this month</div>
+        <div style="margin-top:8px;background:var(--bg);border-radius:99px;height:4px;overflow:hidden;">
+          <div style="height:100%;background:var(--accent);border-radius:99px;width:{{ commands_pct }}%;"></div>
+        </div>
+      </div>
     </div>
-    {% endif %}
 
     <div class="features">
-      <div class="feature"><span class="check">✓</span> Unlimited AD users</div>
-      <div class="feature"><span class="check">✓</span> Janus AI — natural language</div>
+      {% if tenant_plan == 'free' %}
+      <div class="feature"><span class="check">✓</span> {{ limits_janus }} Janus AI scans / month</div>
+      <div class="feature"><span class="check">✓</span> {{ limits_commands }} AD actions / month</div>
+      <div class="feature"><span class="check">✓</span> Up to 20 tickets</div>
+      <div class="feature"><span class="check">✓</span> 1 team member</div>
       <div class="feature"><span class="check">✓</span> Smart ticket system</div>
       <div class="feature"><span class="check">✓</span> Activity feed &amp; audit log</div>
+      {% else %}
+      <div class="feature"><span class="check">✓</span> 500 Janus AI scans / month</div>
+      <div class="feature"><span class="check">✓</span> 200 AD actions / month</div>
+      <div class="feature"><span class="check">✓</span> Unlimited tickets</div>
       <div class="feature"><span class="check">✓</span> Up to 5 team members</div>
       <div class="feature"><span class="check">✓</span> Security &amp; impersonation checks</div>
+      <div class="feature"><span class="check">✓</span> Activity feed &amp; audit log</div>
+      {% endif %}
     </div>
   </div>
+
+  <!-- Plan comparison -->
+  {% if tenant_plan == 'free' %}
+  <div class="card" style="border-color:rgba(99,102,241,0.4);background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(129,140,248,0.03));">
+    <div class="card-title">Upgrade to Pro</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;">Free</div>
+        <div style="font-size:13px;color:var(--muted);line-height:2;">10 Janus scans/mo<br>5 AD actions/mo<br>1 team member<br>20 tickets<br>Community support</div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Pro — £29/mo</div>
+        <div style="font-size:13px;color:var(--text);line-height:2;">500 Janus scans/mo<br>200 AD actions/mo<br>5 team members<br>Unlimited tickets<br>Email support</div>
+      </div>
+    </div>
+    <a class="btn btn-primary" href="#" id="checkout-btn" style="display:inline-block;">Upgrade to Pro — £29/month</a>
+  </div>
+  {% endif %}
 
   <!-- Payment -->
   <div class="card">

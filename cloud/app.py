@@ -404,13 +404,29 @@ def dashboard():
 @app.route("/billing")
 @require_dashboard_user
 def billing():
-    settings = db.get_settings(g.tenant_id)
-    stripe_key = os.getenv("STRIPE_PUBLIC_KEY", "")
+    settings      = db.get_settings(g.tenant_id)
+    stripe_key    = os.getenv("STRIPE_PUBLIC_KEY", "")
+    plan          = db.get_tenant_plan(g.tenant_id)
+    limits        = db.get_plan_limits(plan)
+    usage         = db.get_usage(g.tenant_id) or {}
+    used_janus    = usage.get("janus_calls", 0)
+    used_commands = usage.get("ad_commands", 0)
+    lim_janus     = limits["janus_calls"]
+    lim_commands  = limits["ad_commands"]
     return render_template("billing.html",
                            tenant_name=g.tenant_name,
                            user_email=g.user_email,
                            settings=settings,
-                           stripe_key=stripe_key)
+                           stripe_key=stripe_key,
+                           tenant_plan=plan,
+                           plan_label=limits["label"],
+                           usage_janus=used_janus,
+                           usage_commands=used_commands,
+                           limits_janus=lim_janus,
+                           limits_commands=lim_commands,
+                           janus_pct=min(100, int(used_janus / lim_janus * 100)) if lim_janus else 0,
+                           commands_pct=min(100, int(used_commands / lim_commands * 100)) if lim_commands else 0,
+                           )
 
 
 @app.route("/dashboard/api/onboarding")
@@ -467,19 +483,33 @@ def dashboard_exec():
     if not action:
         return jsonify({"success": False, "message": "action is required."}), 400
 
-    command = db.queue_command(g.tenant_id, action, args)
-
-    # Log write operations
+    # Enforce plan limits for write (AD-mutating) actions
     write_actions = {
         "reset_password", "unlock_account", "enable_account",
         "disable_account", "add_to_group", "remove_from_group",
         "create_user", "move_user"
     }
     if action in write_actions:
+        plan   = db.get_tenant_plan(g.tenant_id)
+        limits = db.get_plan_limits(plan)
+        usage  = db.get_usage(g.tenant_id) or {}
+        used   = usage.get("ad_commands", 0)
+        cap    = limits["ad_commands"]
+        if used >= cap:
+            return jsonify({
+                "success": False,
+                "limit_reached": True,
+                "message": f"Monthly AD action limit reached ({cap} on {limits['label']} plan). Upgrade to Pro for {db.PLAN_LIMITS['pro']['ad_commands']} actions/month.",
+            }), 429
+
+    command = db.queue_command(g.tenant_id, action, args)
+
+    if action in write_actions:
         tgt = target or (args[0] if args else "")
         db.log_audit(g.tenant_id, g.user_email, action, tgt, "queued")
         db.log_activity(g.tenant_id, "ad_action", g.user_email, target=tgt,
                         detail=f"{action} queued via dashboard")
+        db.increment_usage(g.tenant_id, "ad_commands")
 
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
@@ -697,10 +727,17 @@ If this was a password reset, always state the new password clearly so the admin
 @app.route("/dashboard/api/usage")
 @require_dashboard_user
 def dashboard_usage():
-    """Return this tenant's Janus usage for the current month."""
-    usage   = db.get_usage(g.tenant_id)
+    """Return this tenant's usage, plan, and limits for the current month."""
+    plan    = db.get_tenant_plan(g.tenant_id)
+    limits  = db.get_plan_limits(plan)
+    usage   = db.get_usage(g.tenant_id) or {}
     history = db.get_usage_history(g.tenant_id)
-    return jsonify({"success": True, "data": {"current": usage, "history": history}})
+    return jsonify({"success": True, "data": {
+        "current": usage,
+        "history": history,
+        "plan":    plan,
+        "limits":  limits,
+    }})
 
 
 @app.route("/dashboard/api/settings", methods=["GET"])
@@ -820,6 +857,19 @@ def create_ticket():
     if not title or not description:
         return jsonify({"success": False, "message": "title and description are required."}), 400
 
+    # Enforce ticket count plan limit
+    plan   = db.get_tenant_plan(g.tenant_id)
+    limits = db.get_plan_limits(plan)
+    cap    = limits.get("tickets")
+    if cap is not None:
+        existing = db.list_tickets(g.tenant_id, limit=cap + 1)
+        if len(existing) >= cap:
+            return jsonify({
+                "success": False,
+                "limit_reached": True,
+                "message": f"Ticket limit reached ({cap} on {limits['label']} plan). Upgrade to Pro for unlimited tickets.",
+            }), 429
+
     ticket = db.create_ticket(
         g.tenant_id, g.user_email, title, description, priority,
         requester_name or None, requester_email or None
@@ -836,7 +886,13 @@ def create_ticket():
         ai_name  = os.getenv("AI_NAME", "Janus")
         settings = db.get_settings(g.tenant_id)
 
-        if api_key and settings.get("janus_enabled", True):
+        # Enforce Janus call plan limit
+        janus_usage  = db.get_usage(g.tenant_id) or {}
+        janus_used   = janus_usage.get("janus_calls", 0)
+        janus_cap    = limits["janus_calls"]
+        janus_ok     = janus_cap is None or janus_used < janus_cap
+
+        if api_key and settings.get("janus_enabled", True) and janus_ok:
             client = anthropic.Anthropic(api_key=api_key)
 
             # Build roles context for permission checking
@@ -994,6 +1050,7 @@ RULES:
                                          "⚠️ Janus auto-apply timed out — agent may be offline. Fix can be applied manually.", "janus")
 
     except Exception as e:
+        print(f"[janus] Ticket analysis error: {e}", flush=True)
         ticket["janus_error"] = str(e)
 
     return jsonify({"success": True, "data": ticket}), 201
@@ -1191,7 +1248,7 @@ def dashboard_insights():
             return jsonify({"success": True, "data": {"message": None}})
 
         # Collect context: recent tickets + activity
-        tickets     = db.get_tickets(g.tenant_id, limit=20)
+        tickets     = db.list_tickets(g.tenant_id, limit=20)
         open_count  = sum(1 for t in tickets if t.get("status") == "open")
         recent_act  = db.get_activity_feed(g.tenant_id, limit=10)
         recent_desc = "; ".join(
@@ -1275,6 +1332,19 @@ def dashboard_create_user():
         password = _gen_password()
     if role not in ("admin", "viewer"):
         return jsonify({"success": False, "message": "role must be admin or viewer."}), 400
+
+    # Enforce team member plan limit
+    plan    = db.get_tenant_plan(g.tenant_id)
+    limits  = db.get_plan_limits(plan)
+    current = db.list_tenant_users(g.tenant_id)
+    cap     = limits["team_members"]
+    if cap is not None and len(current) >= cap:
+        return jsonify({
+            "success": False,
+            "limit_reached": True,
+            "message": f"Team member limit reached ({cap} on {limits['label']} plan). Upgrade to Pro for up to {db.PLAN_LIMITS['pro']['team_members']} members.",
+        }), 429
+
     try:
         user = db.create_tenant_user(g.tenant_id, email, password, role)
         db.log_activity(g.tenant_id, "team_member_added", g.user_email,

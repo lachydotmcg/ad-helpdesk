@@ -937,7 +937,7 @@
           <span class="panel-count" id="users-count">loading...</span>
         </div>
         <div class="search-row">
-          <input class="search-input" id="user-search" placeholder="Search by name or username..." oninput="filterUsers()"/>
+          <input class="search-input" id="user-search" placeholder="Search by name or username..." oninput="filterUsers()" autocomplete="off" autocorrect="off" spellcheck="false"/>
           <button class="btn btn-ghost" onclick="loadUsers()">↺ Refresh</button>
           {% if user_role == 'admin' %}
           <button class="btn btn-primary" onclick="openCreateUser()">+ New User</button>
@@ -1759,7 +1759,10 @@
     for (const u of users) {
       const name   = u.DisplayName || u.Name || (u.GivenName + ' ' + u.Surname) || '—';
       const uname  = u.SamAccountName || u.Username || '—';
-      const ou     = (u.DistinguishedName || '').match(/OU=([^,]+)/)?.[1] || '—';
+      const _dn    = u.DistinguishedName || '';
+      const ou     = _dn.match(/OU=([^,]+)/)?.[1]
+                  || _dn.split(',').filter(p => p.startsWith('CN=')).slice(1)[0]?.split('=')[1]
+                  || '—';
       let pill = '<span class="pill pill-green">Active</span>';
       if (!u.Enabled)           pill = '<span class="pill pill-gray">Disabled</span>';
       if (u.LockedOut)          pill = '<span class="pill pill-red">Locked</span>';
@@ -2094,7 +2097,7 @@
         ['Title',       data.Title        || '—'],
         ['Last Logon',  data.LastLogonDate ? data.LastLogonDate.slice(0, 10) : 'Never'],
         ['Pwd Changed', data.PasswordLastSet ? data.PasswordLastSet.slice(0, 10) : '—'],
-        ['OU',          (data.DistinguishedName || '').match(/OU=([^,]+)/)?.[1] || '—'],
+        ['OU',          (() => { const d = data.DistinguishedName || ''; return d.match(/OU=([^,]+)/)?.[1] || d.split(',').filter(p => p.startsWith('CN=')).slice(1)[0]?.split('=')[1] || '—'; })()],
       ];
       document.getElementById('ud-meta-grid').innerHTML = meta.map(([k, v]) => `
         <div>
@@ -2666,10 +2669,20 @@
     const json = await res.json();
 
     if (json.success) {
-      const msg = json.data.auto_resolved
-        ? '✅ Ticket created and auto-resolved by Janus!'
-        : '🎫 Ticket created — Janus has analysed it.';
-      toast(msg, 'success');
+      let msg;
+      if (json.data.auto_resolved) {
+        msg = '✅ Ticket created and auto-resolved by Janus!';
+      } else if (json.data.janus_error) {
+        console.warn('[Janus] Analysis error:', json.data.janus_error);
+        msg = '🎫 Ticket created — Janus could not analyse it. Check Railway logs.';
+        toast(msg, 'error');
+        msg = null;
+      } else if (json.data.janus) {
+        msg = '🎫 Ticket created — Janus has analysed it.';
+      } else {
+        msg = '🎫 Ticket created. (Janus analysis skipped — API key or limit.)';
+      }
+      if (msg) toast(msg, 'success');
       ['nt-title','nt-description','nt-name','nt-email'].forEach(id => document.getElementById(id).value = '');
       await loadTickets();
       openTicket(json.data.id);
