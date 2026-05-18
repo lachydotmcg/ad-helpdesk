@@ -230,8 +230,8 @@ _SVG_LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
   <text x="85" y="121" text-anchor="middle" font-family="ui-monospace,monospace,system-ui"
         font-size="52" font-weight="800" fill="#ddd6fe" letter-spacing="-2">AI</text>
   <!-- D arc: right curved side of D, no left vertical stroke — same width as one character -->
-  <path d="M 114,71 C 116,71 138,78 138,95 C 138,112 116,121 114,121"
-        fill="none" stroke="#ddd6fe" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 114,91 C 139,91 139,117 114,117"
+        fill="none" stroke="#ddd6fe" stroke-width="7.5" stroke-linecap="round"/>
 </svg>"""
 
 
