@@ -120,8 +120,8 @@
         </div>
       </div>
       <div class="plan-price">
-        {% if tenant_plan == 'free' %}£0 <span>/ month</span>
-        {% else %}£29 <span>/ month</span>{% endif %}
+        {% if tenant_plan == 'free' %}A$0 <span>/ month</span>
+        {% else %}A$29 <span>/ month</span>{% endif %}
       </div>
     </div>
 
@@ -165,20 +165,31 @@
   </div>
 
   <!-- Plan comparison -->
-  {% if tenant_plan == 'free' %}
+  {% if tenant_plan in ['free', 'pro'] %}
   <div class="card" style="border-color:rgba(99,102,241,0.4);background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(129,140,248,0.03));">
-    <div class="card-title">Upgrade to Pro</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <div class="card-title">{% if tenant_plan == 'free' %}Upgrade to Pro or Enterprise{% else %}Upgrade to Enterprise{% endif %}</div>
+    <div style="display:grid;grid-template-columns:{% if tenant_plan == 'free' %}1fr 1fr 1fr{% else %}1fr 1fr{% endif %};gap:16px;margin-bottom:20px;">
+      {% if tenant_plan == 'free' %}
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;">Free</div>
-        <div style="font-size:13px;color:var(--muted);line-height:2;">10 Janus scans/mo<br>5 AD actions/mo<br>1 team member<br>20 tickets<br>Community support</div>
+        <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;">Free — A$0</div>
+        <div style="font-size:13px;color:var(--muted);line-height:2;">10 Janus scans/mo<br>5 AD actions/mo<br>1 team member<br>20 tickets<br>No email intake<br>Community support</div>
+      </div>
+      {% endif %}
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Pro — A$29/mo{% if tenant_plan == 'pro' %} <span class="badge badge-active" style="font-size:10px;">Current</span>{% endif %}</div>
+        <div style="font-size:13px;color:var(--text);line-height:2;">500 Janus scans/mo<br>200 AD actions/mo<br>5 team members<br>Unlimited tickets<br>📧 Email intake<br>Email support</div>
       </div>
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Pro — £29/mo</div>
-        <div style="font-size:13px;color:var(--text);line-height:2;">500 Janus scans/mo<br>200 AD actions/mo<br>5 team members<br>Unlimited tickets<br>Email support</div>
+        <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Enterprise — A$99/mo</div>
+        <div style="font-size:13px;color:var(--text);line-height:2;">2,000 Janus scans/mo<br>1,000 AD actions/mo<br>Unlimited team members<br>Unlimited tickets<br>📧 Email intake<br>📊 Scheduled reports<br>Priority support + SLA</div>
       </div>
     </div>
-    <a class="btn btn-primary" href="#" id="checkout-btn" style="display:inline-block;">Upgrade to Pro — £29/month</a>
+    {% if tenant_plan == 'free' %}
+    <a class="btn btn-primary" href="#" id="checkout-btn" style="margin-right:10px;">Upgrade to Pro — A$29/month</a>
+    <a class="btn btn-ghost" href="mailto:billing@aidhelpdesk.com">Contact us for Enterprise</a>
+    {% else %}
+    <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com">Contact us for Enterprise — A$99/month</a>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -189,7 +200,7 @@
       <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
         Subscribe to keep access after your trial ends. Cancel any time — no questions asked.
       </p>
-      <a class="btn btn-primary" href="#" id="checkout-btn">Subscribe — £29/month</a>
+      <a class="btn btn-primary" href="#" id="checkout-btn">Subscribe — A$29/month</a>
       <p style="font-size:12px;color:var(--muted);margin-top:10px;">Secured by Stripe. Your card details never touch our servers.</p>
     {% else %}
       <p style="font-size:14px;color:var(--muted);margin-bottom:16px;">

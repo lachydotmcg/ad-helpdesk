@@ -214,10 +214,34 @@ def favicon():
     return redirect(url_for("logo"), code=301)
 
 
+_SVG_LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <filter id="g"><feGaussianBlur stdDeviation="8"/></filter>
+    <radialGradient id="rg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="99" fill="url(#rg)" filter="url(#g)"/>
+  <circle cx="100" cy="100" r="90" fill="#07061a"/>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="#7c3aed" stroke-width="6"/>
+  <circle cx="100" cy="100" r="83" fill="none" stroke="#a78bfa" stroke-width="1.5" opacity="0.35"/>
+  <text x="100" y="121" text-anchor="middle" font-family="ui-monospace,monospace,system-ui"
+        font-size="52" font-weight="800" fill="#ddd6fe" letter-spacing="-2">AI&gt;</text>
+</svg>"""
+
+
 @app.route("/logo.png")
+@app.route("/logo.svg")
 def logo():
-    """Serve the AID logo via Flask's static file handler (most reliable on Railway)."""
-    return redirect(url_for("static", filename="AIDLogo.png"), code=302)
+    """Serve the AID logo. Tries PNG from static/, falls back to inline SVG."""
+    from flask import Response
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    png_path   = os.path.join(static_dir, "AIDLogo.png")
+    if os.path.isfile(png_path):
+        return send_file(png_path, mimetype="image/png")
+    # Reliable fallback: inline SVG (always works even without the static file)
+    return Response(_SVG_LOGO, mimetype="image/svg+xml")
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +275,136 @@ def login():
         error = "Invalid email or password."
 
     return render_template("login.html", error=error)
+
+
+# ---------------------------------------------------------------------------
+# Email ticket intake webhook
+# ---------------------------------------------------------------------------
+
+@app.route("/webhook/email/<api_key>", methods=["POST"])
+def email_intake(api_key):
+    """
+    Inbound email webhook — compatible with Mailgun, SendGrid, Postmark, and generic JSON.
+
+    Configure your email routing service to POST parsed emails to:
+      https://<your-app>.railway.app/webhook/email/<tenant_api_key>
+
+    Mailgun  → Inbound Routes → forward to this URL
+    SendGrid → Inbound Parse → forward to this URL
+    Postmark → Inbound Stream → forward to this URL
+    Cloudflare Email Routing → forward to a Mailgun/SendGrid account, then here
+    """
+    tenant = db.get_tenant_by_key(api_key)
+    if not tenant:
+        return jsonify({"success": False, "message": "Invalid API key."}), 401
+
+    tenant_id   = tenant["id"]
+    tenant_name = tenant.get("name", "")
+
+    # Check plan allows email intake
+    plan   = db.get_tenant_plan(tenant_id)
+    limits = db.get_plan_limits(plan)
+    if not limits.get("email_intake"):
+        return jsonify({"success": False,
+                        "message": f"Email intake is not available on the {limits['label']} plan. Upgrade to Pro."}), 403
+
+    # Rate limit: max 60 emails/hour per tenant
+    if not _rate_limit(f"email_intake:{tenant_id}", 60, 3600):
+        return jsonify({"success": False, "message": "Rate limit exceeded."}), 429
+
+    # ----- Parse email fields from multiple webhook formats -----
+    ct = (request.content_type or "").lower()
+
+    if "application/json" in ct:
+        # Postmark inbound / generic JSON
+        data       = request.get_json(force=True, silent=True) or {}
+        from_raw   = data.get("From") or data.get("from") or data.get("from_email") or ""
+        from_name  = data.get("FromName") or data.get("from_name") or ""
+        subject    = data.get("Subject") or data.get("subject") or "Support request"
+        body       = (data.get("TextBody") or data.get("body_plain") or
+                      data.get("text") or data.get("body") or "")
+    else:
+        # Mailgun / SendGrid multipart form-data
+        from_raw  = (request.form.get("from") or request.form.get("sender") or
+                     request.form.get("From") or "")
+        from_name = ""
+        subject   = (request.form.get("subject") or request.form.get("Subject") or "Support request")
+        body      = (request.form.get("stripped-text") or request.form.get("body-plain") or
+                     request.form.get("text") or request.form.get("TextBody") or "")
+
+    # Parse "Name <email>" format
+    from_email = from_raw.strip()
+    if "<" in from_raw:
+        parts      = from_raw.split("<", 1)
+        from_name  = from_name or parts[0].strip().strip('"').strip("'")
+        from_email = parts[1].rstrip(">").strip()
+
+    # Skip emails from our own system (avoid reply loops)
+    own_domain = os.getenv("SMTP_FROM", "")
+    if own_domain and from_email.lower().endswith("@" + own_domain.split("@")[-1]):
+        return jsonify({"success": True, "message": "Skipped — own domain."}), 200
+    if "noreply" in from_email.lower() or "no-reply" in from_email.lower():
+        return jsonify({"success": True, "message": "Skipped — noreply sender."}), 200
+
+    if not from_email or not body.strip():
+        return jsonify({"success": False, "message": "Could not parse email fields (from/body missing)."}), 400
+
+    # Enforce ticket count plan limit
+    cap = limits.get("tickets")
+    if cap is not None:
+        existing = db.list_tickets(tenant_id, limit=cap + 1)
+        if len(existing) >= cap:
+            return jsonify({"success": False, "message": "Ticket limit reached."}), 429
+
+    title  = subject[:120].strip()
+    desc   = body[:4000].strip()
+
+    ticket = db.create_ticket(
+        tenant_id,
+        created_by  = "email-intake",
+        title       = title,
+        description = desc,
+        priority    = "medium",
+        requester_name  = from_name or None,
+        requester_email = from_email or None,
+        source      = "email",
+    )
+
+    db.log_activity(tenant_id, "ticket_created", from_email,
+                    target=title, detail="via email intake")
+
+    # Janus analysis
+    result = _run_janus_analysis(
+        tenant_id, tenant_name, ticket["id"],
+        title, desc, from_name, from_email, limits
+    )
+
+    # Send auto-reply to requester acknowledging receipt
+    if from_email:
+        short_id = ticket["id"][:8].upper()
+        auto_msg  = (
+            f"Your request has been received and logged as ticket #{short_id}. "
+            f"Our IT team has been notified"
+        )
+        if result["parsed"] and result["parsed"].get("analysis"):
+            auto_msg += f" and our AI assistant has already begun analysing your issue"
+        auto_msg += ". We'll be in touch shortly."
+
+        if result.get("auto_resolved"):
+            auto_msg = (
+                f"Great news! Your request (#{short_id}) has been resolved automatically by Janus AI. "
+                f"If you still have issues, please reply or submit a new request."
+            )
+
+        send_ticket_email(
+            to_email    = from_email,
+            to_name     = from_name or "",
+            ticket_title = title,
+            action_taken = None,
+            message     = auto_msg
+        )
+
+    return jsonify({"success": True, "ticket_id": ticket["id"]}), 201
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -379,10 +533,12 @@ def reset_password(token):
 @app.route("/dashboard")
 @require_dashboard_user
 def dashboard():
+    plan = db.get_tenant_plan(g.tenant_id)
     return render_template("dashboard.html",
                            tenant_name=g.tenant_name,
                            user_email=g.user_email,
-                           user_role=g.user_role)
+                           user_role=g.user_role,
+                           tenant_plan=plan)
 
 
 @app.route("/billing")
@@ -818,6 +974,175 @@ def dashboard_activity():
 # ---------------------------------------------------------------------------
 # Tickets
 # ---------------------------------------------------------------------------
+# Shared Janus analysis helper
+# ---------------------------------------------------------------------------
+
+def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
+                        requester_name, requester_email, limits):
+    """
+    Run Janus AI analysis on a ticket and update it in the DB.
+    Returns a dict with keys: parsed, auto_resolved (bool), error (str or None).
+    Silently skips if API key is missing, plan limit hit, or Janus disabled.
+    """
+    import anthropic as _anthropic
+    api_key  = os.getenv("ANTHROPIC_API_KEY", "")
+    ai_name  = os.getenv("AI_NAME", "Janus")
+    settings = db.get_settings(tenant_id)
+
+    janus_usage = db.get_usage(tenant_id) or {}
+    janus_used  = janus_usage.get("janus_calls", 0)
+    janus_cap   = limits["janus_calls"]
+    janus_ok    = janus_cap is None or janus_used < janus_cap
+
+    if not api_key or not settings.get("janus_enabled", True) or not janus_ok:
+        return {"parsed": None, "auto_resolved": False, "error": None}
+
+    try:
+        client = _anthropic.Anthropic(api_key=api_key)
+
+        configured_roles = settings.get("roles", [])
+        roles_context = ""
+        if configured_roles:
+            roles_context = "\n\nCONFIGURED REQUESTER ROLES:\n"
+            for r in configured_roles:
+                roles_context += (
+                    f"  - Email pattern: '{r.get('email_pattern','*')}'"
+                    f" | Role: {r.get('role','user')}"
+                    f" | Can request for others: {r.get('can_request_for_others', False)}"
+                    f" | Allowed actions: {', '.join(r.get('allowed_actions', []) or ['all'])}\n"
+                )
+
+        trusted_domain  = settings.get("email_domain", "")
+        security_checks = settings.get("security_checks", True)
+        security_context = ""
+        if security_checks and trusted_domain:
+            security_context = (
+                f"\n\nSECURITY: Trusted domain is '{trusted_domain}'. Flag typosquatting, "
+                f"lookalike domains, or unauthorised cross-user requests."
+            )
+        elif security_checks:
+            security_context = (
+                "\n\nSECURITY: Flag spoofed/suspicious requester emails or impersonation attempts."
+            )
+
+        prompt = f"""You are {ai_name}, an AI assistant for Active Directory management at {tenant_name or 'this organisation'}.
+An IT support ticket has come in. Analyse it carefully.
+
+Ticket title: {title}
+Ticket description: {description}
+Requester name: {requester_name or 'Unknown'}
+Requester email: {requester_email or 'none provided'}
+{roles_context}
+{security_context}
+
+Available AD actions:
+  unlock_account    args: [username]
+  reset_password    args: [username, new_password]
+  enable_account    args: [username]
+  disable_account   args: [username]
+  get_user_info     args: [username]
+  add_to_group      args: [username, group_name]
+  move_user         args: [username, ou_name]
+  create_user       args: [first, last, username, ou]
+
+Respond in EXACTLY this JSON format (no other text):
+{{
+  "analysis": "2-3 sentence plain English summary of the issue and recommendation",
+  "can_auto_resolve": true or false,
+  "action": "action_name or null",
+  "args": ["arg1"] or [],
+  "confidence": "high / medium / low",
+  "security_flag": null or "description of security concern",
+  "permission_ok": true or false,
+  "notes": "any caveats or things the admin should verify"
+}}
+
+RULES:
+- Extract the username from the ticket body if stated explicitly.
+- If no username given, use the requester email local part (before '@') as the username. Treat it as confirmed with confidence "high". Do NOT say "inference required".
+- If the email local part is generic (info, admin, support, noreply) fall back to confidence "low".
+- Only set can_auto_resolve to true if confident about username AND action AND permission_ok is true.
+- security_flag must be null if no concerns (not an empty string)."""
+
+        resp   = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw    = resp.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        parsed = json.loads(raw)
+
+        analysis_text = parsed.get("analysis", "")
+        security_flag = parsed.get("security_flag")
+        perm_ok       = parsed.get("permission_ok", True)
+
+        if security_flag:
+            analysis_text += f"\n\n⚠️ Security flag: {security_flag}"
+        if not perm_ok:
+            analysis_text += "\n\n🔒 Permission check failed — review before applying any fix."
+
+        db.update_ticket(ticket_id, tenant_id,
+                         janus_analysis=analysis_text,
+                         janus_action=parsed.get("action"),
+                         janus_action_args=json.dumps(parsed.get("args", [])))
+        db.add_ticket_action(ticket_id, tenant_id, "janus_analysis", analysis_text, "janus")
+        db.increment_usage(tenant_id, "janus_calls")
+
+        if security_flag:
+            db.log_activity(tenant_id, "security_flag", "janus",
+                            target=requester_email or requester_name,
+                            detail=f"Ticket #{ticket_id[:8]}: {security_flag}")
+
+        # Auto-action
+        auto_resolved = False
+        can_auto      = parsed.get("can_auto_resolve", False)
+        janus_action  = parsed.get("action")
+        janus_args    = parsed.get("args", [])
+        auto_actions  = settings.get("janus_auto_actions", [])
+
+        if can_auto and janus_action and janus_args and perm_ok and janus_action in auto_actions and limits.get("auto_actions", False):
+            db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
+                                 f"⚡ Janus is automatically applying fix: {janus_action} {janus_args}...", "janus")
+            command    = db.queue_command(tenant_id, janus_action, janus_args)
+            result_data = None
+            deadline   = time.time() + 25
+            while time.time() < deadline:
+                time.sleep(0.6)
+                result = db.get_command_result(command["id"], tenant_id)
+                if result:
+                    result_data = result
+                    break
+
+            if result_data and result_data["success"]:
+                db.update_ticket(ticket_id, tenant_id, status="resolved")
+                db.add_ticket_action(ticket_id, tenant_id, "ad_action",
+                                     f"✅ Janus auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} — {result_data['message']}", "janus")
+                db.log_activity(tenant_id, "ticket_resolved", "janus", target=ticket_id,
+                                detail=f"Auto-resolved via {janus_action}")
+                auto_resolved = True
+                if requester_email:
+                    send_ticket_email(
+                        to_email=requester_email,
+                        to_name=requester_name or "",
+                        ticket_title=title,
+                        action_taken=f"{janus_action} on {janus_args[0] if janus_args else '?'}",
+                        message="Your account issue has been resolved automatically by Janus AI."
+                    )
+            elif result_data:
+                db.add_ticket_action(ticket_id, tenant_id, "ad_action",
+                                     f"❌ Janus auto-apply failed: {result_data['message']}", "janus")
+            else:
+                db.add_ticket_action(ticket_id, tenant_id, "ad_action",
+                                     "⚠️ Janus auto-apply timed out — agent may be offline.", "janus")
+
+        return {"parsed": parsed, "auto_resolved": auto_resolved, "error": None}
+
+    except Exception as e:
+        print(f"[janus] Analysis error for ticket {ticket_id}: {e}", flush=True)
+        return {"parsed": None, "auto_resolved": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 
 @app.route("/dashboard/api/tickets", methods=["GET"])
 @require_dashboard_user
@@ -863,179 +1188,17 @@ def create_ticket():
     db.log_activity(g.tenant_id, "ticket_created", g.user_email, target=ticket["id"],
                     detail=f"Ticket created: {title}")
 
-    # Janus auto-analysis — only runs if enabled in settings
-    try:
-        import anthropic
-        api_key  = os.getenv("ANTHROPIC_API_KEY", "")
-        ai_name  = os.getenv("AI_NAME", "Janus")
-        settings = db.get_settings(g.tenant_id)
-
-        # Enforce Janus call plan limit
-        janus_usage  = db.get_usage(g.tenant_id) or {}
-        janus_used   = janus_usage.get("janus_calls", 0)
-        janus_cap    = limits["janus_calls"]
-        janus_ok     = janus_cap is None or janus_used < janus_cap
-
-        if api_key and settings.get("janus_enabled", True) and janus_ok:
-            client = anthropic.Anthropic(api_key=api_key)
-
-            # Build roles context for permission checking
-            configured_roles = settings.get("roles", [])
-            roles_context = ""
-            if configured_roles:
-                roles_context = "\n\nCONFIGURED REQUESTER ROLES (who is authorised to request actions on behalf of others):\n"
-                for r in configured_roles:
-                    roles_context += (
-                        f"  - Email pattern: '{r.get('email_pattern','*')}'"
-                        f" | Role: {r.get('role','user')}"
-                        f" | Can request for others: {r.get('can_request_for_others', False)}"
-                        f" | Allowed actions: {', '.join(r.get('allowed_actions', []) or ['all'])}\n"
-                    )
-
-            # Build security context
-            trusted_domain   = settings.get("email_domain", "")
-            security_checks  = settings.get("security_checks", True)
-            security_context = ""
-            if security_checks and trusted_domain:
-                security_context = (
-                    f"\n\nSECURITY: The trusted email domain for this organisation is '{trusted_domain}'. "
-                    f"Check the requester email carefully. Flag typosquatting (swapped/extra letters like "
-                    f"'{trusted_domain.split('.')[0][:3]}' variations), lookalike domains, or any email that "
-                    f"looks suspicious. Also flag if the requester email has no matching role definition "
-                    f"but is trying to take action on another user's account."
-                )
-            elif security_checks:
-                security_context = (
-                    "\n\nSECURITY: Flag any requester email that looks like it could be spoofed, "
-                    "typosquatted, or suspicious. Also flag requests where someone appears to be "
-                    "impersonating IT staff (e.g. 'it@' from an unusual domain)."
-                )
-
-            analysis_prompt = f"""You are {ai_name}, an AI assistant for Active Directory management at {g.tenant_name or 'this organisation'}.
-An IT support ticket has just come in. Analyse it carefully.
-
-Ticket title: {title}
-Ticket description: {description}
-Requester name: {requester_name or 'Unknown'}
-Requester email: {requester_email or 'none provided'}
-{roles_context}
-{security_context}
-
-Available AD actions:
-  unlock_account    args: [username]
-  reset_password    args: [username, new_password]
-  enable_account    args: [username]
-  disable_account   args: [username]
-  get_user_info     args: [username]
-  add_to_group      args: [username, group_name]
-  move_user         args: [username, ou_name]
-  create_user       args: [first, last, username, ou]
-
-Respond in EXACTLY this JSON format (no other text):
-{{
-  "analysis": "2-3 sentence plain English summary of the issue and your recommendation",
-  "can_auto_resolve": true or false,
-  "action": "action_name or null",
-  "args": ["arg1"] or [],
-  "confidence": "high / medium / low",
-  "security_flag": null or "description of security concern (typosquatting, impersonation, unauthorised request, etc.)",
-  "permission_ok": true or false,
-  "notes": "any caveats or things the admin should verify before applying the fix"
-}}
-
-RULES:
-- Extract the username from the ticket if mentioned explicitly.
-- Extract the username from the ticket body if stated explicitly (e.g. "my username is jake.miller").
-- If no username is in the body, use the requester email local part (before '@') as the username — e.g. "sarah.chen" from "sarah.chen@company.com". If it looks like a real name, treat it as confirmed: set confidence "high" and write the analysis as if the username is known. Do NOT say "inference required" or "must be verified" — the email IS their identity proof.
-- If the email local part is generic (info, admin, support, noreply, it) or the requester name is suspicious, then fall back to name-based inference with confidence "low" and note it needs verification.
-- Do NOT infer anything if the requester is obviously fake (hacker, test, anonymous).
-- Only set can_auto_resolve to true if confident about the username AND the action AND permission_ok is true. Inferred usernames should generally be can_auto_resolve: false.
-- If roles are configured and the requester has no matching role, set permission_ok to false.
-- If the requester's role doesn't allow the requested action, set permission_ok to false and explain in security_flag.
-- security_flag must be null if there are no concerns — do not return an empty string."""
-
-            resp = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=500,
-                messages=[{"role": "user", "content": analysis_prompt}]
-            )
-            raw    = resp.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-            parsed = json.loads(raw)
-
-            # Build a rich analysis string that includes security flags
-            analysis_text = parsed.get("analysis", "")
-            security_flag = parsed.get("security_flag")
-            perm_ok       = parsed.get("permission_ok", True)
-
-            if security_flag:
-                analysis_text += f"\n\n⚠️ Security flag: {security_flag}"
-            if not perm_ok:
-                analysis_text += "\n\n🔒 Permission check failed — review before applying any fix."
-
-            db.update_ticket(
-                ticket["id"], g.tenant_id,
-                janus_analysis=analysis_text,
-                janus_action=parsed.get("action"),
-                janus_action_args=json.dumps(parsed.get("args", []))
-            )
-            db.add_ticket_action(ticket["id"], g.tenant_id, "janus_analysis", analysis_text, "janus")
-            db.increment_usage(g.tenant_id, "janus_calls")
-
-            # Log security flags to activity feed
-            if security_flag:
-                db.log_activity(g.tenant_id, "security_flag", "janus",
-                                target=requester_email or requester_name,
-                                detail=f"Ticket #{ticket['id'][:8]}: {security_flag}")
-
-            ticket["janus"] = parsed
-
-            # Auto-action: apply the fix automatically if enabled in settings
-            can_auto    = parsed.get("can_auto_resolve", False)
-            janus_action = parsed.get("action")
-            janus_args   = parsed.get("args", [])
-            auto_actions = settings.get("janus_auto_actions", [])
-
-            if can_auto and janus_action and janus_args and perm_ok and janus_action in auto_actions:
-                db.add_ticket_action(ticket["id"], g.tenant_id, "janus_analysis",
-                                     f"⚡ Janus is automatically applying fix: {janus_action} {janus_args}...", "janus")
-
-                command    = db.queue_command(g.tenant_id, janus_action, janus_args)
-                result_data = None
-                deadline   = time.time() + 25
-                while time.time() < deadline:
-                    time.sleep(0.6)
-                    result = db.get_command_result(command["id"], g.tenant_id)
-                    if result:
-                        result_data = result
-                        break
-
-                if result_data and result_data["success"]:
-                    db.update_ticket(ticket["id"], g.tenant_id, status="resolved")
-                    db.add_ticket_action(ticket["id"], g.tenant_id, "ad_action",
-                                         f"✅ Janus auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} — {result_data['message']}", "janus")
-                    db.log_activity(g.tenant_id, "ticket_resolved", "janus",
-                                    target=ticket["id"],
-                                    detail=f"Auto-resolved via {janus_action} on {janus_args[0] if janus_args else '?'}")
-                    ticket["auto_resolved"] = True
-                    # Email the requester
-                    if requester_email:
-                        send_ticket_email(
-                            to_email=requester_email,
-                            to_name=requester_name or "",
-                            ticket_title=title,
-                            action_taken=f"{janus_action} on {janus_args[0] if janus_args else '?'}",
-                            message="Your account issue has been resolved automatically by Janus AI. If you have further questions, please submit a new ticket."
-                        )
-                elif result_data:
-                    db.add_ticket_action(ticket["id"], g.tenant_id, "ad_action",
-                                         f"❌ Janus auto-apply failed: {result_data['message']}", "janus")
-                else:
-                    db.add_ticket_action(ticket["id"], g.tenant_id, "ad_action",
-                                         "⚠️ Janus auto-apply timed out — agent may be offline. Fix can be applied manually.", "janus")
-
-    except Exception as e:
-        print(f"[janus] Ticket analysis error: {e}", flush=True)
-        ticket["janus_error"] = str(e)
+    # Janus auto-analysis via shared helper
+    result = _run_janus_analysis(
+        g.tenant_id, g.tenant_name, ticket["id"],
+        title, description, requester_name, requester_email, limits
+    )
+    if result["parsed"]:
+        ticket["janus"] = result["parsed"]
+    if result["auto_resolved"]:
+        ticket["auto_resolved"] = True
+    if result["error"]:
+        ticket["janus_error"] = result["error"]
 
     return jsonify({"success": True, "data": ticket}), 201
 

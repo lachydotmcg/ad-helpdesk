@@ -263,10 +263,10 @@ def migrate_db():
 # ---------------------------------------------------------------------------
 
 def update_agent_ping(tenant_id: str) -> None:
-    """Record that the agent just polled. Throttled: only writes once per 60s per tenant."""
+    """Record that the agent just polled. Throttled: only writes once per 10s per tenant."""
     from datetime import timedelta
     now    = datetime.utcnow().isoformat()
-    cutoff = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+    cutoff = (datetime.utcnow() - timedelta(seconds=10)).isoformat()
     conn = _get_conn()
     try:
         cur = _cur(conn)
@@ -928,20 +928,40 @@ def get_first_tenant_id() -> str | None:
 
 PLAN_LIMITS = {
     "free": {
-        "janus_calls":    10,   # Janus AI scans per month
-        "ad_commands":    5,    # AD actions (unlock, reset pwd, etc.) per month
-        "team_members":   1,    # Max dashboard users (just the owner)
-        "tickets":        20,   # Max tickets stored
-        "label":          "Free",
-        "price":          "£0",
+        "janus_calls":       10,
+        "ad_commands":       5,
+        "team_members":      1,
+        "tickets":           20,
+        "email_intake":      False,
+        "auto_actions":      False,
+        "scheduled_reports": False,
+        "label":             "Free",
+        "price":             "A$0",
+        "price_monthly":     0,
     },
     "pro": {
-        "janus_calls":    500,
-        "ad_commands":    200,
-        "team_members":   5,
-        "tickets":        None,  # unlimited
-        "label":          "Pro",
-        "price":          "£29/month",
+        "janus_calls":       500,
+        "ad_commands":       200,
+        "team_members":      5,
+        "tickets":           None,
+        "email_intake":      True,
+        "auto_actions":      True,
+        "scheduled_reports": True,
+        "label":             "Pro",
+        "price":             "A$29/month",
+        "price_monthly":     29,
+    },
+    "enterprise": {
+        "janus_calls":       2000,
+        "ad_commands":       1000,
+        "team_members":      None,
+        "tickets":           None,
+        "email_intake":      True,
+        "auto_actions":      True,
+        "scheduled_reports": True,
+        "label":             "Enterprise",
+        "price":             "A$99/month",
+        "price_monthly":     99,
     },
 }
 

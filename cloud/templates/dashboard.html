@@ -1248,6 +1248,7 @@
             <!-- Auto-actions -->
             <div class="settings-section">
               <div class="settings-section-title">Janus Auto-Actions</div>
+              {% if tenant_plan in ['pro', 'enterprise'] %}
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">AD actions Janus can apply automatically without requiring admin approval. Use with caution.</div>
               <div style="display:flex;flex-direction:column;gap:0;">
                 <div class="toggle-row">
@@ -1291,6 +1292,16 @@
                   </label>
                 </div>
               </div>
+              {% else %}
+              <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:18px 20px;display:flex;align-items:center;gap:16px;">
+                <div style="font-size:28px;line-height:1;">🔒</div>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">Pro feature</div>
+                  <div style="font-size:12px;color:var(--muted);line-height:1.6;">Janus auto-actions let the AI resolve tickets hands-free — unlocking accounts, resetting passwords, and more without admin approval. Available on Pro and Enterprise plans.</div>
+                  <a href="/billing" style="display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:var(--accent2);text-decoration:none;">Upgrade to Pro — A$29/month →</a>
+                </div>
+              </div>
+              {% endif %}
             </div>
 
             <!-- Requester Roles -->
@@ -1306,6 +1317,46 @@
               <div id="roles-list"></div>
               <button class="btn btn-ghost" style="margin-top:10px;font-size:12px;" onclick="addRole()">+ Add role</button>
               <div style="font-size:11px;color:var(--muted);margin-top:8px;">Email pattern examples: *@it.company.com, manager@company.com, *@hr.company.com</div>
+            </div>
+
+            <!-- Email Ticket Intake -->
+            <div class="settings-section">
+              <div class="settings-section-title">📧 Email Ticket Intake
+                {% if tenant_plan in ['pro', 'enterprise'] %}
+                  <span style="font-size:11px;font-weight:400;color:var(--green);margin-left:8px;">✓ Available on your plan</span>
+                {% else %}
+                  <span style="font-size:11px;font-weight:400;color:var(--yellow);margin-left:8px;">Pro feature</span>
+                {% endif %}
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                Forward emails to this webhook URL and they'll automatically become tickets — Janus will analyse them instantly.
+                Works with Mailgun, SendGrid, Postmark, and Cloudflare Email Routing.
+              </div>
+              {% if tenant_plan in ['pro', 'enterprise'] %}
+              <div style="margin-bottom:10px;">
+                <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Your webhook URL</div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <input id="email-webhook-url" class="search-input" readonly
+                         style="flex:1;min-width:200px;max-width:520px;font-family:'Courier New',monospace;font-size:11px;color:var(--accent2);"
+                         placeholder="Loading..."/>
+                  <button class="btn btn-ghost" style="font-size:12px;"
+                          onclick="navigator.clipboard.writeText(document.getElementById('email-webhook-url').value).then(()=>toast('Webhook URL copied!','success'))">Copy</button>
+                </div>
+              </div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.7;">
+                <strong style="color:var(--text);">Setup:</strong> In your email routing service, create an inbound route that POSTs parsed email JSON to this URL.
+                No authentication header needed — your API key is in the URL.
+                Incoming emails create tickets in your queue automatically with Janus analysis.
+                An auto-reply is sent to the sender confirming receipt.
+              </div>
+              {% else %}
+              <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px 16px;">
+                <div style="font-size:13px;color:var(--text);margin-bottom:10px;">
+                  Upgrade to <strong>Pro</strong> to let staff email tickets directly to your helpdesk — Janus reads every one.
+                </div>
+                <a href="/billing" class="btn btn-primary" style="font-size:13px;">Upgrade to Pro →</a>
+              </div>
+              {% endif %}
             </div>
 
             <!-- Agent Configuration -->
@@ -2849,7 +2900,11 @@
       }
 
       if (tJson.success) {
-        document.getElementById('tenant-api-key').value = tJson.data.api_key;
+        const apiKey = tJson.data.api_key;
+        document.getElementById('tenant-api-key').value = apiKey;
+        // Populate email intake webhook URL
+        const whEl = document.getElementById('email-webhook-url');
+        if (whEl) whEl.value = `${location.origin}/webhook/email/${apiKey}`;
       }
     } catch (e) {
       toast('Could not load settings: ' + e.message, 'error');
