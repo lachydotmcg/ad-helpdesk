@@ -86,14 +86,27 @@ def _normalize_domain(domain: str) -> str:
 # Email helper
 # ---------------------------------------------------------------------------
 
-def send_ticket_email(to_email: str, to_name: str, ticket_title: str,
-                      action_taken: str, message: str):
+def _resolve_smtp(tenant_settings=None) -> dict:
+    """Return SMTP config, preferring tenant settings over environment variables."""
+    ts = tenant_settings or {}
+    host = ts.get("smtp_host") or os.getenv("SMTP_HOST", "")
+    port = int(ts.get("smtp_port") or os.getenv("SMTP_PORT", "587"))
+    user = ts.get("smtp_user") or os.getenv("SMTP_USER", "")
+    pwd  = ts.get("smtp_pass") or os.getenv("SMTP_PASS", "")
+    frm  = ts.get("smtp_from") or os.getenv("SMTP_FROM", user)
+    return {"host": host, "port": port, "user": user, "pass": pwd, "from": frm}
+
+
+def send_ticket_email(to_email, to_name, ticket_title,
+                      action_taken, message,
+                      tenant_settings=None):
     """Send email notification to ticket requester. Silently skips if SMTP not configured."""
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASS", "")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+    smtp = _resolve_smtp(tenant_settings)
+    smtp_host = smtp["host"]
+    smtp_port = smtp["port"]
+    smtp_user = smtp["user"]
+    smtp_pass = smtp["pass"]
+    smtp_from = smtp["from"]
 
     if not smtp_host or not smtp_user or not to_email:
         return  # SMTP not configured — skip silently
@@ -143,13 +156,15 @@ Your request "{ticket_title}" has been resolved.{action_line}
         print(f"[email] Failed to send to {to_email}: {e}")
 
 
-def send_email(to_email: str, subject: str, body_text: str, body_html: str):
+def send_email(to_email, subject, body_text, body_html,
+               tenant_settings=None):
     """Generic email helper for system emails (password reset, etc.). Skips silently if SMTP not configured."""
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASS", "")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+    smtp = _resolve_smtp(tenant_settings)
+    smtp_host = smtp["host"]
+    smtp_port = smtp["port"]
+    smtp_user = smtp["user"]
+    smtp_pass = smtp["pass"]
+    smtp_from = smtp["from"]
     if not smtp_host or not smtp_user or not to_email:
         return
     try:
@@ -420,7 +435,8 @@ def email_intake(api_key):
             to_name     = from_name or "",
             ticket_title = title,
             action_taken = None,
-            message     = auto_msg
+            message     = auto_msg,
+            tenant_settings = db.get_settings(tenant_id),
         )
 
     return jsonify({"success": True, "ticket_id": ticket["id"]}), 201
@@ -646,7 +662,8 @@ def dashboard_exec():
     write_actions = {
         "reset_password", "unlock_account", "enable_account",
         "disable_account", "add_to_group", "remove_from_group",
-        "create_user", "move_user"
+        "create_user", "move_user", "force_password_change",
+        "set_password_never_expires"
     }
     if action in write_actions:
         plan   = db.get_tenant_plan(g.tenant_id)
@@ -731,33 +748,54 @@ The user is an IT admin. Your job is to understand what they want and either:
   (b) Answer a general question conversationally if no AD action is needed.
 
 Available AD actions (use exact action names):
-  get_user_info          args: [username]                  -- look up a user's full details, role, groups
-  list_users             args: []                          -- list all users
-  search_users           args: [search_term]               -- search by name
-  list_ous               args: []                          -- list all Organisational Units
-  reset_password         args: [username, new_password]    -- reset a user's password
-  unlock_account         args: [username]                  -- unlock a locked account
-  enable_account         args: [username]                  -- enable a disabled account
-  disable_account        args: [username]                  -- disable an account
-  add_to_group           args: [username, group_name]      -- add user to AD group
-  remove_from_group      args: [username, group_name]      -- remove user from AD group
-  create_user            args: [first, last, username, ou] -- create new AD user
-  move_user              args: [username, ou_name]         -- move user to a different OU
-  list_locked_accounts   args: []                          -- list all locked accounts
-  list_expired_passwords args: []                          -- list expired passwords
-  get_stats              args: []                          -- domain stats (total, locked, expired)
+  USERS:
+  get_user_info              args: [username]                      -- full user details, groups, attributes
+  list_users                 args: []                              -- list all domain users
+  search_users               args: [search_term]                   -- search by name or username (partial match)
+  list_group_memberships     args: [username]                      -- all groups a user belongs to
+  create_user                args: [first, last, username, ou]     -- create new AD account (ou can be plain name)
+  move_user                  args: [username, ou_name]             -- move user to a different OU
+
+  ACCOUNT STATE:
+  unlock_account             args: [username]                      -- unlock a locked-out account
+  enable_account             args: [username]                      -- re-enable a disabled account
+  disable_account            args: [username]                      -- disable an account
+  reset_password             args: [username, new_password]        -- reset password; user must change at logon
+  force_password_change      args: [username]                      -- force password change at next logon
+  set_password_never_expires args: [username, true|false]          -- toggle password expiry policy
+
+  GROUPS:
+  list_groups                args: []                              -- list all AD groups
+  search_groups              args: [search_term]                   -- search groups by partial name
+  get_group_members          args: [group_name]                    -- list members of a group
+  add_to_group               args: [username, group_name]          -- add user to a group
+  remove_from_group          args: [username, group_name]          -- remove user from a group
+
+  OUs:
+  list_ous                   args: []                              -- list all Organisational Units
+
+  REPORTING:
+  list_locked_accounts       args: []                              -- all currently locked accounts
+  list_expired_passwords     args: []                              -- all accounts with expired passwords
+  get_stats                  args: []                              -- domain summary (total, locked, expired)
 
 When you need to run an AD action, respond ONLY with this exact JSON (no preamble, no extra text):
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
+SMART LOOKUP RULES (read these carefully):
+- When a group name might not be exact (user used shorthand, caps vary, etc.), ALWAYS run search_groups first with the key word before attempting group operations. Only attempt add_to_group / remove_from_group once you have the exact group name from a search result.
+- When a username looks uncertain or a previous action failed with "not found", run search_users first.
+- When creating a user and the OU path is ambiguous or unclear, run list_ous first to find the correct OU name, then create the user with the exact OU name from the results. Parse human-readable paths like "Staff > Management" as the leaf "Management" and search for it.
+- When a write action fails, your follow-up message MUST explain why and suggest what information to look up next (e.g. "Group not found — let me search for groups matching that name."). Then immediately issue the search action without waiting for the user to ask.
+
 CRITICAL RULES:
 - Output ONLY the raw JSON when taking an action — no "I'll look up..." or any other text before or after it.
 - If the conversation history already contains the result of a previous lookup, answer the follow-up question directly from that — do NOT run the action again.
-- When generating a temporary password, make it secure: uppercase + lowercase + numbers + symbol, 12+ chars. State it in the message field so the admin can share it.
-- Questions about a user's role, department, title, or group membership → use get_user_info.
-- Questions about who has expired passwords → always run list_expired_passwords, never answer from a stats cache. Stats counts can lag behind individual user attributes.
+- When generating a temporary password, make it secure: uppercase + lowercase + numbers + symbol, 12+ chars. State it clearly so the admin can share it.
+- Questions about a user's role, department, title, or groups → use get_user_info or list_group_memberships.
+- Questions about expired passwords → always run list_expired_passwords (not stats cache).
 - If no AD action is needed, respond conversationally in plain text — do NOT output JSON.
-- Keep responses concise. You are talking to an experienced IT admin."""
+- Keep responses concise and direct. You are talking to an experienced IT admin."""
 
     client   = anthropic.Anthropic(api_key=api_key)
     messages = []
@@ -801,15 +839,17 @@ CRITICAL RULES:
         args        = command_data["args"]
         intent_msg  = command_data.get("message", f"Running {action}...")
 
-        # Log write operations
+        # Log and count write operations
         write_actions = {
             "reset_password", "unlock_account", "enable_account",
             "disable_account", "add_to_group", "remove_from_group",
-            "create_user", "move_user"
+            "create_user", "move_user", "force_password_change",
+            "set_password_never_expires"
         }
         if action in write_actions:
             target = args[0] if args else ""
             db.log_audit(g.tenant_id, g.user_email, action, target, "queued")
+            db.increment_usage(g.tenant_id, "ad_commands")
 
         command    = db.queue_command(g.tenant_id, action, args)
         command_id = command["id"]
@@ -840,11 +880,14 @@ CRITICAL RULES:
         summary_prompt = f"""You are {ai_name}, an AD Helpdesk AI assistant. The user asked: "{message}"
 You ran this AD action: {action}
 Arguments used: {args}
-Agent result: success={result_data['success']}, message="{result_data['message']}", data={json.dumps(result_data['data'])[:1000]}
+Agent result: success={result_data['success']}, message="{result_data['message']}", data={json.dumps(result_data['data'])[:1200]}
 {password_note}
-Write a short, friendly plain-English summary of what happened. If it succeeded, confirm it clearly.
-If there was data returned (like a user list or stats), summarise the key points concisely.
-If this was a password reset, always state the new password clearly so the admin can pass it on. Keep it under 5 sentences."""
+Write a short, friendly plain-English summary of what happened.
+- If it succeeded: confirm clearly. Include key details (e.g. new password, group name, OU).
+- If it failed because something wasn't found (user, group, OU): say so clearly, then suggest or offer to search — e.g. "The group wasn't found. Want me to search for groups matching that name?"
+- If there was data returned (user list, group list, stats): summarise the key points concisely.
+- If this was a password reset: always state the new password clearly so the admin can share it.
+Keep it under 5 sentences. Be direct — no fluff."""
 
         summary_response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -904,7 +947,11 @@ def dashboard_usage():
 def dashboard_get_settings():
     """Return this tenant's Janus / automation settings."""
     settings = db.get_settings(g.tenant_id)
-    return jsonify({"success": True, "data": settings})
+    # Never expose smtp_pass in API response — redact it
+    safe = dict(settings)
+    if safe.get("smtp_pass"):
+        safe["smtp_pass"] = ""   # client shows placeholder text instead
+    return jsonify({"success": True, "data": safe})
 
 
 @app.route("/dashboard/api/settings", methods=["PATCH"])
@@ -916,9 +963,14 @@ def dashboard_update_settings():
     data    = request.get_json() or {}
     current = db.get_settings(g.tenant_id)
     allowed = {"janus_enabled", "janus_scan_emails", "janus_auto_actions",
-               "security_checks", "email_domain", "roles"}
+               "security_checks", "email_domain", "roles",
+               "custom_statuses", "custom_priorities", "ticket_labels",
+               "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from"}
     for k, v in data.items():
         if k in allowed:
+            # Never overwrite smtp_pass with an empty string (blank = "keep existing")
+            if k == "smtp_pass" and v == "":
+                continue
             current[k] = v
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
@@ -1073,15 +1125,17 @@ Requester email: {requester_email or 'none provided'}
 {roles_context}
 {security_context}
 
-Available AD actions:
-  unlock_account    args: [username]
-  reset_password    args: [username, new_password]
-  enable_account    args: [username]
-  disable_account   args: [username]
-  get_user_info     args: [username]
-  add_to_group      args: [username, group_name]
-  move_user         args: [username, ou_name]
-  create_user       args: [first, last, username, ou]
+Available AD actions for auto-resolution:
+  unlock_account         args: [username]                   -- unlock a locked account
+  reset_password         args: [username, new_password]     -- reset password (auto-generate 12-char secure password)
+  enable_account         args: [username]                   -- re-enable a disabled account
+  disable_account        args: [username]                   -- disable an account
+  force_password_change  args: [username]                   -- flag account to require password change at next logon
+  add_to_group           args: [username, group_name]       -- add user to an AD group
+  remove_from_group      args: [username, group_name]       -- remove user from an AD group
+  move_user              args: [username, ou_name]          -- move user to a different OU
+  create_user            args: [first, last, username, ou]  -- create new AD account (ou optional)
+  get_user_info          args: [username]                   -- look up user details (use when ticket needs review, not action)
 
 Respond in EXACTLY this JSON format (no other text):
 {{
@@ -1100,7 +1154,9 @@ RULES:
 - If no username given, use the requester email local part (before '@') as the username. Treat it as confirmed with confidence "high". Do NOT say "inference required".
 - If the email local part is generic (info, admin, support, noreply) fall back to confidence "low".
 - Only set can_auto_resolve to true if confident about username AND action AND permission_ok is true.
-- security_flag must be null if no concerns (not an empty string)."""
+- For password resets, generate a secure temporary password: uppercase + lowercase + numbers + symbol, 12+ chars.
+- security_flag must be null if no concerns (not an empty string).
+- For group operations, use the group name exactly as the user wrote it — the agent can handle partial name matching."""
 
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -1164,7 +1220,8 @@ RULES:
                         to_name=requester_name or "",
                         ticket_title=title,
                         action_taken=f"{janus_action} on {janus_args[0] if janus_args else '?'}",
-                        message="Your account issue has been resolved automatically by Janus AI."
+                        message="Your account issue has been resolved automatically by Janus AI.",
+                        tenant_settings=db.get_settings(tenant_id),
                     )
             elif result_data:
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
@@ -1286,7 +1343,8 @@ def update_ticket(ticket_id):
                         to_name=requester_name or "",
                         ticket_title=title,
                         action_taken=new_status.capitalize(),
-                        message=summary
+                        message=summary,
+                        tenant_settings=db.get_settings(g.tenant_id),
                     )
     return jsonify({"success": True})
 
@@ -1386,7 +1444,8 @@ def apply_ticket_fix_complete(ticket_id):
                 to_name=ticket.get("requester_name", ""),
                 ticket_title=ticket["title"],
                 action_taken=f"{action} on {args[0] if args else '?'}",
-                message="Your account issue has been resolved. If you have further questions, please submit a new ticket."
+                message="Your account issue has been resolved. If you have further questions, please submit a new ticket.",
+                tenant_settings=db.get_settings(g.tenant_id),
             )
     else:
         db.add_ticket_action(ticket_id, g.tenant_id, "ad_action",

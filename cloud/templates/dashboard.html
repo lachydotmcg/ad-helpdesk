@@ -20,6 +20,9 @@
       --green:     #34d399;
       --red:       #f87171;
       --yellow:    #fbbf24;
+      --success:   #34d399;
+      --error:     #f87171;
+      --warn:      #fbbf24;
     }
 
     /* Light mode theme */
@@ -35,6 +38,9 @@
       --green:    #16a34a;
       --red:      #dc2626;
       --yellow:   #d97706;
+      --success:  #16a34a;
+      --error:    #dc2626;
+      --warn:     #d97706;
     }
 
     body {
@@ -937,7 +943,7 @@
       <span class="nav-icon">👤</span> Team
     </div>
     <div class="nav-item" onclick="showPage('settings')">
-      <span class="nav-icon">⚙️</span> Janus Settings
+      <span class="nav-icon">⚙️</span> Settings
     </div>
     {% endif %}
   </aside>
@@ -948,16 +954,65 @@
     <!-- ===== USERS PAGE ===== -->
     <div class="page active" id="page-users">
 
-      <!-- Onboarding checklist (hidden once dismissed or all done) -->
-      <div id="onboarding-panel" style="display:none;background:var(--surface);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:20px 24px;margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <!-- Onboarding — step-by-step guided setup -->
+      <div id="onboarding-panel" style="display:none;background:var(--surface);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:0;margin-bottom:20px;overflow:hidden;">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);">
           <div>
-            <div style="font-size:15px;font-weight:700;">🚀 Getting started</div>
+            <div style="font-size:15px;font-weight:700;">🚀 Let's get you set up</div>
             <div style="font-size:12px;color:var(--muted);margin-top:2px;" id="onboard-trial-label"></div>
           </div>
           <button onclick="dismissOnboarding()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;" title="Dismiss">×</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;" id="onboard-steps"></div>
+
+        <!-- Step 1: Connect agent -->
+        <div id="onboard-step-connect" style="padding:20px 24px;">
+          <div style="display:flex;gap:16px;align-items:flex-start;">
+            <div style="font-size:28px;flex-shrink:0;line-height:1;">🔌</div>
+            <div style="flex:1;">
+              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Connect your Windows agent</div>
+              <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:12px;">
+                AID Helpdesk needs a small agent running on your Windows Server to talk to Active Directory.
+                Copy your API key below and paste it into <code style="background:rgba(99,102,241,0.12);padding:1px 6px;border-radius:4px;font-size:11px;">agent-config.json</code>, then run <code style="background:rgba(99,102,241,0.12);padding:1px 6px;border-radius:4px;font-size:11px;">python agent.py</code>.
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+                <input id="onboard-api-key" class="search-input" readonly
+                       style="flex:1;min-width:180px;max-width:380px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
+                       placeholder="Loading..."/>
+                <button class="btn btn-ghost" style="font-size:12px;" onclick="copyOnboardApiKey()">📋 Copy key</button>
+              </div>
+              <div id="onboard-agent-status" style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+                <span class="status-dot" id="onboard-dot" style="display:inline-block;margin-right:6px;"></span>
+                <span id="onboard-agent-label">Waiting for agent...</span>
+              </div>
+              <button class="btn btn-primary" id="onboard-check-btn" style="font-size:13px;" onclick="onboardCheckConnection()">
+                ✓ I've pasted the key — check connection
+              </button>
+              <div id="onboard-checking" style="display:none;font-size:12px;color:var(--muted);margin-top:8px;">
+                <span class="spinner" style="width:14px;height:14px;margin-right:6px;"></span>Checking for agent...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Configure domain (shown once connected) -->
+        <div id="onboard-step-domain" style="display:none;padding:16px 24px;border-top:1px solid var(--border);background:var(--surface2);">
+          <div style="display:flex;gap:16px;align-items:flex-start;">
+            <div style="font-size:22px;flex-shrink:0;line-height:1;">✅</div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:4px;">Agent connected!</div>
+              <div style="font-size:12px;color:var(--muted);">Your Windows agent is online and syncing. One more thing — set your trusted email domain so Janus can verify requesters.</div>
+              <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+                <input class="search-input" id="onboard-domain" placeholder="company.com" style="font-size:13px;max-width:220px;padding:7px 12px;"/>
+                <button class="btn btn-primary" style="font-size:13px;" onclick="onboardSaveDomain()">Save &amp; finish</button>
+                <button class="btn btn-ghost" style="font-size:12px;" onclick="dismissOnboarding()">Skip for now</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress strip -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0;border-top:1px solid var(--border);" id="onboard-steps"></div>
       </div>
 
       <!-- Smart alert banners — shown when there are issues -->
@@ -968,7 +1023,7 @@
           <div class="stat-value" id="stat-total">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Locked</div>
+          <div class="stat-label">Locked Out</div>
           <div class="stat-value red" id="stat-locked">—</div>
         </div>
         <div class="stat-card">
@@ -982,7 +1037,7 @@
       </div>
 
       <!-- Usage this month card (inline, small) -->
-      <div id="usage-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;margin-bottom:14px;display:flex;gap:28px;align-items:center;flex-wrap:wrap;">
+      <div id="usage-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;margin-bottom:14px;gap:28px;align-items:center;flex-wrap:wrap;">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);flex-shrink:0;">📊 <span id="usage-month"></span></div>
         <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;">
           <div>
@@ -1250,8 +1305,8 @@
 
     <!-- Reply box -->
     <div class="tm-reply">
-      <textarea id="td-comment" rows="2" placeholder="Add a comment or note…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitComment();}"></textarea>
-      <button class="btn btn-primary" onclick="submitComment()" style="flex-shrink:0;">Send</button>
+      <textarea id="td-comment" rows="2" placeholder="Add an internal note or comment… (Shift+Enter for new line)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitComment();}"></textarea>
+      <button class="btn btn-primary" onclick="submitComment()" style="flex-shrink:0;">Add note</button>
     </div>
   </div>
 </div>
@@ -1271,12 +1326,14 @@
           <div class="chat-empty" id="chat-empty">
             <div class="chat-empty-icon">✨</div>
             <h3>Hi, I'm Janus</h3>
-            <p>I'm your AI assistant for Active Directory. Ask me anything — look up users, unlock accounts, reset passwords, run bulk operations — all in plain English.</p>
+            <p>I'm your AI assistant for Active Directory. Ask me anything — look up users, unlock accounts, reset passwords, manage groups — all in plain English.</p>
             <div class="chat-suggestions">
               <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
               <span class="chat-suggestion" onclick="sendSuggestion(this)">Show me domain stats</span>
               <span class="chat-suggestion" onclick="sendSuggestion(this)">Find users with expired passwords</span>
-              <span class="chat-suggestion" onclick="sendSuggestion(this)">Look up jake.miller</span>
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">What groups is sarah.jones in?</span>
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">List all OUs</span>
+              <span class="chat-suggestion" onclick="sendSuggestion(this)">Unlock john.smith and force a password change</span>
             </div>
           </div>
         </div>
@@ -1349,7 +1406,7 @@
       <div style="max-width:680px;">
         <div class="panel">
           <div class="panel-header">
-            <span class="panel-title">⚙️ Janus Settings</span>
+            <span class="panel-title">⚙️ Settings</span>
             <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()" disabled style="opacity:0.45;cursor:default;">Save changes</button>
           </div>
           <div style="padding:24px;">
@@ -1586,16 +1643,36 @@
             <!-- SMTP Email Notifications -->
             <div class="settings-section">
               <div class="settings-section-title">Email Notifications (SMTP)</div>
-              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-                When configured, Janus emails requesters automatically when their ticket is resolved.
-                Set these as environment variables on your Railway deployment.
+              <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+                Configure outbound email so Janus can notify requesters when their ticket is updated.
+                Works with Gmail, Zoho, Outlook 365, or any SMTP provider.
               </div>
-              <div style="font-size:12px;padding:10px 14px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:8px;font-family:'Courier New',monospace;color:var(--accent2);line-height:1.8;">
-                SMTP_HOST=smtp.gmail.com<br>
-                SMTP_PORT=587<br>
-                SMTP_USER=helpdesk@yourcompany.com<br>
-                SMTP_PASS=your-app-password<br>
-                SMTP_FROM=helpdesk@yourcompany.com
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">SMTP Host</label>
+                  <input id="smtp-host" class="search-input" placeholder="smtp.gmail.com" style="font-size:13px;width:100%;"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Port</label>
+                  <input id="smtp-port" class="search-input" placeholder="587" style="font-size:13px;width:100%;"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Username / Email</label>
+                  <input id="smtp-user" class="search-input" placeholder="helpdesk@yourcompany.com" style="font-size:13px;width:100%;"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">From Address</label>
+                  <input id="smtp-from" class="search-input" placeholder="helpdesk@yourcompany.com" style="font-size:13px;width:100%;"/>
+                </div>
+                <div style="grid-column:1/-1;">
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">App Password / SMTP Password</label>
+                  <input id="smtp-pass" type="password" class="search-input" placeholder="Leave blank to keep existing" style="font-size:13px;width:100%;"/>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6;">
+                💡 For Gmail: enable 2FA and use an <a href="https://support.google.com/accounts/answer/185833" target="_blank" style="color:var(--accent2);">App Password</a>.
+                For Zoho: use <code style="font-size:10px;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;">smtp.zoho.eu</code> on port 587.
+                Changes take effect immediately — no redeploy needed.
               </div>
             </div>
 
@@ -1870,18 +1947,18 @@
   function setAgentStatus(online) {
     _agentOnline = online;
     const cls  = 'status-dot ' + (online ? 'online' : 'offline');
-    const text = online ? 'Agent connected' : 'Agent offline';
+    const text = online ? 'Agent connected' : 'No agent';
     // Nav header dot
     const dot   = document.getElementById('agent-dot');
     const label = document.getElementById('agent-label');
     if (dot)   dot.className    = cls;
-    if (label) label.textContent = text;
+    if (label) { label.textContent = text; label.title = online ? 'Windows agent is running and polling' : 'No Windows agent connected — run agent.py on your server'; }
     // Settings page dot (may not exist yet)
     const sdot   = document.getElementById('settings-agent-dot');
     const slabel = document.getElementById('settings-agent-label');
     if (sdot)   sdot.className    = cls;
-    if (slabel) slabel.textContent = text;
-    if (slabel) slabel.style.color = online ? 'var(--success, #4ade80)' : 'var(--error, #f87171)';
+    if (slabel) slabel.textContent = online ? 'Agent connected and polling' : 'No agent connected';
+    if (slabel) slabel.style.color = online ? 'var(--success)' : 'var(--error)';
   }
 
   // =========================================================
@@ -1906,8 +1983,9 @@
       renderUsers(_allUsers);
       document.getElementById('users-count').textContent = _allUsers.length + ' users';
     } catch (e) {
+      const agentHint = !_agentOnline ? '<div style="font-size:12px;color:var(--muted);margin-top:8px;">Make sure your Windows agent is running — see Settings → Agent Configuration.</div>' : '';
       document.getElementById('users-table-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}</div>`;
+        `<div class="empty"><div class="empty-icon">⚠️</div>${e.message}${agentHint}</div>`;
     }
   }
 
@@ -2027,7 +2105,7 @@
     if (card.style.display !== 'none') {
       btn.style.display = 'none';
     } else {
-      toast('Janus insight unavailable — check ANTHROPIC_API_KEY in Railway.', 'error');
+      toast('Janus insight unavailable — Janus needs an active agent connection.', 'info');
     }
   }
 
@@ -2584,26 +2662,31 @@
 
   async function loadOnboarding() {
     try {
-      const res  = await fetch('/dashboard/api/onboarding');
-      const json = await res.json();
-      if (!json.success) return;
-      const d = json.data;
+      const [obRes, tenRes] = await Promise.all([
+        fetch('/dashboard/api/onboarding'),
+        fetch('/dashboard/api/tenant'),
+      ]);
+      const obJson  = await obRes.json();
+      const tenJson = await tenRes.json();
+      if (!obJson.success) return;
+      const d = obJson.data;
       if (d.dismissed) return;
 
       const steps = [
-        { key: 'agent_connected',   done: d.agent_connected,   label: 'Connect the Windows agent',  action: () => showPage('settings'), tip: 'Copy your API key from Settings → Agent Config' },
-        { key: 'email_domain_set',  done: d.email_domain_set,  label: 'Set your email domain',       action: () => showPage('settings'), tip: 'Settings → Trusted Email Domain' },
-        { key: 'first_ticket',      done: d.first_ticket,      label: 'Create your first ticket',    action: () => showPage('tickets'),  tip: 'Try the Tickets page' },
-        { key: 'team_member_added', done: d.team_member_added, label: 'Invite a team member',        action: () => showPage('team'),     tip: 'Settings → Team tab' },
+        { key: 'agent_connected',   done: d.agent_connected,   label: 'Connect the Windows agent',  tip: 'Copy your API key and run agent.py on your server' },
+        { key: 'email_domain_set',  done: d.email_domain_set,  label: 'Set your email domain',       tip: 'Lets Janus verify who is making requests' },
+        { key: 'first_ticket',      done: d.first_ticket,      label: 'Create your first ticket',    tip: 'Email in or use the Tickets page' },
+        { key: 'team_member_added', done: d.team_member_added, label: 'Invite a team member',        tip: 'Settings → Team tab' },
       ];
 
       const allDone = steps.every(s => s.done);
       if (allDone) return;  // checklist complete — hide it
 
-      const panel = document.getElementById('onboarding-panel');
+      const panel   = document.getElementById('onboarding-panel');
       const stepsEl = document.getElementById('onboard-steps');
       const trialEl = document.getElementById('onboard-trial-label');
 
+      // Trial countdown
       if (d.trial_days_left !== null) {
         trialEl.textContent = d.trial_days_left > 0
           ? `${d.trial_days_left} days left in your free trial`
@@ -2611,23 +2694,40 @@
         trialEl.style.color = d.trial_days_left <= 3 ? 'var(--error)' : 'var(--muted)';
       }
 
-      stepsEl.innerHTML = steps.map(s => `
-        <div onclick="${s.done ? '' : `(${s.action.toString()})()`}"
-             style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
-                    background:var(--surface2);border-radius:10px;
-                    border:1px solid ${s.done ? 'rgba(74,222,128,0.2)' : 'var(--border)'};
-                    cursor:${s.done ? 'default' : 'pointer'};transition:border-color 0.2s;"
-             ${s.done ? '' : 'onmouseenter="this.style.borderColor=\'var(--accent2)\'" onmouseleave="this.style.borderColor=\'var(--border)\'"'}>
-          <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;
-                      background:${s.done ? 'rgba(74,222,128,0.15)' : 'rgba(99,102,241,0.1)'};
-                      border:1.5px solid ${s.done ? 'var(--success)' : 'var(--border)'};
-                      display:flex;align-items:center;justify-content:center;font-size:12px;">
-            ${s.done ? '✓' : ''}
+      // Populate API key
+      if (tenJson.success) {
+        const keyEl = document.getElementById('onboard-api-key');
+        if (keyEl) keyEl.value = tenJson.data.api_key || '';
+      }
+
+      // Show domain step if already connected
+      if (d.agent_connected) {
+        const domainStep = document.getElementById('onboard-step-domain');
+        if (domainStep) domainStep.style.display = 'block';
+        // Update the agent status indicator
+        const dotEl   = document.getElementById('onboard-dot');
+        const labelEl = document.getElementById('onboard-agent-label');
+        const checkBtn = document.getElementById('onboard-check-btn');
+        if (dotEl)   dotEl.className   = 'status-dot online';
+        if (labelEl) labelEl.textContent = 'Agent is online ✓';
+        if (checkBtn) checkBtn.style.display = 'none';
+      }
+
+      // Progress strip at the bottom
+      stepsEl.innerHTML = steps.map((s, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;
+                    border-right:${i < steps.length - 1 ? '1px solid var(--border)' : 'none'};
+                    background:${s.done ? 'rgba(52,211,153,0.05)' : 'transparent'};">
+          <div style="flex-shrink:0;width:20px;height:20px;border-radius:50%;
+                      background:${s.done ? 'rgba(52,211,153,0.2)' : 'rgba(99,102,241,0.08)'};
+                      border:1.5px solid ${s.done ? 'var(--green)' : 'var(--border)'};
+                      display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--green);">
+            ${s.done ? '✓' : `<span style="color:var(--muted);font-size:10px;">${i + 1}</span>`}
           </div>
           <div>
-            <div style="font-size:13px;font-weight:600;color:${s.done ? 'var(--muted)' : 'var(--text)'};
+            <div style="font-size:11px;font-weight:600;color:${s.done ? 'var(--muted)' : 'var(--text)'};
                         ${s.done ? 'text-decoration:line-through;' : ''}">${s.label}</div>
-            ${s.done ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${s.tip}</div>`}
+            ${s.done ? '' : `<div style="font-size:10px;color:var(--muted);">${s.tip}</div>`}
           </div>
         </div>`).join('');
 
@@ -2635,8 +2735,95 @@
     } catch { /* non-critical */ }
   }
 
+  function copyOnboardApiKey() {
+    const el = document.getElementById('onboard-api-key');
+    if (!el || !el.value) return;
+    navigator.clipboard.writeText(el.value).then(() => {
+      toast('API key copied to clipboard', 'success');
+    }).catch(() => {
+      el.select();
+      document.execCommand('copy');
+      toast('API key copied', 'success');
+    });
+  }
+
+  let _onboardPollTimer = null;
+  let _onboardPollCount = 0;
+
+  async function onboardCheckConnection() {
+    const checkBtn   = document.getElementById('onboard-check-btn');
+    const checking   = document.getElementById('onboard-checking');
+    const dotEl      = document.getElementById('onboard-dot');
+    const labelEl    = document.getElementById('onboard-agent-label');
+
+    if (checkBtn) checkBtn.style.display = 'none';
+    if (checking) checking.style.display = 'flex';
+    if (dotEl)    dotEl.className = 'status-dot';
+    if (labelEl)  labelEl.textContent = 'Checking...';
+
+    _onboardPollCount = 0;
+    clearInterval(_onboardPollTimer);
+
+    _onboardPollTimer = setInterval(async () => {
+      _onboardPollCount++;
+      try {
+        const res  = await fetch('/dashboard/api/onboarding');
+        const json = await res.json();
+        if (json.success && json.data.agent_connected) {
+          clearInterval(_onboardPollTimer);
+          if (checking) checking.style.display = 'none';
+          if (dotEl)   dotEl.className = 'status-dot online';
+          if (labelEl) labelEl.textContent = 'Agent connected! ✓';
+          // Show step 2
+          const domainStep = document.getElementById('onboard-step-domain');
+          if (domainStep) {
+            domainStep.style.display = 'block';
+            domainStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+          return;
+        }
+      } catch { /* keep polling */ }
+
+      if (_onboardPollCount >= 20) {
+        // ~30 seconds, give up
+        clearInterval(_onboardPollTimer);
+        if (checking) checking.style.display = 'none';
+        if (dotEl)   dotEl.className = 'status-dot offline';
+        if (labelEl) labelEl.textContent = 'Agent not detected — make sure agent.py is running';
+        if (checkBtn) {
+          checkBtn.style.display = '';
+          checkBtn.textContent = '↻ Try again';
+        }
+      }
+    }, 1500);
+  }
+
+  async function onboardSaveDomain() {
+    const input = document.getElementById('onboard-domain');
+    const domain = (input ? input.value : '').trim().toLowerCase().replace(/^@/, '');
+    if (!domain) { toast('Please enter your email domain', 'error'); return; }
+
+    try {
+      const res  = await fetch('/dashboard/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_domain: domain }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        // Update local settings
+        if (_settingsSnapshot) _settingsSnapshot.email_domain = domain;
+        toast(`Domain set to ${domain}`, 'success');
+        dismissOnboarding();
+      } else {
+        toast(json.message || 'Failed to save domain', 'error');
+      }
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
   async function dismissOnboarding() {
     document.getElementById('onboarding-panel').style.display = 'none';
+    clearInterval(_onboardPollTimer);
     await fetch('/dashboard/api/onboarding/dismiss', { method: 'POST' }).catch(() => {});
   }
 
@@ -2753,6 +2940,22 @@
     document.getElementById('tickets-table-wrap').innerHTML = html;
   }
 
+  function rebuildTicketFilterSelect() {
+    const sel = document.getElementById('ticket-filter');
+    if (!sel) return;
+    const cur = sel.value;
+    const builtIn = [
+      { value: '',            label: 'All status' },
+      { value: 'open',        label: 'Open' },
+      { value: 'in_progress', label: 'In progress' },
+      { value: 'resolved',    label: 'Resolved' },
+      { value: 'closed',      label: 'Closed' },
+    ];
+    const custom = (_customStatuses || []).map(s => ({ value: s.toLowerCase().replace(/\s+/g,'-'), label: s }));
+    const all = [...builtIn, ...custom];
+    sel.innerHTML = all.map(o => `<option value="${o.value}"${o.value===cur?' selected':''}>${o.label}</option>`).join('');
+  }
+
   function filterTickets() {
     const q = (document.getElementById('ticket-search')?.value || '').toLowerCase();
     if (!q) { renderTicketTable(_allTickets); return; }
@@ -2765,6 +2968,7 @@
   }
 
   async function loadTickets() {
+    rebuildTicketFilterSelect();
     document.getElementById('tickets-table-wrap').innerHTML =
       '<div class="loading"><span class="spinner"></span>Loading...</div>';
     const filter = document.getElementById('ticket-filter').value;
@@ -3167,10 +3371,24 @@
   let _chatBusy     = false;
   let _chatSessionId = null;
 
+  const _pageTitles = {
+    users:    'All Users',
+    locked:   'Locked Accounts',
+    expired:  'Expired Passwords',
+    tickets:  'Tickets',
+    chat:     'Janus AI',
+    audit:    'Audit Log',
+    activity: 'Activity Feed',
+    team:     'Team',
+    settings: 'Settings',
+  };
+
   function showPage(name, el) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
+    // Update browser tab title
+    document.title = (_pageTitles[name] ? _pageTitles[name] + ' — ' : '') + 'AID Helpdesk';
     // Activate the nav item — either from an explicit el arg, or from the event target
     const navEl = el || (typeof event !== 'undefined' && event && event.currentTarget) || null;
     if (navEl && navEl.classList && navEl.classList.contains('nav-item')) navEl.classList.add('active');
@@ -3294,6 +3512,22 @@
 
         _settingsRoles = s.roles || [];
         renderRoles();
+
+        // Ticket customisation
+        _customStatuses   = s.custom_statuses   || [];
+        _customPriorities = s.custom_priorities  || [];
+        _ticketLabels     = s.ticket_labels      || [];
+        renderCustomStatuses();
+        renderCustomPriorities();
+        renderCustomLabels();
+        rebuildTicketFilterSelect();
+
+        // SMTP
+        if (s.smtp_host) document.getElementById('smtp-host').value = s.smtp_host;
+        if (s.smtp_port) document.getElementById('smtp-port').value = s.smtp_port;
+        if (s.smtp_user) document.getElementById('smtp-user').value = s.smtp_user;
+        if (s.smtp_from) document.getElementById('smtp-from').value = s.smtp_from;
+        // smtp_pass intentionally not shown — leave placeholder text
       }
 
       if (tJson.success) {
@@ -3397,7 +3631,7 @@
       </div>`).join('');
   }
 
-  function renderCustomStatuses()   { _renderTagList('custom-statuses-list',  _customStatuses,   'removeCustomStatus');   }
+  function renderCustomStatuses()   { _renderTagList('custom-statuses-list',  _customStatuses,   'removeCustomStatus');   rebuildTicketFilterSelect(); }
   function renderCustomPriorities() { _renderTagList('custom-priorities-list', _customPriorities, 'removeCustomPriority'); }
 
   function renderCustomLabels() {
@@ -3447,6 +3681,11 @@
       custom_statuses:   JSON.stringify(_customStatuses),
       custom_priorities: JSON.stringify(_customPriorities),
       ticket_labels:     JSON.stringify(_ticketLabels),
+      smtp_host:         el('smtp-host')?.value.trim(),
+      smtp_port:         el('smtp-port')?.value.trim(),
+      smtp_user:         el('smtp-user')?.value.trim(),
+      smtp_from:         el('smtp-from')?.value.trim(),
+      smtp_pass:         el('smtp-pass')?.value,
     });
   }
 
@@ -3465,8 +3704,10 @@
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', markSettingsDirty);
     });
-    const domainEl = document.getElementById('s-email-domain');
-    if (domainEl) domainEl.addEventListener('input', markSettingsDirty);
+    ['s-email-domain','smtp-host','smtp-port','smtp-user','smtp-from','smtp-pass'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', markSettingsDirty);
+    });
   }
 
   async function saveSettings() {
@@ -3477,6 +3718,7 @@
     if (el('s-auto-enable')?.checked)  autoActions.push('enable_account');
     if (el('s-auto-disable')?.checked) autoActions.push('disable_account');
 
+    const smtpPass = el('smtp-pass')?.value || '';
     const payload = {
       janus_enabled:      el('s-janus-enabled').checked,
       janus_scan_emails:  el('s-scan-emails').checked,
@@ -3484,6 +3726,14 @@
       email_domain:       el('s-email-domain').value.trim(),
       janus_auto_actions: autoActions,
       roles:              _settingsRoles,
+      custom_statuses:    _customStatuses,
+      custom_priorities:  _customPriorities,
+      ticket_labels:      _ticketLabels,
+      smtp_host:          el('smtp-host')?.value.trim() || '',
+      smtp_port:          el('smtp-port')?.value.trim() || '',
+      smtp_user:          el('smtp-user')?.value.trim() || '',
+      smtp_from:          el('smtp-from')?.value.trim() || '',
+      ...(smtpPass ? { smtp_pass: smtpPass } : {}),
     };
 
     const btn = document.getElementById('settings-save-btn');
@@ -3568,13 +3818,15 @@
     const msgs = document.getElementById('chat-messages');
     msgs.innerHTML = `<div class="chat-empty" id="chat-empty">
       <div class="chat-empty-icon">✨</div>
-      <h3>Ask me anything about your AD</h3>
-      <p>I can look up users, unlock accounts, reset passwords, check stats, and more — just ask in plain English.</p>
+      <h3>Hi, I'm Janus</h3>
+      <p>I'm your AI assistant for Active Directory. Ask me anything — look up users, unlock accounts, reset passwords, manage groups — all in plain English.</p>
       <div class="chat-suggestions">
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Show me domain stats</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Find users with expired passwords</span>
-        <span class="chat-suggestion" onclick="sendSuggestion(this)">Look up jake.miller</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">What groups is sarah.jones in?</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">List all OUs</span>
+        <span class="chat-suggestion" onclick="sendSuggestion(this)">Unlock john.smith and force a password change</span>
       </div>
     </div>`;
   }

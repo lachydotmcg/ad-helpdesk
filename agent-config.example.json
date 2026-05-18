@@ -1,5 +1,5 @@
 {
-  "cloud_url": "https://your-app.railway.app",
-  "tenant_api_key": "your-tenant-api-key-from-registration",
+  "cloud_url":      "https://your-app.railway.app",
+  "tenant_api_key": "paste-your-api-key-from-the-dashboard-settings",
   "timeout_seconds": 10
 }

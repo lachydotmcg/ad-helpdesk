@@ -323,6 +323,114 @@ Write-Output '{{"result":"created","user":"{u}","name":"{f_} {l_}","ou":"{_ps_es
     return r
 
 
+def list_groups() -> dict:
+    """List all AD security and distribution groups."""
+    script = """
+Import-Module ActiveDirectory
+Get-ADGroup -Filter * -Properties Name, GroupCategory, GroupScope |
+  Select-Object Name, SamAccountName, GroupCategory, GroupScope |
+  Sort-Object Name |
+  ConvertTo-Json
+"""
+    r = _run(script)
+    if r["success"]:
+        r["data"] = _normalise_list(r["data"])
+        r["message"] = f"{len(r['data'])} group(s) found."
+    return r
+
+
+def search_groups(query: str) -> dict:
+    """Search AD groups by partial name."""
+    q = _ps_escape(query)
+    script = f"""
+Import-Module ActiveDirectory
+Get-ADGroup -Filter {{Name -like '*{q}*'}} -Properties Name, GroupCategory, GroupScope |
+  Select-Object Name, SamAccountName, GroupCategory, GroupScope |
+  Sort-Object Name |
+  ConvertTo-Json
+"""
+    r = _run(script)
+    if r["success"]:
+        r["data"] = _normalise_list(r["data"])
+        r["message"] = f"{len(r['data'])} group(s) matching '{query}'."
+    return r
+
+
+def get_group_members(group: str) -> dict:
+    """List all members of an AD group."""
+    g = _ps_escape(group)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory
+Get-ADGroupMember -Identity '{g}' |
+  Select-Object Name, SamAccountName, objectClass |
+  Sort-Object Name |
+  ConvertTo-Json
+"""
+    r = _run(script)
+    if r["success"]:
+        r["data"] = _normalise_list(r["data"])
+        r["message"] = f"{len(r['data'])} member(s) in '{group}'."
+    return r
+
+
+def list_group_memberships(username: str) -> dict:
+    """List all AD groups a specific user belongs to."""
+    u = _ps_escape(username)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory
+$user = Get-ADUser -Identity '{u}' -Properties MemberOf
+if ($user.MemberOf) {{
+    $user.MemberOf | ForEach-Object {{
+        try {{
+            $g = Get-ADGroup -Identity $_
+            [PSCustomObject]@{{Name=$g.Name; SamAccountName=$g.SamAccountName; GroupScope=$g.GroupScope}}
+        }} catch {{ }}
+    }} | Sort-Object Name | ConvertTo-Json
+}} else {{
+    Write-Output '[]'
+}}
+"""
+    r = _run(script)
+    if r["success"]:
+        r["data"] = _normalise_list(r["data"])
+        r["message"] = f"{username} belongs to {len(r['data'])} group(s)."
+    return r
+
+
+def force_password_change(username: str) -> dict:
+    """Force a user to change their password at next logon."""
+    u = _ps_escape(username)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory
+Set-ADUser -Identity '{u}' -ChangePasswordAtLogon $true
+Write-Output '{{"result":"ok","user":"{u}"}}'
+"""
+    r = _run(script)
+    if r["success"]:
+        r["message"] = f"{username} will be prompted to change password on next logon."
+    return r
+
+
+def set_password_never_expires(username: str, never_expires: str = "true") -> dict:
+    """Toggle the 'password never expires' flag. Pass 'true' or 'false'."""
+    u    = _ps_escape(username)
+    flag = "$true" if str(never_expires).lower() in ("true", "1", "yes") else "$false"
+    script = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory
+Set-ADUser -Identity '{u}' -PasswordNeverExpires {flag}
+Write-Output '{{"result":"ok","user":"{u}","flag":"{flag}"}}'
+"""
+    r = _run(script)
+    if r["success"]:
+        state = "never expires" if flag == "$true" else "expires per domain policy"
+        r["message"] = f"Password for {username} set to: {state}."
+    return r
+
+
 def list_ous() -> dict:
     """List all Organisational Units in the domain."""
     script = """

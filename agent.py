@@ -38,21 +38,30 @@ def load_config() -> dict:
 
 
 ACTIONS = {
-    "get_user_info":          lambda a: ad_bridge.get_user_info(*a),
-    "list_users":             lambda a: ad_bridge.list_users(*a) if a else ad_bridge.list_users(),
-    "search_users":           lambda a: ad_bridge.search_users(*a),
-    "list_locked_accounts":   lambda a: ad_bridge.list_locked_accounts(),
-    "list_expired_passwords": lambda a: ad_bridge.list_expired_passwords(),
-    "get_stats":              lambda a: ad_bridge.get_stats(),
-    "list_ous":               lambda a: ad_bridge.list_ous(),
-    "reset_password":         lambda a: ad_bridge.reset_password(*a),
-    "unlock_account":         lambda a: ad_bridge.unlock_account(*a),
-    "disable_account":        lambda a: ad_bridge.disable_account(*a),
-    "enable_account":         lambda a: ad_bridge.enable_account(*a),
-    "add_to_group":           lambda a: ad_bridge.add_to_group(*a),
-    "remove_from_group":      lambda a: ad_bridge.remove_from_group(*a),
-    "create_user":            lambda a: ad_bridge.create_user(*a),
-    "move_user":              lambda a: ad_bridge.move_user(*a),
+    # Query / read
+    "get_user_info":              lambda a: ad_bridge.get_user_info(*a),
+    "list_users":                 lambda a: ad_bridge.list_users(*a) if a else ad_bridge.list_users(),
+    "search_users":               lambda a: ad_bridge.search_users(*a),
+    "list_locked_accounts":       lambda a: ad_bridge.list_locked_accounts(),
+    "list_expired_passwords":     lambda a: ad_bridge.list_expired_passwords(),
+    "get_stats":                  lambda a: ad_bridge.get_stats(),
+    "list_ous":                   lambda a: ad_bridge.list_ous(),
+    # Groups
+    "list_groups":                lambda a: ad_bridge.list_groups(),
+    "search_groups":              lambda a: ad_bridge.search_groups(*a),
+    "get_group_members":          lambda a: ad_bridge.get_group_members(*a),
+    "list_group_memberships":     lambda a: ad_bridge.list_group_memberships(*a),
+    "add_to_group":               lambda a: ad_bridge.add_to_group(*a),
+    "remove_from_group":          lambda a: ad_bridge.remove_from_group(*a),
+    # Account mutations
+    "reset_password":             lambda a: ad_bridge.reset_password(*a),
+    "unlock_account":             lambda a: ad_bridge.unlock_account(*a),
+    "disable_account":            lambda a: ad_bridge.disable_account(*a),
+    "enable_account":             lambda a: ad_bridge.enable_account(*a),
+    "force_password_change":      lambda a: ad_bridge.force_password_change(*a),
+    "set_password_never_expires": lambda a: ad_bridge.set_password_never_expires(*a),
+    "create_user":                lambda a: ad_bridge.create_user(*a),
+    "move_user":                  lambda a: ad_bridge.move_user(*a),
 }
 
 
