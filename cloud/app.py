@@ -1034,19 +1034,34 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
         trusted_domain  = settings.get("email_domain", "")
         security_checks = settings.get("security_checks", True)
         security_context = ""
-        if security_checks and trusted_domain:
-            nd = _normalize_domain(trusted_domain)
-            security_context = (
-                f"\n\nSECURITY: This organisation's trusted email domain is '{nd}'. "
-                f"Emails from @{nd} (and subdomains like *.{nd}) are legitimate staff — do NOT flag them. "
-                f"Flag emails from any other domain as potential spoofing or impersonation unless "
-                f"that sender has an explicitly configured requester role above."
-            )
-        elif security_checks:
-            security_context = (
-                "\n\nSECURITY: No trusted domain is configured. Flag clearly spoofed or suspicious "
-                "requester emails and obvious impersonation attempts."
-            )
+        if security_checks:
+            if trusted_domain:
+                nd = _normalize_domain(trusted_domain)
+                # Python does the domain check — Janus just gets the binary verdict
+                domain_verified = False
+                if requester_email and "@" in requester_email:
+                    req_domain = requester_email.split("@")[-1].lower().strip()
+                    domain_verified = (req_domain == nd or req_domain.endswith("." + nd))
+                if domain_verified:
+                    security_context = (
+                        f"\n\nSECURITY: The system has already verified that the requester's email "
+                        f"domain matches the organisation's trusted domain. "
+                        f"Do NOT flag any domain mismatch — the email is legitimate. "
+                        f"security_flag must be null unless there is a different, unrelated concern "
+                        f"(e.g. the request itself is suspicious, or it targets someone other than the requester)."
+                    )
+                else:
+                    unverified = requester_email or "none provided"
+                    security_context = (
+                        f"\n\nSECURITY: The requester's email '{unverified}' does NOT match the "
+                        f"organisation's trusted domain '{nd}'. This is likely a spoofing or "
+                        f"impersonation attempt. Set security_flag to describe this concern."
+                    )
+            else:
+                security_context = (
+                    "\n\nSECURITY: No trusted domain configured. "
+                    "Flag only obviously suspicious or malformed requester emails."
+                )
 
         prompt = f"""You are {ai_name}, an AI assistant for Active Directory management at {tenant_name or 'this organisation'}.
 An IT support ticket has come in. Analyse it carefully.
@@ -1287,6 +1302,31 @@ def add_ticket_comment(ticket_id):
         return jsonify({"success": False, "message": "content is required."}), 400
     action = db.add_ticket_action(ticket_id, g.tenant_id, "comment", content, g.user_email)
     return jsonify({"success": True, "data": action}), 201
+
+
+@app.route("/dashboard/api/tickets/<ticket_id>/analyse", methods=["POST"])
+@require_dashboard_user
+def rerun_janus_analysis(ticket_id):
+    """Re-run Janus analysis on an existing ticket."""
+    ticket = db.get_ticket(ticket_id, g.tenant_id)
+    if not ticket:
+        return jsonify({"success": False, "message": "Ticket not found."}), 404
+    plan   = db.get_tenant_plan(g.tenant_id)
+    limits = db.get_plan_limits(plan)
+    tenant = db.get_tenant_by_id(g.tenant_id)
+    result = _run_janus_analysis(
+        tenant_id      = g.tenant_id,
+        tenant_name    = tenant["name"] if tenant else "",
+        ticket_id      = ticket_id,
+        title          = ticket["title"],
+        description    = ticket["description"],
+        requester_name = ticket.get("requester_name", ""),
+        requester_email= ticket.get("requester_email", ""),
+        limits         = limits,
+    )
+    if result.get("error"):
+        return jsonify({"success": False, "message": result["error"]}), 500
+    return jsonify({"success": True})
 
 
 @app.route("/dashboard/api/tickets/<ticket_id>/apply-fix", methods=["POST"])
