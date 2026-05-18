@@ -1,377 +1,239 @@
 # AID Helpdesk
 
 <p align="center">
-  <img src="cloud/static/AIDLogo.png" alt="AID Helpdesk" width="120"/>
+  <img src="cloud/static/aid-logo.svg" alt="AID Helpdesk" width="120"/>
 </p>
 
-**Plug AI into your Active Directory server and manage it with plain English.**
+<p align="center">
+  <strong>Your IT Admin, powered by AI.</strong><br/>
+  Manage Windows Active Directory in plain English — with a smart ticket system, AI auto-resolution, and a cloud dashboard your whole team can use.
+</p>
 
-Unlock accounts, reset passwords, create users, move OUs, run bulk operations - all by
-talking to Claude in Cowork. No clicking through MMC consoles, no scripting, no expensive
-enterprise tooling. Just describe what you need and it happens.
-
-Built for IT admins, homelabbers, and small businesses running Windows Server AD.
+<p align="center">
+  <a href="https://aidhelpdesk.com">aidhelpdesk.com</a> &nbsp;·&nbsp;
+  <a href="https://aidhelpdesk.com/signup">Get started free</a>
+</p>
 
 ---
 
-## What this looks like in practice
+## What is AID Helpdesk?
 
-> "Find jake.miller, check if his password is expired - if it is, reset it to a random temp password and tell me what it was set to. Also tell me what OU he's in."
+AID Helpdesk is a multi-tenant SaaS that puts an AI layer in front of your Windows Server Active Directory. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **Janus** — AID's built-in AI — analyses, triages, and resolves them automatically, then logs every action for your audit trail.
 
-Claude looks up the account, checks the status, generates a secure temp password, resets
-it in AD, and reports back - all in one shot. No forms, no dashboards, no context switching.
-
-Or go bigger:
-
-> "List every account in the Students OU with an expired password and reset them all to Temp1234!, then give me a summary of what changed."
-
-That's a bulk operation across your entire domain, executed from a single sentence.
+No scripting. No clicking through MMC consoles. Just describe the problem and it gets handled.
 
 ---
 
 ## How it works
 
-AD Helpdesk runs a lightweight file-based bridge on your PC. Claude writes a command, your
-local watcher picks it up, executes it against your AD server via WinRM, and writes the
-result back. Claude reads it and responds.
-
 ```
-You (plain English)
-    |
-    v
-Claude / Cowork
-    |  writes cmd.json
-    v
-watcher.py  (running on your PC)
-    |  executes via WinRM
-    v
-Windows Server 2022 + Active Directory
-    |  result.json written back
-    v
-Claude reports back to you
+Staff member submits ticket (web or email)
+    │
+    ▼
+Janus AI analyses the request
+    │ checks requester identity, permissions, security flags
+    ▼
+Auto-resolve (Pro+) or queue for admin approval
+    │
+    ▼
+AID Agent (running on your Windows Server)
+    │ executes PowerShell via WinRM against Active Directory
+    ▼
+Result logged to audit trail + email sent back to requester
 ```
 
-No cloud, no API keys beyond your Cowork subscription, no data leaving your network.
-Works across locations via Tailscale - your laptop at home can manage a server at the office.
+The **AID Agent** is a lightweight Windows process that runs on your server. It polls the cloud dashboard, executes approved AD commands locally, and posts results back. No inbound ports required — works behind NAT, firewalls, and across Tailscale.
 
 ---
 
-## Operations
+## Getting started
 
-| Operation | Natural Language | CLI | API | Dashboard |
-|---|---|---|---|---|
-| Get user info | "look up sarah.chen" | yes | yes | yes |
-| Search users | "find users named Smith" | yes | yes | yes |
-| List all users | "show me all accounts" | yes | yes | yes |
-| Reset password | "reset jake's password" | yes | yes | yes |
-| Unlock account | "unlock john.smith" | yes | yes | yes |
-| Enable / disable | "disable sarah's account" | yes | yes | yes |
-| Add / remove group | "add mike to IT-Admins" | yes | yes | yes |
-| Create user | "create a new IT user for Tom Brady" | yes | yes | yes |
-| Move OU | "move test.mcgee to Teachers" | yes | - | - |
-| Locked accounts | "who's locked out right now?" | yes | yes | yes |
-| Expired passwords | "who has an expired password?" | yes | yes | yes |
-| Domain stats | "how many users do we have?" | yes | yes | yes |
+### 1. Create an account
 
-Every write operation is logged with a timestamp to `ps-scripts/audit.log`.
+Sign up free at [aidhelpdesk.com/signup](https://aidhelpdesk.com/signup). No credit card needed.
+
+### 2. Copy your API key
+
+Go to **Settings → Janus Settings** in your dashboard and copy your tenant API key.
+
+### 3. Run the agent on your Windows Server
+
+Download and run the agent installer from your dashboard. When prompted, paste your API key.
+
+```
+> aid-agent-setup.exe
+AID Helpdesk Agent Setup
+Enter your API key: ••••••••••••••••
+✓ Connected to aidhelpdesk.com
+✓ Active Directory found: LAB.local
+✓ Agent registered as Windows Service
+✓ Done — your dashboard is live
+```
+
+That's it. Your dashboard shows **Agent: Online** and you're ready to receive tickets.
+
+---
+
+## Features
+
+### Janus AI ticketing
+Staff submit tickets in plain English. Janus reads the request, checks the requester's identity against your AD domain, flags anything suspicious, and either resolves it automatically or surfaces it for admin review with a full analysis and recommended action.
+
+### Auto-actions (Pro+)
+Janus can unlock accounts, reset passwords, enable/disable users, and more — hands-free, without waiting for an admin to click approve. Every action is logged.
+
+### Email ticket intake (Pro+)
+Point a Mailgun, SendGrid, or Postmark webhook at your dashboard and tickets flow in directly from email. Janus analyses them and sends the resolution back to the requester automatically.
+
+### Team management
+Invite helpdesk staff to your dashboard. Each team member gets their own login. Assign, comment on, and close tickets collaboratively.
+
+### Activity feed & audit log
+Every AD action — who requested it, what Janus decided, what was executed — is timestamped and searchable. Export to CSV any time.
+
+### AD operations supported
+
+| Operation | Natural language | Auto-resolvable |
+|---|---|---|
+| Unlock account | "I'm locked out" | ✓ Pro+ |
+| Reset password | "I need a temp password" | ✓ Pro+ |
+| Enable / disable account | "Re-enable sarah's account" | ✓ Pro+ |
+| Get user info | "Look up jake.miller" | — |
+| Search users | "Find all users named Smith" | — |
+| List locked accounts | "Who's locked out?" | — |
+| List expired passwords | "Who has an expired password?" | — |
+| Create user | "New IT user for Tom Brady" | — |
+| Move OU | "Move test.mcgee to Teachers" | — |
+| Add / remove group | "Add mike to IT-Admins" | — |
+| Bulk operations | "Reset all expired passwords in Students OU" | — |
+
+---
+
+## Plans
+
+| | Free | Pro | Enterprise |
+|---|---|---|---|
+| Janus AI scans / month | 10 | 500 | 2,000 |
+| AD actions / month | 5 | 200 | 1,000 |
+| Tickets | Up to 20 | Unlimited | Unlimited |
+| Team members | 1 | Up to 5 | Unlimited |
+| Email ticket intake | — | ✓ | ✓ |
+| Janus auto-actions | — | ✓ | ✓ |
+| Scheduled reports | — | ✓ | ✓ |
+| Support | Community | Email | Priority + SLA |
+| Price | A$0 | A$29/month | A$99/month |
+
+---
+
+## Self-hosting the agent
+
+The AD agent is open source. Clone the repo and run it directly if you prefer not to use the installer:
+
+```bash
+git clone https://github.com/lachydotmcg/ad-helpdesk.git
+cd ad-helpdesk
+pip install -r requirements.txt
+cp agent-config.example.json agent-config.json
+# fill in your cloud_url and tenant_api_key
+python agent.py
+```
+
+**Requirements:**
+- Python 3.9+ on a machine with WinRM access to your AD server
+- Windows Server 2019/2022 with Active Directory Domain Services
+- WinRM enabled on the server:
+
+```powershell
+Enable-PSRemoting -Force
+```
+
+- A service account in Remote Management Users and local Administrators:
+
+```powershell
+New-ADUser -Name "Helpdesk Service" -SamAccountName "svc.helpdesk" `
+  -AccountPassword (ConvertTo-SecureString "YourPassword" -AsPlainText -Force) `
+  -Enabled $true
+Add-ADGroupMember -Identity "Remote Management Users" -Members "svc.helpdesk"
+net localgroup Administrators "LAB\svc.helpdesk" /add
+```
+
+> **Tip:** Use the NetBIOS domain name (e.g. `LAB`), not the FQDN (`lab.local`). NTLM auth will fail with the FQDN.
+
+---
+
+## Self-hosting the cloud backend
+
+The full cloud backend (`cloud/`) is included in this repo. You can deploy your own instance to Railway, Render, or any VPS:
+
+```bash
+cd cloud
+pip install -r requirements.txt
+# Set env vars: SECRET_KEY, DATABASE_URL (PostgreSQL), ANTHROPIC_API_KEY
+python app.py
+```
+
+See `cloud/.env.example` for all environment variables.
+
+> **License note:** Self-hosting for your own organisation is fine and encouraged. Reselling a hosted instance of the `cloud/` backend as a subscription service to third parties requires a separate commercial licence — see [Licence](#licence) below.
 
 ---
 
 ## Architecture
 
 ```
-Your Machine (Mac / Linux / Windows)
-    |
-    |  WinRM over HTTP (port 5985)
-    |  NTLM authentication
-    v
-Windows Server 2022 VM
-    |- Active Directory Domain Services
-    |- WinRM / PowerShell Remoting enabled
-    +- ps-scripts/*.ps1  (executed remotely)
+aidhelpdesk.com  (cloud/app.py — Railway / any VPS)
+    │  HTTPS polling
+    ▼
+agent.py  (runs on customer's Windows machine or server)
+    │  WinRM / PowerShell Remoting
+    ▼
+Windows Server 2022 + Active Directory
 ```
 
-Works across networks via **Tailscale** - no VPN or port forwarding required.
-
----
-
-## Prerequisites
-
-### Your machine
-- Python 3.9+
-- Network access to the VM (same LAN, or Tailscale)
-- Claude Cowork (for natural language mode)
-
-### Windows Server VM
-- Windows Server 2019 / 2022
-- Active Directory Domain Services installed and promoted
-- WinRM enabled (run as Administrator on the VM):
-
-```powershell
-Enable-PSRemoting -Force
-```
-
-- Service account in Remote Management Users and local Administrators:
-
-```powershell
-New-ADUser -Name "Helpdesk Service" -SamAccountName "svc.helpdesk" `
-  -AccountPassword (ConvertTo-SecureString "YourPassword" -AsPlainText -Force) `
-  -Enabled $true
-
-Add-ADGroupMember -Identity "Remote Management Users" -Members "svc.helpdesk"
-net localgroup Administrators "LAB\svc.helpdesk" /add
-```
-
-> Note: `Add-LocalGroupMember` does not work reliably on Domain Controllers. Use `net localgroup` instead.
-
----
-
-## Setup
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/lachydotmcg/ad-helpdesk.git
-cd ad-helpdesk
-```
-
-### 2. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Configure
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
+Cowork / natural language mode (legacy local bridge):
 
 ```
-AD_VM_IP=100.x.x.x          # VM's Tailscale IP
-AD_DOMAIN=LAB                # NetBIOS name, NOT lab.local
-AD_ADMIN_USER=svc.helpdesk
-AD_ADMIN_PASS=yourpassword
-DASHBOARD_PASSWORD=changeme
-API_KEY=changeme
-SECRET_KEY=any-long-random-string
+Claude / Cowork  →  watcher.py  →  WinRM  →  Active Directory
 ```
-
-> AD_DOMAIN must be the NetBIOS name (e.g. LAB), not the FQDN (lab.local). NTLM auth will fail otherwise.
-
-### 4. Test the connection
-
-```bash
-python test_connection.py
-```
-
-| Error | Fix |
-|---|---|
-| `credentials were rejected` | Check AD_DOMAIN is the NETBIOS name, not FQDN |
-| `Access is denied` | Run: `net localgroup Administrators "LAB\svc.helpdesk" /add` |
-| `Connection refused` | Run `Enable-PSRemoting -Force` on the VM; check firewall allows port 5985 |
-
----
-
-## Natural language mode (Claude / Cowork)
-
-Start the watcher on your PC:
-
-```bash
-python watcher.py
-```
-
-Then open Cowork and just talk. Claude reads the skill file in `skill/SKILL.md` to understand
-all available operations, writes the appropriate command, and handles the result automatically.
-
-Examples of what you can say:
-- "Unlock jake.miller"
-- "Reset sarah's password to a temp and tell me what it is"
-- "Show me everyone with an expired password"
-- "Create a new student account for Emma Wilson, username emma.wilson"
-- "Move test.mcgee to the Teachers OU"
-- "Add mike.chen to the Domain Admins group"
-- "Disable all accounts in the Students OU that haven't logged in this year"
-
-The skill file (`skill/SKILL.md`) contains all the instructions Claude needs. See `skill/INSTALL.md`
-for setup details.
-
----
-
-## Web dashboard
-
-For a point-and-click interface, run:
-
-```bash
-python app.py
-```
-
-Open http://localhost:8888 - login with your DASHBOARD_PASSWORD.
-
-The dashboard includes live user search, status pills (Active / Locked / Disabled / Pwd Expired),
-one-click unlock, password reset, group management, create user form, and audit log view.
-
----
-
-## Hosted dashboard (v0.5+)
-
-Deploy the cloud backend to Railway in one click — your customers get a real URL to log into instead of running anything locally.
-
-### 1. Deploy to Railway
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template)
-
-Or manually:
-
-```bash
-railway login
-railway init
-railway up
-```
-
-Set these environment variables in the Railway dashboard:
-
-```
-SECRET_KEY=any-long-random-string
-ADMIN_KEY=your-secret-admin-key
-```
-
-### 2. Create your first tenant + dashboard user
-
-```bash
-curl -X POST https://your-app.railway.app/admin/tenants \
-  -H "X-Admin-Key: your-admin-key" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Acme Corp", "email": "admin@acme.com", "password": "yourpassword"}'
-```
-
-This creates the tenant and a dashboard login in one call. The response includes the `api_key` your agent needs.
-
-### 3. Configure and run the agent on the customer's server
-
-```bash
-cp agent-config.example.json agent-config.json
-# fill in cloud_url and tenant_api_key from step 2
-python agent.py
-```
-
-The agent phones home, picks up commands queued from the dashboard, executes them against AD, and posts results back. No inbound ports needed.
-
-### 4. Log in
-
-Go to `https://your-app.railway.app/` and sign in with the email and password from step 2.
-
----
-
-## Cloud agent mode (v0.4+)
-
-For a fully hosted setup where the dashboard lives in the cloud and your server just runs
-a lightweight agent, deploy `cloud/app.py` to any cloud platform (Railway, Render, fly.io):
-
-```
-cloud/app.py          -- multi-tenant Flask backend
-cloud/db.py           -- SQLite database (swap for PostgreSQL in production)
-cloud/requirements.txt
-cloud/.env.example
-```
-
-Then on the machine with WinRM access to your AD server, run the agent instead of watcher.py:
-
-```bash
-cp agent-config.example.json agent-config.json
-# fill in cloud_url and your tenant_api_key
-python agent.py
-```
-
-The agent phones home to the cloud, picks up commands, executes them against AD locally,
-and posts results back. No inbound ports required. Works behind NAT and across Tailscale.
-
-```
-Cloud backend (Railway / Render / VPS)
-    |  HTTPS
-    v
-agent.py (running on customer's PC or server)
-    |  WinRM
-    v
-Windows Server + Active Directory
-```
-
-To create a tenant (get an API key), call the admin endpoint:
-
-```bash
-curl -X POST https://your-app.railway.app/admin/tenants \
-  -H "X-Admin-Key: your-admin-key" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Acme Corp"}'
-```
-
----
-
-## REST API
-
-Start the server and authenticate with `X-API-Key: <your key>` on all requests.
-
-```bash
-python app.py
-```
-
-```
-GET  /api/v1/users
-GET  /api/v1/user/<username>
-POST /api/v1/user/<username>/reset_password    { "password": "..." }
-POST /api/v1/user/<username>/unlock
-POST /api/v1/user                              { "first": "", "last": "", "username": "", "ou": "" }
-```
-
-This makes AD Helpdesk webhookable - point a Zoho, Freshdesk, or any other platform's
-webhook at these endpoints to trigger AD operations automatically on events like new employee
-onboarding forms.
-
----
-
-## Audit log
-
-Every operation is appended to `ps-scripts/audit.log`:
-
-```
-2024-01-15 09:32:11 | Reset-Password | User=sarah.chen | Status=SUCCESS | Password reset, ChangePasswordAtLogon=True
-2024-01-15 09:45:02 | Unlock-Account | User=john.smith | Status=SUCCESS | Account unlocked
-2024-01-15 10:01:44 | Create-User    | User=new.user   | Status=FAILED  | User already exists
-```
-
----
-
-## Security
-
-- Credentials live only in `.env` - never hardcoded, never committed
-- Use a dedicated service account (`svc.helpdesk`) rather than domain Administrator
-- WinRM is HTTP-only - acceptable within a Tailscale tunnel (encrypted end-to-end), not suitable for open internet
-- Never expose port 5985 to the internet
-- `API_KEY` header protects all REST API endpoints
 
 ---
 
 ## Roadmap
 
-- [x] v0.1 — Core bridge (WinRM, CLI, PowerShell scripts, audit log, file queue)
-- [x] v0.2 — Web dashboard (Flask UI, REST API, live user panel, search, stats)
+- [x] v0.1 — Core WinRM bridge, CLI, PowerShell scripts, audit log
+- [x] v0.2 — Local web dashboard, REST API, live user panel
 - [x] v0.3 — Cowork skill for natural language AD management
-- [x] v0.4 — Cloud agent, multi-tenant backend, system tray app, setup wizard
-- [x] v0.5 — Hosted dashboard with multi-user auth and per-tenant isolation
-- [ ] v0.6 — AI chat interface via Anthropic API
-- [ ] v0.7 — Ticketing system with AI auto-resolution
-- [ ] v1.0 — Windows Service installer, HTTPS, Stripe billing, demo mode
+- [x] v0.4 — Cloud agent, multi-tenant backend, system tray, setup wizard
+- [x] v0.5 — Hosted SaaS dashboard, multi-user auth, per-tenant isolation
+- [x] v0.6 — Janus AI chat + ticket analysis (Claude Haiku)
+- [x] v0.7 — Smart ticketing system with AI auto-resolution, auto-actions
+- [x] v0.8 — Email ticket intake, enterprise tier, usage-based plans
+- [ ] v0.9 — Windows Service installer (.exe), one-command setup
+- [ ] v1.0 — Stripe billing, scheduled reports, ticket detail view, requester email notifications
+- [ ] v1.1 — Usage top-ups, mobile-friendly dashboard, Slack/Teams integration
+
+---
+
+## Security
+
+- Credentials live only in environment variables — never hardcoded, never committed
+- The agent uses a dedicated service account (`svc.helpdesk`) rather than domain Administrator
+- WinRM runs over HTTP — acceptable within a Tailscale tunnel (encrypted end-to-end); do not expose port 5985 to the open internet
+- All write operations are logged with timestamp, requester identity, and Janus confidence score
+- Janus flags requests where the requester email domain doesn't match your configured trusted domain
 
 ---
 
 ## Contributing
 
-PRs welcome. Please open an issue first for major changes.
+PRs welcome on the agent, PowerShell scripts, and skill. Please open an issue first for major changes. The `cloud/` backend is source-available — bug fixes and improvements are welcome, but forks intended as competing hosted services are not.
 
 ---
 
-## License
+## Licence
 
-MIT
+**Agent, bridge, CLI, PowerShell scripts, Cowork skill** (`agent.py`, `ad_bridge.py`, `cli.py`, `ps-scripts/`, `skill/`, `watcher.py`): [MIT](https://opensource.org/licenses/MIT)
+
+**Cloud SaaS backend** (`cloud/`): MIT + [Commons Clause](https://commonsclause.com/)
+
+The Commons Clause means: you may use, modify, and self-host the cloud backend freely, but you may not sell it — i.e. offer a hosted version of AID Helpdesk as a subscription service to others — without a separate commercial agreement. Contact [hello@aidhelpdesk.com](mailto:hello@aidhelpdesk.com) if you want to discuss licensing.

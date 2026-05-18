@@ -218,16 +218,20 @@ _SVG_LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
   <defs>
     <filter id="g"><feGaussianBlur stdDeviation="8"/></filter>
     <radialGradient id="rg" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.45"/>
-      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <circle cx="100" cy="100" r="99" fill="url(#rg)" filter="url(#g)"/>
   <circle cx="100" cy="100" r="90" fill="#07061a"/>
-  <circle cx="100" cy="100" r="90" fill="none" stroke="#7c3aed" stroke-width="6"/>
-  <circle cx="100" cy="100" r="83" fill="none" stroke="#a78bfa" stroke-width="1.5" opacity="0.35"/>
-  <text x="100" y="121" text-anchor="middle" font-family="ui-monospace,monospace,system-ui"
-        font-size="52" font-weight="800" fill="#ddd6fe" letter-spacing="-2">AI&gt;</text>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="#6366f1" stroke-width="6"/>
+  <circle cx="100" cy="100" r="83" fill="none" stroke="#818cf8" stroke-width="1.5" opacity="0.35"/>
+  <!-- "AI" text -->
+  <text x="85" y="121" text-anchor="middle" font-family="ui-monospace,monospace,system-ui"
+        font-size="52" font-weight="800" fill="#ddd6fe" letter-spacing="-2">AI</text>
+  <!-- D arc: curved right side of D, no left vertical stroke -->
+  <path d="M 114,69 Q 151,69 151,95 Q 151,121 114,121"
+        fill="none" stroke="#ddd6fe" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"""
 
 
