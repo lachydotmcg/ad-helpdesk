@@ -216,24 +216,8 @@ def favicon():
 
 @app.route("/logo.png")
 def logo():
-    """Serve the AID logo from whichever location it can be found."""
-    _here = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(_here, "static", "AIDLogo.png"),
-        os.path.join(_here, "..", "AIDLogo.png"),
-        os.path.join(_here, "..", "..", "ad-bridge", "AIDLogo.png"),
-        os.path.join(_here, "AIDLogo.png"),
-    ]
-    for path in candidates:
-        if os.path.isfile(path):
-            return send_file(path, mimetype="image/png")
-    # Fallback: tiny transparent 1x1 PNG so <img> doesn't break layout
-    import base64
-    _1x1 = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
-    )
-    from flask import Response
-    return Response(_1x1, mimetype="image/png")
+    """Serve the AID logo via Flask's static file handler (most reliable on Railway)."""
+    return redirect(url_for("static", filename="AIDLogo.png"), code=302)
 
 
 # ---------------------------------------------------------------------------
