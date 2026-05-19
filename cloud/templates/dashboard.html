@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AID Helpdesk — Dashboard</title>
+  <title>AID Helpdesk - Dashboard</title>
   <link rel="icon" type="image/png" href="/logo.png"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -449,6 +449,7 @@
       background: var(--bg); border-left: 1px solid var(--border);
       display: flex; flex-direction: column; overflow: hidden;
       animation: slideIn 0.2s ease;
+      pointer-events: auto; /* override overlay's pointer-events:none in fullscreen mode */
     }
     @keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     .tm-header {
@@ -549,6 +550,34 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 6px;
+    }
+
+    /* Janus threat score card */
+    .janus-card-top { display: flex; align-items: center; gap: 12px; }
+    .janus-score-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 10px;
+      font-size: 19px; font-weight: 900; flex-shrink: 0; line-height: 1;
+    }
+    .jscore-low  { background: rgba(52,211,153,0.15);  color: #34d399; }
+    .jscore-med  { background: rgba(251,191,36,0.15);   color: #fbbf24; }
+    .jscore-high { background: rgba(249,115,22,0.15);   color: #f97316; }
+    .jscore-crit { background: rgba(248,113,113,0.15);  color: #f87171; }
+    .janus-card-titles { flex: 1; min-width: 0; }
+    .janus-card-issue-type {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--accent2); margin-bottom: 2px;
+    }
+    .janus-card-title { font-size: 13px; font-weight: 700; color: var(--text); }
+    .janus-details-btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+      font-family: inherit; flex-shrink: 0; white-space: nowrap;
+    }
+    .janus-details-btn:hover { border-color: var(--accent); color: var(--accent2); }
+    .janus-details-body {
+      margin-top: 12px; font-size: 12px; line-height: 1.6;
+      border-top: 1px solid rgba(99,102,241,0.2); padding-top: 10px;
     }
 
     .ticket-actions-log {
@@ -1188,11 +1217,12 @@
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <input class="search-input" id="ticket-search" placeholder="Search tickets..." oninput="filterTickets()" style="width:160px;padding:6px 10px;font-size:12px;"/>
                 <select class="btn btn-ghost" id="ticket-filter" onchange="loadTickets()" style="font-size:12px;padding:6px 10px;">
-                  <option value="">All status</option>
+                  <option value="active">Active</option>
                   <option value="open">Open</option>
                   <option value="in_progress">In progress</option>
                   <option value="resolved">Resolved</option>
                   <option value="closed">Closed</option>
+                  <option value="">All</option>
                 </select>
                 <button class="btn btn-ghost" onclick="loadTickets()">↺</button>
                 {% if user_role == 'admin' %}
@@ -1257,13 +1287,23 @@
         <div class="thread-entry janus_analysis" id="td-janus" style="display:none">
           <div class="thread-header">
             <div class="thread-avatar" style="background:var(--accent2);font-size:11px;">AI</div>
-            <span class="thread-sender">Janus AI</span>
+            <span class="thread-sender">Janus</span>
             <span class="thread-tag">analysis</span>
           </div>
-          <div id="td-janus-text" style="white-space:pre-wrap;"></div>
-          <div id="td-janus-action" style="margin-top:12px;display:none">
-            <button class="btn btn-primary" id="td-apply-btn" style="width:100%" onclick="applyTicketFix()">⚡ Apply suggested fix</button>
-            <button class="btn btn-ghost" id="td-override-btn" style="width:100%;margin-top:6px;display:none;font-size:12px;" onclick="overrideAndApply()">✓ Not fraudulent — proceed anyway</button>
+          <div class="janus-card-top">
+            <div class="janus-score-badge jscore-low" id="td-janus-score-badge">?</div>
+            <div class="janus-card-titles">
+              <div class="janus-card-issue-type">Possible issue detected</div>
+              <div class="janus-card-title" id="td-janus-title">Analysing...</div>
+            </div>
+            <button class="janus-details-btn" id="td-janus-toggle" onclick="toggleJanusDetails()">Details</button>
+          </div>
+          <div class="janus-details-body" id="td-janus-details" style="display:none">
+            <div id="td-janus-text" style="white-space:pre-wrap;"></div>
+            <div id="td-janus-action" style="margin-top:12px;display:none">
+              <button class="btn btn-primary" id="td-apply-btn" style="width:100%" onclick="applyTicketFix()">Apply fix</button>
+              <button class="btn btn-ghost" id="td-override-btn" style="width:100%;margin-top:6px;display:none;font-size:12px;" onclick="overrideAndApply()">Not fraudulent - proceed anyway</button>
+            </div>
           </div>
         </div>
 
@@ -1326,7 +1366,7 @@
           <div class="chat-empty" id="chat-empty">
             <div class="chat-empty-icon">✨</div>
             <h3>Hi, I'm Janus</h3>
-            <p>I'm your AI assistant for Active Directory. Ask me anything — look up users, unlock accounts, reset passwords, manage groups — all in plain English.</p>
+            <p>I'm your AI assistant for Active Directory. Ask me anything: look up users, unlock accounts, reset passwords, manage groups, all in plain English.</p>
             <div class="chat-suggestions">
               <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
               <span class="chat-suggestion" onclick="sendSuggestion(this)">Show me domain stats</span>
@@ -1835,7 +1875,7 @@
     <div class="field">
       <label>Organisational Unit</label>
       <select id="cu-ou" class="search-input" style="width:100%">
-        <option value="">— Default (no OU) —</option>
+        <option value="">Default (no OU)</option>
       </select>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="cu-ou-status">Loading OUs from AD...</div>
     </div>
@@ -2122,12 +2162,12 @@
         ${isAdmin ? '<th>Actions</th>' : ''}
       </tr></thead><tbody>`;
     for (const u of users) {
-      const name   = u.DisplayName || u.Name || (u.GivenName + ' ' + u.Surname) || '—';
-      const uname  = u.SamAccountName || u.Username || '—';
+      const name   = u.DisplayName || u.Name || (u.GivenName + ' ' + u.Surname) || '-';
+      const uname  = u.SamAccountName || u.Username || '-';
       const _dn    = u.DistinguishedName || '';
       const ou     = _dn.match(/OU=([^,]+)/)?.[1]
                   || _dn.split(',').filter(p => p.startsWith('CN=')).slice(1)[0]?.split('=')[1]
-                  || '—';
+                  || '-';
       let pill = '<span class="pill pill-green">Active</span>';
       if (!u.Enabled)           pill = '<span class="pill pill-gray">Disabled</span>';
       if (u.LockedOut)          pill = '<span class="pill pill-red">Locked</span>';
@@ -2180,8 +2220,8 @@
       const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
       let html = `<table><thead><tr><th>Name</th><th>Username</th><th>Last Logon</th>${isAdmin ? '<th>Action</th>' : ''}</tr></thead><tbody>`;
       for (const u of _lockedUsers) {
-        const name    = u.DisplayName || u.Name || '—';
-        const uname   = u.SamAccountName || '—';
+        const name    = u.DisplayName || u.Name || '-';
+        const uname   = u.SamAccountName || '-';
         const logon   = u.LastLogonDate ? u.LastLogonDate.slice(0, 10) : 'Never';
         const action  = isAdmin
           ? `<td><button class="btn btn-success btn-sm" onclick="unlockUser('${uname}')">Unlock</button></td>`
@@ -2235,8 +2275,8 @@
       const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
       let html = `<table><thead><tr><th>Name</th><th>Username</th><th>Pwd Last Set</th><th>Last Logon</th>${isAdmin ? '<th>Action</th>' : ''}</tr></thead><tbody>`;
       for (const u of _expiredUsers) {
-        const name    = u.DisplayName || u.Name || '—';
-        const uname   = u.SamAccountName || '—';
+        const name    = u.DisplayName || u.Name || '-';
+        const uname   = u.SamAccountName || '-';
         const pwdSet  = u.PasswordLastSet ? u.PasswordLastSet.slice(0, 10) : 'Never';
         const logon   = u.LastLogonDate ? u.LastLogonDate.slice(0, 10) : 'Never';
         const action  = isAdmin
@@ -2348,11 +2388,11 @@
       const data = await run('list_ous', [], '', true);
       const ous  = Array.isArray(data) ? data : [];
       // Clear existing options except the default
-      sel.innerHTML = '<option value="">— Default (no OU) —</option>';
+      sel.innerHTML = '<option value="">Default (no OU)</option>';
       for (const ou of ous) {
         const opt = document.createElement('option');
         opt.value       = ou.Name || ou.name || '';
-        opt.textContent = ou.Name || ou.name || '—';
+        opt.textContent = ou.Name || ou.name || '-';
         opt.title       = ou.DistinguishedName || '';
         sel.appendChild(opt);
       }
@@ -2393,7 +2433,7 @@
       for (const ou of ous) {
         const opt = document.createElement('option');
         opt.value       = ou.Name || ou.name || '';
-        opt.textContent = ou.Name || ou.name || '—';
+        opt.textContent = ou.Name || ou.name || '-';
         opt.title       = ou.DistinguishedName || '';
         sel.appendChild(opt);
       }
@@ -2457,12 +2497,12 @@
 
       // Meta grid
       const meta = [
-        ['Email',       data.EmailAddress || data.UserPrincipalName || '—'],
-        ['Department',  data.Department   || '—'],
-        ['Title',       data.Title        || '—'],
+        ['Email',       data.EmailAddress || data.UserPrincipalName || '-'],
+        ['Department',  data.Department   || '-'],
+        ['Title',       data.Title        || '-'],
         ['Last Logon',  data.LastLogonDate ? data.LastLogonDate.slice(0, 10) : 'Never'],
-        ['Pwd Changed', data.PasswordLastSet ? data.PasswordLastSet.slice(0, 10) : '—'],
-        ['OU',          (() => { const d = data.DistinguishedName || ''; return d.match(/OU=([^,]+)/)?.[1] || d.split(',').filter(p => p.startsWith('CN=')).slice(1)[0]?.split('=')[1] || '—'; })()],
+        ['Pwd Changed', data.PasswordLastSet ? data.PasswordLastSet.slice(0, 10) : '-'],
+        ['OU',          (() => { const d = data.DistinguishedName || ''; return d.match(/OU=([^,]+)/)?.[1] || d.split(',').filter(p => p.startsWith('CN=')).slice(1)[0]?.split('=')[1] || '-'; })()],
       ];
       document.getElementById('ud-meta-grid').innerHTML = meta.map(([k, v]) => `
         <div>
@@ -2527,11 +2567,11 @@
 
     let html = `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>`;
     for (const r of slice) {
-      const ts = r.created_at ? r.created_at.replace('T', ' ').slice(0, 19) : '—';
+      const ts = r.created_at ? r.created_at.replace('T', ' ').slice(0, 19) : '-';
       const status = r.status === 'error'
         ? '<span class="pill pill-red">error</span>'
         : '<span class="pill pill-green">done</span>';
-      html += `<tr class="audit-row"><td>${ts}</td><td>${r.user_email}</td><td><code style="font-size:12px">${r.action}</code></td><td>${r.target || '—'}</td><td>${status}</td></tr>`;
+      html += `<tr class="audit-row"><td>${ts}</td><td>${r.user_email}</td><td><code style="font-size:12px">${r.action}</code></td><td>${r.target || '-'}</td><td>${status}</td></tr>`;
     }
     html += `</tbody></table>`;
     if (pages > 1) {
@@ -2587,7 +2627,7 @@
       const me = '{{ user_email }}';
       let html = `<table><thead><tr><th>Email</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody>`;
       for (const u of users) {
-        const ts = u.created_at ? u.created_at.slice(0, 10) : '—';
+        const ts = u.created_at ? u.created_at.slice(0, 10) : '-';
         const role = u.role === 'admin'
           ? '<span class="pill pill-green">admin</span>'
           : '<span class="pill pill-gray">viewer</span>';
@@ -2921,16 +2961,20 @@
         closed:      '<span class="pill pill-gray">Closed</span>'
       }[t.status] || t.status;
       const priClass = `priority-${t.priority}`;
-      const date = t.created_at ? t.created_at.slice(0, 10) : '—';
+      const date = t.created_at ? t.created_at.slice(0, 10) : '-';
       const source = t.source === 'email' ? ' 📧' : '';
       const hasJanus = t.janus_analysis ? ' ✨' : '';
-      const hasSecFlag = t.janus_analysis && (t.janus_analysis.includes('⚠️ Security flag') || t.janus_analysis.includes('🔒 Permission'));
+      let hasSecFlag = false;
+      if (t.janus_analysis) {
+        try { const jd = JSON.parse(t.janus_analysis); hasSecFlag = (jd.score >= 6) || (jd.text || '').includes('Security flag'); }
+        catch { hasSecFlag = t.janus_analysis.includes('Security flag') || t.janus_analysis.includes('Permission check'); }
+      }
       const secBadge = hasSecFlag ? ' <span class="security-pill">⚠ Security</span>' : '';
       const ticketNum = '#' + t.id.slice(0, 6).toUpperCase();
       html += `<tr class="ticket-row" onclick="openTicket('${t.id}')">
         <td style="font-size:11px;color:var(--muted);font-weight:600;font-family:monospace;">${ticketNum}</td>
         <td>${t.title}${source}${hasJanus}${secBadge}</td>
-        <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '-'}</td>
         <td class="${priClass}">${t.priority}</td>
         <td>${statusPill}</td>
         <td style="font-size:12px;color:var(--muted)">${date}</td>
@@ -2945,11 +2989,12 @@
     if (!sel) return;
     const cur = sel.value;
     const builtIn = [
-      { value: '',            label: 'All status' },
+      { value: 'active',      label: 'Active' },
       { value: 'open',        label: 'Open' },
       { value: 'in_progress', label: 'In progress' },
       { value: 'resolved',    label: 'Resolved' },
       { value: 'closed',      label: 'Closed' },
+      { value: '',            label: 'All' },
     ];
     const custom = (_customStatuses || []).map(s => ({ value: s.toLowerCase().replace(/\s+/g,'-'), label: s }));
     const all = [...builtIn, ...custom];
@@ -2972,11 +3017,17 @@
     document.getElementById('tickets-table-wrap').innerHTML =
       '<div class="loading"><span class="spinner"></span>Loading...</div>';
     const filter = document.getElementById('ticket-filter').value;
-    const url    = '/dashboard/api/tickets' + (filter ? `?status=${filter}` : '');
+    // 'active' = open + in_progress; handled client-side from full list
+    const apiFilter = (filter === 'active' || filter === '') ? '' : filter;
+    const url    = '/dashboard/api/tickets' + (apiFilter ? `?status=${apiFilter}` : '');
     try {
       const res  = await fetch(url);
       const json = await res.json();
-      _allTickets = json.data || [];
+      let allFetched = json.data || [];
+      // Client-side filter for 'active' (open + in_progress only)
+      _allTickets = filter === 'active'
+        ? allFetched.filter(t => t.status === 'open' || t.status === 'in_progress')
+        : allFetched;
 
       const openTickets  = _allTickets.filter(t => t.status === 'open');
       const open         = openTickets.length;
@@ -3024,9 +3075,32 @@
       : src.slice(0, 2).toUpperCase();
   }
 
+  function parseJanusAnalysis(raw) {
+    if (!raw) return null;
+    try { const d = JSON.parse(raw); if (d && d.v === 2) return d; } catch {}
+    return { v: 1, score: null, title: 'Analysis', text: raw };
+  }
+
+  function janusScoreClass(score) {
+    if (!score) return 'jscore-low';
+    if (score >= 8) return 'jscore-crit';
+    if (score >= 6) return 'jscore-high';
+    if (score >= 4) return 'jscore-med';
+    return 'jscore-low';
+  }
+
+  function toggleJanusDetails() {
+    const details = document.getElementById('td-janus-details');
+    const btn     = document.getElementById('td-janus-toggle');
+    if (!details) return;
+    const isOpen = details.style.display !== 'none';
+    details.style.display = isOpen ? 'none' : 'block';
+    if (btn) btn.textContent = isOpen ? 'Details' : 'Hide';
+  }
+
   function closeTicketModal(e) {
     // In sidebar mode, clicks on the overlay backdrop close the modal.
-    // In expanded mode, the overlay has pointerEvents:none so this fires only from the × button (no e).
+    // In expanded mode, the overlay has pointerEvents:none so this fires only from the x button (no e).
     const overlay = document.getElementById('ticket-modal-overlay');
     if (e && e.target !== overlay) return;
     overlay.style.display = 'none';
@@ -3094,7 +3168,7 @@
 
     // Sidebar
     document.getElementById('td-sidebar-requester').innerHTML =
-      `<div style="font-weight:600;">${t.requester_name || '—'}</div>` +
+      `<div style="font-weight:600;">${t.requester_name || '-'}</div>` +
       (t.requester_email ? `<div style="font-size:12px;color:var(--muted);">${t.requester_email}</div>` : '') +
       (t.requester_email ? `<a href="mailto:${t.requester_email}?subject=Re: ${encodeURIComponent(t.title)}" style="font-size:12px;color:var(--accent2);text-decoration:none;margin-top:4px;display:inline-block;">✉ Reply by email</a>` : '');
 
@@ -3135,22 +3209,28 @@
     // Janus box
     const janusBox = document.getElementById('td-janus');
     if (t.janus_analysis) {
-      document.getElementById('td-janus-text').textContent = t.janus_analysis;
-      const hasSecFlag = t.janus_analysis.includes('⚠️ Security flag') || t.janus_analysis.includes('🔒 Permission');
-      if (hasSecFlag) {
-        janusBox.style.background   = 'rgba(248,113,113,0.07)';
-        janusBox.style.borderColor  = 'rgba(248,113,113,0.35)';
-      } else {
-        janusBox.style.background   = '';
-        janusBox.style.borderColor  = '';
-      }
+      const jd           = parseJanusAnalysis(t.janus_analysis);
+      const analysisText = jd ? jd.text : t.janus_analysis;
+      const threatScore  = jd ? (jd.score || 0) : 0;
+      const threatTitle  = jd ? (jd.title || 'Analysis') : 'Analysis';
+
+      const scoreBadge = document.getElementById('td-janus-score-badge');
+      const titleEl    = document.getElementById('td-janus-title');
+      if (scoreBadge) { scoreBadge.textContent = threatScore || '?'; scoreBadge.className = 'janus-score-badge ' + janusScoreClass(threatScore); }
+      if (titleEl) titleEl.textContent = threatTitle;
+      document.getElementById('td-janus-text').textContent = analysisText;
+
+      const hasSecFlag = analysisText.includes('Security flag') || analysisText.includes('Permission check');
+      janusBox.style.background  = hasSecFlag ? 'rgba(248,113,113,0.07)' : '';
+      janusBox.style.borderColor = hasSecFlag ? 'rgba(248,113,113,0.35)' : '';
+
       const actionDiv   = document.getElementById('td-janus-action');
       const applyBtn    = document.getElementById('td-apply-btn');
       const overrideBtn = document.getElementById('td-override-btn');
       if (t.janus_action && t.status !== 'resolved' && t.status !== 'closed') {
         actionDiv.style.display = 'block';
         const args = JSON.parse(t.janus_action_args || '[]');
-        applyBtn.textContent = `⚡ Apply: ${t.janus_action} ${args.join(', ')}`;
+        applyBtn.textContent = `Apply: ${t.janus_action} ${args.join(', ')}`;
         if (hasSecFlag) {
           applyBtn.className = 'btn btn-danger'; applyBtn.style.width = '100%';
           overrideBtn.style.display = 'block';
@@ -3159,6 +3239,14 @@
           overrideBtn.style.display = 'none';
         }
       } else { actionDiv.style.display = 'none'; }
+
+      // Auto-expand details if action available or security flag
+      const detailsEl = document.getElementById('td-janus-details');
+      const toggleBtn = document.getElementById('td-janus-toggle');
+      const autoOpen  = hasSecFlag || (t.janus_action && t.status !== 'resolved' && t.status !== 'closed');
+      if (detailsEl) detailsEl.style.display = autoOpen ? 'block' : 'none';
+      if (toggleBtn) toggleBtn.textContent   = autoOpen ? 'Hide' : 'Details';
+
       janusBox.style.display = 'block';
     } else {
       janusBox.style.display = 'none';
@@ -3266,7 +3354,7 @@
       if (!json.success) { toast('Failed to queue fix: ' + json.message, 'error'); return; }
 
       const { command_id, action, args } = json;
-      toast('Fix queued — waiting for agent...', 'info');
+      toast('Fix queued - waiting for agent...', 'info');
 
       // Step 2: Poll until agent completes (up to 30s)
       let resultData = null;
@@ -3296,7 +3384,7 @@
       });
 
       if (resultData.success) {
-        toast('✅ Fix applied — ticket resolved!', 'success');
+        toast('✅ Fix applied - ticket resolved!', 'success');
         cacheInvalidate('list_users[]', 'list_locked_accounts[]', 'get_stats[]');
       } else {
         toast('Fix failed: ' + (resultData.message || 'Unknown error'), 'error');
@@ -3316,7 +3404,7 @@
     await fetch(`/dashboard/api/tickets/${_currentTicketId}/comment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: '✓ Admin review: security flag dismissed — proceeding with fix.' })
+      body: JSON.stringify({ content: '✓ Admin review: security flag dismissed - proceeding with fix.' })
     });
     applyTicketFix();
   }
@@ -3388,7 +3476,7 @@
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     // Update browser tab title
-    document.title = (_pageTitles[name] ? _pageTitles[name] + ' — ' : '') + 'AID Helpdesk';
+    document.title = (_pageTitles[name] ? _pageTitles[name] + ' - ' : '') + 'AID Helpdesk';
     // Activate the nav item — either from an explicit el arg, or from the event target
     const navEl = el || (typeof event !== 'undefined' && event && event.currentTarget) || null;
     if (navEl && navEl.classList && navEl.classList.contains('nav-item')) navEl.classList.add('active');
@@ -3473,7 +3561,7 @@
       const json = await res.json();
       _activityFeed = json.data || [];
       if (!_activityFeed.length) {
-        wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No activity yet — actions and Janus events will appear here.</div>';
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No activity yet. Actions and Janus events will appear here.</div>';
         return;
       }
       filterActivity();
@@ -3579,7 +3667,7 @@
   function renderRoles() {
     const list = document.getElementById('roles-list');
     if (!_settingsRoles.length) {
-      list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 4px;">No roles configured — Janus will not perform permission checks.</div>';
+      list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 4px;">No roles configured. Janus will not perform permission checks.</div>';
       return;
     }
     list.innerHTML = _settingsRoles.map((r, i) => `
@@ -3819,7 +3907,7 @@
     msgs.innerHTML = `<div class="chat-empty" id="chat-empty">
       <div class="chat-empty-icon">✨</div>
       <h3>Hi, I'm Janus</h3>
-      <p>I'm your AI assistant for Active Directory. Ask me anything — look up users, unlock accounts, reset passwords, manage groups — all in plain English.</p>
+      <p>I'm your AI assistant for Active Directory. Ask me anything: look up users, unlock accounts, reset passwords, manage groups, all in plain English.</p>
       <div class="chat-suggestions">
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Show me domain stats</span>
@@ -3956,7 +4044,7 @@
           badge.textContent   = open;
           badge.style.display = 'inline';
           badge.style.color   = hasUrgent ? 'var(--red)' : 'var(--yellow)';
-          badge.title         = hasUrgent ? `${open} open — urgent/high priority!` : `${open} open tickets`;
+          badge.title         = hasUrgent ? `${open} open - urgent/high priority!` : `${open} open tickets`;
         }
       }).catch(() => {});
 

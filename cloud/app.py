@@ -113,7 +113,7 @@ def send_ticket_email(to_email, to_name, ticket_title,
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"Re: {ticket_title} — Resolved"
+        msg["Subject"] = f"Re: {ticket_title} - Resolved"
         msg["From"]    = f"AID Helpdesk <{smtp_from}>"
         msg["To"]      = f"{to_name} <{to_email}>" if to_name else to_email
 
@@ -126,7 +126,7 @@ Your request "{ticket_title}" has been resolved.{action_line}
 
 {message}
 
-— AID Helpdesk (powered by Janus AI)
+- AID Helpdesk (powered by Janus AI)
 """
         html = f"""<!DOCTYPE html>
 <html>
@@ -140,7 +140,7 @@ Your request "{ticket_title}" has been resolved.{action_line}
   {'<p><strong>Action taken:</strong> ' + action_taken + '</p>' if action_taken else ''}
   <p>{message}</p>
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
-  <p style="color:#64748b;font-size:12px;">Powered by Janus AI — AID Helpdesk</p>
+  <p style="color:#64748b;font-size:12px;">Powered by Janus AI - AID Helpdesk</p>
 </body>
 </html>"""
 
@@ -833,6 +833,14 @@ CRITICAL RULES:
     except (json.JSONDecodeError, ValueError):
         pass
 
+    # Lookup actions that should trigger auto-chaining to the intended follow-up action
+    LOOKUP_ACTIONS = {
+        'search_users', 'search_groups', 'list_ous', 'get_user_info',
+        'list_users', 'list_groups', 'list_locked_accounts',
+        'list_expired_passwords', 'get_stats', 'list_group_memberships',
+        'get_group_members',
+    }
+
     # If it's a command, queue it and wait for the agent
     if command_data:
         action      = command_data["action"]
@@ -867,14 +875,104 @@ CRITICAL RULES:
         if not result_data:
             return jsonify({
                 "success": True,
-                "reply": f"{intent_msg}\n\n⚠️ Agent didn't respond in time. Is it running?",
+                "reply": f"{intent_msg}\n\nAgent did not respond in time. Is it running?",
                 "action_taken": action
             })
+
+        # ---------------------------------------------------------------
+        # SEARCH CHAINING: if this was a lookup, automatically follow up
+        # with the real action the user originally wanted (one chain max).
+        # ---------------------------------------------------------------
+        if action in LOOKUP_ACTIONS and result_data.get("success"):
+            chain_prompt = f"""You are {ai_name}. The user originally asked: "{message}"
+To prepare, you first ran: {action} {args}
+The lookup returned: {json.dumps(result_data.get('data', {}))[:1400]}
+
+Now complete the user's original request using the exact names/values from the lookup result above.
+If the original request is fully answered by the lookup (e.g. they just wanted to see a list), reply conversationally.
+If a follow-up write action is needed (e.g. add to group, create user, move OU), output ONLY the JSON command using the exact name from the result.
+Do NOT run another lookup — use the data you already have.
+Output format for action: {{"action": "action_name", "args": ["arg1"], "message": "what you are doing"}}"""
+
+            chain_resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                messages=[{"role": "user", "content": chain_prompt}]
+            )
+            chain_text = chain_resp.content[0].text.strip()
+
+            # Try to parse a chained command
+            chained = None
+            try:
+                import re as _re
+                clean2 = _re.sub(r'```(?:json)?', '', chain_text).strip()
+                m2 = _re.search(r'\{.*?"action".*?\}', clean2, _re.DOTALL)
+                if m2:
+                    p2 = json.loads(m2.group())
+                    if "action" in p2 and "args" in p2 and p2["action"] not in LOOKUP_ACTIONS:
+                        chained = p2
+            except Exception:
+                pass
+
+            if chained:
+                action2 = chained["action"]
+                args2   = chained["args"]
+                if action2 in write_actions:
+                    tgt2 = args2[0] if args2 else ""
+                    db.log_audit(g.tenant_id, g.user_email, action2, tgt2, "queued")
+                    db.increment_usage(g.tenant_id, "ad_commands")
+
+                cmd2    = db.queue_command(g.tenant_id, action2, args2)
+                result2 = None
+                deadline2 = time.time() + 25
+                while time.time() < deadline2:
+                    time.sleep(0.6)
+                    r2 = db.get_command_result(cmd2["id"], g.tenant_id)
+                    if r2:
+                        result2 = r2
+                        break
+
+                if result2:
+                    # Summarise the chained result
+                    pw_note2 = f"\nIMPORTANT: New password set: {args2[1]} - include it in your reply." if action2 == "reset_password" and len(args2) >= 2 else ""
+                    sum2 = client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=300,
+                        messages=[{"role": "user", "content": f"""You are {ai_name}. The user asked: "{message}"
+You searched first ({action} {args}), then ran: {action2} {args2}
+Final result: success={result2['success']}, message="{result2['message']}", data={json.dumps(result2.get('data',''))[:600]}
+{pw_note2}
+Write 2-3 sentences confirming what happened. Be direct and clear."""}]
+                    )
+                    final_reply = sum2.content[0].text.strip()
+                    db.increment_usage(g.tenant_id, "janus_calls")
+                    db.add_chat_message(session_id, g.tenant_id, "assistant", final_reply, action2)
+                    db.touch_chat_session(session_id)
+                    db.update_chat_session_title(session_id, message[:60])
+                    db.log_activity(g.tenant_id, "janus_action", g.user_email,
+                                    target=args2[0] if args2 else None,
+                                    detail=f"{action} -> {action2} via Janus chat")
+                    return jsonify({
+                        "success": True, "reply": final_reply,
+                        "action_taken": action2, "raw_data": result2.get("data"),
+                        "session_id": session_id
+                    })
+            else:
+                # Lookup was the full answer - chain_text is the conversational reply
+                db.increment_usage(g.tenant_id, "janus_calls")
+                db.add_chat_message(session_id, g.tenant_id, "assistant", chain_text, action)
+                db.touch_chat_session(session_id)
+                db.update_chat_session_title(session_id, message[:60])
+                return jsonify({
+                    "success": True, "reply": chain_text,
+                    "action_taken": action, "raw_data": result_data.get("data"),
+                    "session_id": session_id
+                })
 
         # Build extra context for password resets so the password is never lost
         password_note = ""
         if action == "reset_password" and len(args) >= 2:
-            password_note = f"\nIMPORTANT: The new password that was set is: {args[1]} — you MUST include this in your reply so the admin can share it."
+            password_note = f"\nIMPORTANT: The new password that was set is: {args[1]} - you MUST include this in your reply so the admin can share it."
 
         # Ask Claude to summarise the result in plain English
         summary_prompt = f"""You are {ai_name}, an AD Helpdesk AI assistant. The user asked: "{message}"
@@ -884,10 +982,10 @@ Agent result: success={result_data['success']}, message="{result_data['message']
 {password_note}
 Write a short, friendly plain-English summary of what happened.
 - If it succeeded: confirm clearly. Include key details (e.g. new password, group name, OU).
-- If it failed because something wasn't found (user, group, OU): say so clearly, then suggest or offer to search — e.g. "The group wasn't found. Want me to search for groups matching that name?"
+- If it failed because something wasn't found (user, group, OU): say so clearly, then suggest or offer to search.
 - If there was data returned (user list, group list, stats): summarise the key points concisely.
 - If this was a password reset: always state the new password clearly so the admin can share it.
-Keep it under 5 sentences. Be direct — no fluff."""
+Keep it under 5 sentences. Be direct."""
 
         summary_response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -902,7 +1000,7 @@ Keep it under 5 sentences. Be direct — no fluff."""
         db.update_chat_session_title(session_id, message[:60])
         db.log_activity(g.tenant_id, "janus_action", g.user_email,
                         target=args[0] if args else None,
-                        detail=f"{action} via Janus chat — {('success' if result_data['success'] else 'failed')}")
+                        detail=f"{action} via Janus chat - {('success' if result_data['success'] else 'failed')}")
         return jsonify({
             "success":      True,
             "reply":        final_reply,
@@ -1139,24 +1237,33 @@ Available AD actions for auto-resolution:
 
 Respond in EXACTLY this JSON format (no other text):
 {{
-  "analysis": "2-3 sentence plain English summary of the issue and recommendation",
+  "analysis": "1-2 sentences: what the issue is and what action to take",
+  "threat_score": 1,
+  "threat_title": "Short label e.g. Account Lockout, Password Reset, Impersonation, Suspicious Request",
   "can_auto_resolve": true or false,
   "action": "action_name or null",
   "args": ["arg1"] or [],
   "confidence": "high / medium / low",
-  "security_flag": null or "description of security concern",
+  "security_flag": null or "one sentence description of concern",
   "permission_ok": true or false,
-  "notes": "any caveats or things the admin should verify"
+  "notes": null or "one sentence caveat"
 }}
+
+THREAT SCORE GUIDE (1-10):
+1-3  Routine, verified request (account lockout from trusted domain, simple password reset)
+4-5  Unverified but plausible (no domain match configured, generic request)
+6-7  Ambiguous or mildly suspicious (domain mismatch, vague identity, unusual scope)
+8-10 Clear impersonation, spoofed domain, or high-risk request - flag prominently
 
 RULES:
 - Extract the username from the ticket body if stated explicitly.
-- If no username given, use the requester email local part (before '@') as the username. Treat it as confirmed with confidence "high". Do NOT say "inference required".
+- If no username given, use the requester email local part (before '@') as the username. Treat as confirmed with confidence "high". Do NOT say "inference required".
 - If the email local part is generic (info, admin, support, noreply) fall back to confidence "low".
 - Only set can_auto_resolve to true if confident about username AND action AND permission_ok is true.
 - For password resets, generate a secure temporary password: uppercase + lowercase + numbers + symbol, 12+ chars.
 - security_flag must be null if no concerns (not an empty string).
-- For group operations, use the group name exactly as the user wrote it — the agent can handle partial name matching."""
+- threat_title must NOT say "typosquatting" - use "Impersonation" instead.
+- For group operations, use the group name exactly as the user wrote it."""
 
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -1169,17 +1276,28 @@ RULES:
         analysis_text = parsed.get("analysis", "")
         security_flag = parsed.get("security_flag")
         perm_ok       = parsed.get("permission_ok", True)
+        threat_score  = int(parsed.get("threat_score") or 3)
+        threat_title  = (parsed.get("threat_title") or "Analysis").replace("typosquatting", "Impersonation").replace("Typosquatting", "Impersonation")
 
         if security_flag:
-            analysis_text += f"\n\n⚠️ Security flag: {security_flag}"
+            analysis_text += f"\n\nSecurity flag: {security_flag}"
         if not perm_ok:
-            analysis_text += "\n\n🔒 Permission check failed — review before applying any fix."
+            analysis_text += "\n\nPermission check failed - review before applying any fix."
+
+        # Store structured blob so frontend can render the score card
+        analysis_blob = json.dumps({
+            "v": 2,
+            "score": threat_score,
+            "title": threat_title,
+            "text":  analysis_text,
+        })
 
         db.update_ticket(ticket_id, tenant_id,
-                         janus_analysis=analysis_text,
+                         janus_analysis=analysis_blob,
                          janus_action=parsed.get("action"),
                          janus_action_args=json.dumps(parsed.get("args", [])))
-        db.add_ticket_action(ticket_id, tenant_id, "janus_analysis", analysis_text, "janus")
+        db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
+                             f"[Threat {threat_score}/10 - {threat_title}] {analysis_text}", "janus")
         db.increment_usage(tenant_id, "janus_calls")
 
         if security_flag:
@@ -1210,7 +1328,7 @@ RULES:
             if result_data and result_data["success"]:
                 db.update_ticket(ticket_id, tenant_id, status="resolved")
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
-                                     f"✅ Janus auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} — {result_data['message']}", "janus")
+                                     f"✅ Janus auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} - {result_data['message']}", "janus")
                 db.log_activity(tenant_id, "ticket_resolved", "janus", target=ticket_id,
                                 detail=f"Auto-resolved via {janus_action}")
                 auto_resolved = True
@@ -1228,7 +1346,7 @@ RULES:
                                      f"❌ Janus auto-apply failed: {result_data['message']}", "janus")
             else:
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
-                                     "⚠️ Janus auto-apply timed out — agent may be offline.", "janus")
+                                     "⚠️ Janus auto-apply timed out - agent may be offline.", "janus")
 
         return {"parsed": parsed, "auto_resolved": auto_resolved, "error": None}
 
@@ -1332,9 +1450,15 @@ def update_ticket(ticket_id):
                     if new_status == "resolved":
                         summary = "Your request has been reviewed and resolved by our IT helpdesk."
                         if janus_analysis:
-                            # Strip security/permission flags from the requester-facing summary
-                            clean = janus_analysis.split("\n\n⚠️")[0].split("\n\n🔒")[0].strip()
-                            summary += f"\n\nSummary: {clean}"
+                            # Extract plain text from structured JSON blob if present
+                            try:
+                                import json as _json
+                                jd = _json.loads(janus_analysis)
+                                clean = (jd.get("text") or "").split("\n\nSecurity flag")[0].split("\n\nPermission check")[0].strip()
+                            except Exception:
+                                clean = janus_analysis.split("\n\nSecurity flag")[0].split("\n\nPermission check")[0].strip()
+                            if clean:
+                                summary += f"\n\nSummary: {clean}"
                         summary += "\n\nIf you need further assistance, please submit a new ticket or reply to this email."
                     else:
                         summary = "Your support ticket has been closed. If your issue was not resolved, please submit a new ticket."
@@ -1433,7 +1557,7 @@ def apply_ticket_fix_complete(ticket_id):
     if ad_success:
         db.update_ticket(ticket_id, g.tenant_id, status="resolved")
         db.add_ticket_action(ticket_id, g.tenant_id, "ad_action",
-                             f"Fix applied: {action} {args} — {message}", g.user_email)
+                             f"Fix applied: {action} {args} - {message}", g.user_email)
         db.log_audit(g.tenant_id, g.user_email, action, args[0] if args else "", "success")
         db.log_activity(g.tenant_id, "ticket_resolved", g.user_email,
                         target=ticket_id, detail=f"Fix applied: {action} on {args[0] if args else '?'}")
@@ -1451,7 +1575,7 @@ def apply_ticket_fix_complete(ticket_id):
         db.add_ticket_action(ticket_id, g.tenant_id, "ad_action",
                              f"Fix failed: {message}", g.user_email)
         db.log_activity(g.tenant_id, "fix_failed", g.user_email,
-                        target=ticket_id, detail=f"Fix failed: {action} — {message}")
+                        target=ticket_id, detail=f"Fix failed: {action} - {message}")
 
     return jsonify({"success": True})
 
