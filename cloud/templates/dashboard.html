@@ -1014,13 +1014,19 @@
             <div style="font-size:28px;flex-shrink:0;line-height:1;">🔌</div>
             <div style="flex:1;">
               <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Connect your Windows agent</div>
-              <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:12px;">
+              <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;">
                 AID Helpdesk needs a small agent running on your Windows Server to talk to Active Directory.
-                Copy your API key below and paste it into <code style="background:rgba(99,102,241,0.12);padding:1px 6px;border-radius:4px;font-size:11px;">agent-config.json</code>, then run <code style="background:rgba(99,102,241,0.12);padding:1px 6px;border-radius:4px;font-size:11px;">python agent.py</code>.
+                Download the installer below and run it on your server — the setup wizard handles everything.
               </div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+              <!-- Download + API key row -->
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                <a href="https://github.com/lachydotmcg/ad-helpdesk/releases/latest/download/aid-agent-setup.exe"
+                   style="display:inline-flex;align-items:center;gap:7px;background:var(--accent2);color:#fff;font-size:12px;font-weight:700;padding:9px 16px;border-radius:8px;text-decoration:none;white-space:nowrap;flex-shrink:0;"
+                   download>
+                  ⬇ Download Agent Installer
+                </a>
                 <input id="onboard-api-key" class="search-input" readonly
-                       style="flex:1;min-width:180px;max-width:380px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
+                       style="flex:1;min-width:160px;max-width:340px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
                        placeholder="Loading..."/>
                 <button class="btn btn-ghost" style="font-size:12px;" onclick="copyOnboardApiKey()">📋 Copy key</button>
               </div>
@@ -1029,7 +1035,7 @@
                 <span id="onboard-agent-label">Waiting for agent...</span>
               </div>
               <button class="btn btn-primary" id="onboard-check-btn" style="font-size:13px;" onclick="onboardCheckConnection()">
-                ✓ I've pasted the key — check connection
+                ✓ Agent installed — check connection
               </button>
               <div id="onboard-checking" style="display:none;font-size:12px;color:var(--muted);margin-top:8px;">
                 <span class="spinner" style="width:14px;height:14px;margin-right:6px;"></span>Checking for agent...
@@ -1662,22 +1668,39 @@
 
             <!-- Agent Configuration -->
             <div class="settings-section">
-              <div class="settings-section-title">Agent Configuration</div>
-              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-                Your Windows agent needs this API key to connect to your account.
-                Paste it into <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">agent-config.json</code> on your server.
+              <div class="settings-section-title">Windows Agent</div>
+
+              <!-- Status + download card -->
+              <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <div id="settings-agent-dot" class="status-dot"></div>
+                    <div>
+                      <div id="settings-agent-label" style="font-size:13px;font-weight:600;color:var(--text);">Checking...</div>
+                      <div style="font-size:11px;color:var(--muted);margin-top:2px;">Polls your Windows Server and executes AD commands locally</div>
+                    </div>
+                  </div>
+                  <a href="https://github.com/lachydotmcg/ad-helpdesk/releases/latest/download/aid-agent-setup.exe"
+                     style="display:inline-flex;align-items:center;gap:8px;background:var(--accent2);color:#fff;font-size:12px;font-weight:700;padding:9px 16px;border-radius:8px;text-decoration:none;white-space:nowrap;flex-shrink:0;"
+                     download>
+                    ⬇ Download Agent
+                  </a>
+                </div>
+                <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);line-height:1.7;">
+                  Run <strong style="color:var(--text);">aid-agent-setup.exe</strong> on your Windows Server.
+                  The setup wizard will ask for your API key and AD credentials, then install the agent as a Windows Service automatically.
+                </div>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-                <div id="settings-agent-dot" class="status-dot"></div>
-                <span id="settings-agent-label" style="font-size:13px;color:var(--muted);">Checking...</span>
-              </div>
+
+              <!-- API key -->
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600;color:var(--text);">Your API Key</div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <input id="tenant-api-key" class="search-input" readonly
                        style="flex:1;min-width:200px;max-width:420px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
                        placeholder="Loading..." />
                 <button class="btn btn-ghost" style="font-size:12px;" onclick="copyApiKey()">Copy</button>
               </div>
-              <div style="font-size:12px;color:var(--muted);margin-top:12px;">
+              <div style="font-size:12px;color:var(--muted);margin-top:10px;">
                 Cloud URL: <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;font-size:11px;">{{ request.host_url.rstrip('/') }}</code>
               </div>
             </div>
