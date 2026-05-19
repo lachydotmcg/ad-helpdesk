@@ -19,17 +19,26 @@ _DOMAIN     = os.getenv("AD_DOMAIN")          # e.g. "lab" (without .local)
 _ADMIN_USER = os.getenv("AD_ADMIN_USER", "Administrator")
 _ADMIN_PASS = os.getenv("AD_ADMIN_PASS")
 
+# HTTPS (port 5986) is the default. Set AD_WINRM_HTTP=1 in your env/config
+# to fall back to plain HTTP — only acceptable inside a Tailscale tunnel or
+# fully isolated LAN where you accept the risk of unencrypted credentials.
+_USE_HTTPS  = os.getenv("AD_WINRM_HTTP", "0") != "1"
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 def _session() -> winrm.Session:
+    if _USE_HTTPS:
+        endpoint = f"https://{_VM_IP}:5986/wsman"
+    else:
+        endpoint = f"http://{_VM_IP}:5985/wsman"
     return winrm.Session(
-        f"http://{_VM_IP}:5985/wsman",
+        endpoint,
         auth=(f"{_DOMAIN}\\{_ADMIN_USER}", _ADMIN_PASS),
         transport="ntlm",
-        server_cert_validation="ignore",
+        server_cert_validation="ignore",   # accepts self-signed certs; traffic is still encrypted
     )
 
 

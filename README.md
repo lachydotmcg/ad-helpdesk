@@ -37,12 +37,31 @@ Auto-resolve (Pro+) or queue for admin approval
     │
     ▼
 AID Agent (running on your Windows Server)
-    │ executes PowerShell via WinRM against Active Directory
+    │ polls outbound over HTTPS - no inbound ports, no firewall rules
+    ▼
+PowerShell executed locally against Active Directory
+    │ your AD never touches the internet
     ▼
 Result logged to audit trail + email sent back to requester
 ```
 
-The **AID Agent** is a lightweight Windows process that runs on your server. It polls the cloud dashboard, executes approved AD commands locally, and posts results back. No inbound ports required - works behind NAT, firewalls, and across Tailscale.
+The **AID Agent** is a lightweight Windows Service that runs on your server. It makes outbound HTTPS connections to the cloud dashboard — your Active Directory never exposes itself, no firewall rules are needed, and it works behind NAT, Tailscale, or any network topology. **Your AD stays completely internal.**
+
+Destructive actions (disabling accounts, password resets) require an explicit confirmation code before execution, so nothing irreversible happens by accident.
+
+---
+
+## Security architecture
+
+**Your AD never touches the internet.** The agent polls *outbound* — no inbound ports, no firewall rules, no VPN configuration. It works the same whether your server is on-prem, in a private data centre, or behind a strict corporate firewall.
+
+- All WinRM communication is encrypted over HTTPS (TLS, port 5986) by default
+- The service account (`svc.helpdesk`) uses delegated OU permissions only — not local Administrators or Domain Admins
+- Destructive actions (disable account, password reset, group removal) require a 6-digit confirmation code before execution
+- Every AD action is logged with timestamp, requester identity, and Janus confidence score
+- Credentials live only in environment variables — never hardcoded, never committed
+
+**Self-hosting:** The full cloud backend is included in this repo under MIT + Commons Clause. Organisations with strict data-residency requirements can run everything on-prem — see [Self-hosting the cloud backend](#self-hosting-the-cloud-backend).
 
 ---
 
@@ -160,6 +179,10 @@ Janus chains lookups automatically. For example: "add sarah to the IT Support gr
 | Support | Community | Email | Priority |
 | Price | A$0 | A$29/month | A$99/month |
 
+**MSP licence:** Managing multiple client environments? An MSP licence lets you run AID Helpdesk across your client base under a single agreement. Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
+
+**On-prem / compliance tier:** Organisations with strict data-residency requirements can self-host the full cloud backend. See [Self-hosting the cloud backend](#self-hosting-the-cloud-backend).
+
 ---
 
 ## Self-hosting the agent
@@ -184,17 +207,30 @@ python agent.py
 Enable-PSRemoting -Force
 ```
 
-- A service account in Remote Management Users and local Administrators:
+- A dedicated service account with the minimum required permissions (no local Administrator membership needed):
 
 ```powershell
+# 1. Create the service account
 New-ADUser -Name "Helpdesk Service" -SamAccountName "svc.helpdesk" `
   -AccountPassword (ConvertTo-SecureString "YourPassword" -AsPlainText -Force) `
-  -Enabled $true
+  -Enabled $true -PasswordNeverExpires $true
+
+# 2. Allow it to connect via WinRM
 Add-ADGroupMember -Identity "Remote Management Users" -Members "svc.helpdesk"
-net localgroup Administrators "LAB\svc.helpdesk" /add
+
+# 3. Grant rights to manage AD users and groups (no local Admins required)
+#    Delegate "Reset Password", "Read/Write Account Restrictions", and
+#    "Read/Write Group Membership" at the OU level in ADUC, or run:
+$ou = "OU=YourOU,DC=lab,DC=local"
+dsacls $ou /G "LAB\svc.helpdesk:CA;Reset Password;user" /I:S
+dsacls $ou /G "LAB\svc.helpdesk:RPWP;pwdLastSet;user" /I:S
+dsacls $ou /G "LAB\svc.helpdesk:RPWP;lockoutTime;user" /I:S
+dsacls $ou /G "LAB\svc.helpdesk:RPWP;userAccountControl;user" /I:S
 ```
 
 > **Tip:** Use the NetBIOS domain name (e.g. `LAB`), not the FQDN (`lab.local`). NTLM auth will fail with the FQDN.
+
+> **Security note:** `svc.helpdesk` does **not** need to be a member of local Administrators or Domain Admins. The delegated OU permissions above give it exactly what it needs and nothing more.
 
 ---
 

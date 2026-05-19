@@ -87,6 +87,9 @@ if SERVICE_MODE:
             os.environ["AD_DOMAIN"]     = config.get("ad_domain", "")
             os.environ["AD_ADMIN_USER"] = config.get("ad_admin_user", "Administrator")
             os.environ["AD_ADMIN_PASS"] = config.get("ad_admin_pass", "")
+            # HTTPS is default; only set HTTP flag if explicitly disabled in config
+            if not config.get("winrm_https", True):
+                os.environ["AD_WINRM_HTTP"] = "1"
 
             import ad_bridge  # bundled by PyInstaller
 
@@ -588,8 +591,46 @@ else:
                     shutil.copy2(exe_src, exe_dst)
                     self._log(f"Copied: aid-agent-setup.exe")
 
-                # 3. Write config file
-                self._prog(38, "Writing configuration...")
+                # 3. Configure WinRM HTTPS listener on this machine
+                self._prog(32, "Configuring WinRM HTTPS...")
+                ps_https = (
+                    "$cert = Get-ChildItem Cert:\\LocalMachine\\My | "
+                    "Where-Object { $_.Subject -like '*AIDHelpdesk*' } | "
+                    "Select-Object -First 1; "
+                    "if (-not $cert) { "
+                    "  $cert = New-SelfSignedCertificate "
+                    "    -DnsName 'AIDHelpdeskAgent' "
+                    "    -CertStoreLocation 'Cert:\\LocalMachine\\My' "
+                    "    -NotAfter (Get-Date).AddYears(10); "
+                    "}; "
+                    "$existing = Get-WSManInstance -ResourceURI winrm/config/Listener "
+                    "  -SelectorSet @{Address='*';Transport='HTTPS'} "
+                    "  -ErrorAction SilentlyContinue; "
+                    "if (-not $existing) { "
+                    "  New-Item -Path WSMan:\\LocalHost\\Listener "
+                    "    -Transport HTTPS -Address * "
+                    "    -CertificateThumbPrint $cert.Thumbprint -Force | Out-Null; "
+                    "}; "
+                    "try { "
+                    "  netsh advfirewall firewall add rule name='WinRM HTTPS AID' "
+                    "    protocol=TCP dir=in localport=5986 action=allow | Out-Null "
+                    "} catch {}; "
+                    "Write-Output 'OK'"
+                )
+                r = subprocess.run(
+                    ["powershell", "-NonInteractive", "-Command", ps_https],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if "OK" in (r.stdout or ""):
+                    self._log("WinRM HTTPS listener configured (port 5986)")
+                    config_https = True
+                else:
+                    self._log(f"WinRM HTTPS: {(r.stderr or r.stdout or '').strip()[:120]}")
+                    self._log("  Falling back to HTTP for this install.")
+                    config_https = False
+
+                # 4. Write config file
+                self._prog(46, "Writing configuration...")
                 config = {
                     "cloud_url":       self.cloud_url.get().rstrip("/"),
                     "tenant_api_key":  self.api_key.get().strip(),
@@ -598,13 +639,14 @@ else:
                     "ad_admin_user":   self.ad_user.get().strip(),
                     "ad_admin_pass":   self.ad_pass.get(),
                     "timeout_seconds": 10,
+                    "winrm_https":     config_https,
                 }
                 with open(CONFIG_FILE, "w") as cf:
                     json.dump(config, cf, indent=2)
-                self._log("Written: agent-config.json")
+                self._log(f"Written: agent-config.json (WinRM {'HTTPS' if config_https else 'HTTP'})")
 
-                # 4. Register Windows Service
-                self._prog(58, "Registering Windows Service...")
+                # 6. Register Windows Service
+                self._prog(62, "Registering Windows Service...")
                 result = subprocess.run(
                     [exe_dst, "install"],
                     capture_output=True, text=True, timeout=30,
@@ -612,8 +654,8 @@ else:
                 out = (result.stdout + result.stderr).strip()
                 self._log(f"Service install: {out or 'OK'}")
 
-                # 5. Configure auto-start
-                self._prog(70, "Configuring auto-start...")
+                # 7. Configure auto-start
+                self._prog(76, "Configuring auto-start...")
                 subprocess.run(
                     ["sc", "config", SERVICE_NAME, "start=", "auto"],
                     capture_output=True, timeout=15,

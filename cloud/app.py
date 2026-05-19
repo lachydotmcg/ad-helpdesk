@@ -61,6 +61,54 @@ def _rate_limit(key: str, max_calls: int, window_seconds: int) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Destructive action confirmation tokens
+# High-risk actions require the admin to confirm a 6-digit challenge code
+# before the command is queued. Tokens expire after 5 minutes, single-use.
+# ---------------------------------------------------------------------------
+
+# Actions that require an explicit confirmation challenge
+DESTRUCTIVE_ACTIONS = {
+    "disable_account",
+    "remove_from_group",
+    "move_user",
+    "create_user",
+    "reset_password",
+    "set_password_never_expires",
+}
+
+_confirm_store: dict[str, dict] = {}   # token -> {action, args, tenant_id, expires, used}
+_CONFIRM_TTL = 300                     # 5 minutes
+
+def _issue_confirm_token(tenant_id: str, action: str, args: list) -> str:
+    """Generate a 6-digit confirmation code and store the pending action."""
+    # Prune expired entries
+    now = time.time()
+    expired = [k for k, v in _confirm_store.items() if v["expires"] < now]
+    for k in expired:
+        del _confirm_store[k]
+
+    code = "".join(secrets.choice("0123456789") for _ in range(6))
+    _confirm_store[code] = {
+        "tenant_id": tenant_id,
+        "action":    action,
+        "args":      args,
+        "expires":   now + _CONFIRM_TTL,
+        "used":      False,
+    }
+    return code
+
+def _consume_confirm_token(tenant_id: str, code: str) -> dict | None:
+    """Validate and consume a confirmation token. Returns the pending action or None."""
+    entry = _confirm_store.get(code)
+    if not entry:
+        return None
+    if entry["used"] or entry["tenant_id"] != tenant_id or time.time() > entry["expires"]:
+        return None
+    entry["used"] = True
+    return entry
+
+
 def _gen_password(length: int = 16) -> str:
     """Generate a secure random password."""
     chars = string.ascii_letters + string.digits + "!@#$%"
@@ -650,15 +698,51 @@ def dashboard_exec():
     Body: { "action": "get_stats", "args": [] }
     Returns: { "command_id": "..." }
     """
-    data   = request.get_json() or {}
-    action = data.get("action", "").strip()
-    args   = data.get("args", [])
-    target = data.get("target", "")   # optional, for audit log
+    data          = request.get_json() or {}
+    action        = data.get("action", "").strip()
+    args          = data.get("args", [])
+    target        = data.get("target", "")      # optional, for audit log
+    confirm_token = data.get("confirm_token", "").strip()
 
     if not action:
         return jsonify({"success": False, "message": "action is required."}), 400
 
-    # Enforce plan limits for write (AD-mutating) actions
+    # ── Destructive action confirmation ──────────────────────────────────────
+    # High-risk actions require a short-lived 6-digit challenge code to be
+    # confirmed by the admin before the command is queued.
+    if action in DESTRUCTIVE_ACTIONS:
+        if not confirm_token:
+            # Issue a challenge — return the code for the admin to confirm
+            code = _issue_confirm_token(g.tenant_id, action, args)
+            subject = args[0] if args else "?"
+            action_labels = {
+                "disable_account":          f"Disable account for {subject}",
+                "remove_from_group":        f"Remove {subject} from group {args[1] if len(args)>1 else '?'}",
+                "move_user":                f"Move {subject} to OU: {args[1] if len(args)>1 else '?'}",
+                "create_user":              f"Create new user: {subject} {args[1] if len(args)>1 else ''}",
+                "reset_password":           f"Reset password for {subject}",
+                "set_password_never_expires": f"Set password-never-expires for {subject}",
+            }
+            return jsonify({
+                "success":              False,
+                "requires_confirmation": True,
+                "confirm_token":        code,
+                "action_label":         action_labels.get(action, action),
+                "message":              "This action requires confirmation.",
+            }), 202
+
+        # Token supplied — validate it
+        pending = _consume_confirm_token(g.tenant_id, confirm_token)
+        if not pending:
+            return jsonify({
+                "success": False,
+                "message": "Invalid or expired confirmation code. Please try again.",
+            }), 403
+        # Use the action/args from the stored token (prevents tampering)
+        action = pending["action"]
+        args   = pending["args"]
+
+    # ── Plan limits for write actions ────────────────────────────────────────
     write_actions = {
         "reset_password", "unlock_account", "enable_account",
         "disable_account", "add_to_group", "remove_from_group",

@@ -1259,6 +1259,33 @@
       </div>
     </div>
 
+<!-- ===== DESTRUCTIVE ACTION CONFIRM MODAL ===== -->
+<div id="confirm-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:32px 36px;max-width:420px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.5);">
+    <div style="font-size:22px;margin-bottom:8px;">🔐</div>
+    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">Confirm action</div>
+    <div id="confirm-action-label" style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5;"></div>
+
+    <div style="background:var(--surface3);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;margin-bottom:20px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Enter this code to confirm</div>
+      <div id="confirm-code-display" style="font-size:32px;font-weight:900;letter-spacing:0.2em;color:var(--accent2);font-family:'Courier New',monospace;"></div>
+    </div>
+
+    <input id="confirm-code-input" type="text" maxlength="6" placeholder="______"
+           style="width:100%;text-align:center;font-size:24px;font-weight:700;letter-spacing:0.2em;
+                  font-family:'Courier New',monospace;background:var(--surface3);border:1px solid var(--border);
+                  border-radius:8px;padding:12px;color:var(--text);outline:none;box-sizing:border-box;"
+           oninput="this.value=this.value.replace(/\D/g,'')"
+           onkeydown="if(event.key==='Enter')document.getElementById('confirm-submit-btn').click()"/>
+    <div id="confirm-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px;text-align:center;">Incorrect code. Try again.</div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button id="confirm-cancel-btn" class="btn btn-ghost" style="flex:1;">Cancel</button>
+      <button id="confirm-submit-btn" class="btn btn-primary" style="flex:1;">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== TICKET SLIDE-OVER MODAL ===== -->
 <div id="ticket-modal-overlay" onclick="closeTicketModal(event)">
   <div id="ticket-modal">
@@ -1971,6 +1998,12 @@
   // Core: command execution + polling
   // =========================================================
 
+  // Destructive actions that the backend will challenge before executing
+  const DESTRUCTIVE_ACTIONS = new Set([
+    'disable_account', 'remove_from_group', 'move_user',
+    'create_user', 'reset_password', 'set_password_never_expires'
+  ]);
+
   async function execCommand(action, args = [], target = '') {
     const res = await fetch('/dashboard/api/exec', {
       method: 'POST',
@@ -1978,8 +2011,49 @@
       body: JSON.stringify({ action, args, target })
     });
     const json = await res.json();
+
+    // Backend issued a confirmation challenge for a destructive action
+    if (json.requires_confirmation) {
+      const confirmed = await showConfirmChallenge(json.action_label, json.confirm_token);
+      if (!confirmed) throw new Error('Action cancelled.');
+      // Re-submit with the confirmed token
+      const res2 = await fetch('/dashboard/api/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, args, target, confirm_token: confirmed })
+      });
+      const json2 = await res2.json();
+      if (!json2.success) throw new Error(json2.message || 'Failed to queue command');
+      return json2.command_id;
+    }
+
     if (!json.success) throw new Error(json.message || 'Failed to queue command');
     return json.command_id;
+  }
+
+  // Show a modal with the 6-digit code — user must retype it to confirm
+  function showConfirmChallenge(actionLabel, code) {
+    return new Promise((resolve) => {
+      document.getElementById('confirm-action-label').textContent = actionLabel;
+      document.getElementById('confirm-code-display').textContent = code;
+      document.getElementById('confirm-code-input').value = '';
+      document.getElementById('confirm-error').style.display = 'none';
+      document.getElementById('confirm-overlay').style.display = 'flex';
+
+      document.getElementById('confirm-submit-btn').onclick = () => {
+        const entered = document.getElementById('confirm-code-input').value.trim();
+        if (entered !== code) {
+          document.getElementById('confirm-error').style.display = 'block';
+          return;
+        }
+        document.getElementById('confirm-overlay').style.display = 'none';
+        resolve(code);
+      };
+      document.getElementById('confirm-cancel-btn').onclick = () => {
+        document.getElementById('confirm-overlay').style.display = 'none';
+        resolve(null);
+      };
+    });
   }
 
   async function pollResult(commandId, timeoutMs = 30000) {
