@@ -297,6 +297,20 @@
     .pill-yellow { background: rgba(251,191,36,0.15);  color: var(--yellow); }
     .pill-gray   { background: var(--surface2); color: var(--muted); }
 
+    /* Inline status dropdown in ticket table */
+    .inline-status-wrap { position: relative; display: inline-block; }
+    .inline-status-badge { cursor: pointer; user-select: none; white-space: nowrap; }
+    .inline-status-badge:hover { opacity: 0.8; }
+    .inline-status-menu {
+      position: absolute; top: calc(100% + 4px); left: 0; z-index: 200;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      min-width: 130px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .inline-status-menu div {
+      padding: 8px 14px; font-size: 12px; color: var(--text); cursor: pointer;
+    }
+    .inline-status-menu div:hover { background: var(--surface3); }
+
     .action-btns { display: flex; gap: 6px; }
 
     /* ---- Loading states ---- */
@@ -2954,12 +2968,20 @@
     tickets.sort((a, b) => (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4));
     let html = `<table><thead><tr><th style="width:70px;color:var(--muted)">#</th><th>Title</th><th>Requester</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead><tbody>`;
     for (const t of tickets) {
-      const statusPill = {
-        open:        '<span class="pill pill-red">Open</span>',
-        in_progress: '<span class="pill pill-yellow">In progress</span>',
-        resolved:    '<span class="pill pill-green">Resolved</span>',
-        closed:      '<span class="pill pill-gray">Closed</span>'
-      }[t.status] || t.status;
+      const STATUS_COLORS = { open:'pill-red', in_progress:'pill-yellow', resolved:'pill-green', closed:'pill-gray' };
+      const STATUS_LABELS = { open:'Open', in_progress:'In progress', resolved:'Resolved', closed:'Closed' };
+      const statusColor   = STATUS_COLORS[t.status] || 'pill-gray';
+      const statusLabel   = STATUS_LABELS[t.status] || t.status;
+      // Inline status dropdown — clicking it does NOT open the ticket
+      const statusDropdown = `<div class="inline-status-wrap" onclick="event.stopPropagation()">
+        <span class="pill ${statusColor} inline-status-badge" onclick="toggleStatusMenu(event,'${t.id}')">${statusLabel} ▾</span>
+        <div class="inline-status-menu" id="smenu-${t.id}" style="display:none">
+          <div onclick="setTicketStatus('${t.id}','open')">Open</div>
+          <div onclick="setTicketStatus('${t.id}','in_progress')">In progress</div>
+          <div onclick="setTicketStatus('${t.id}','resolved')">Resolved</div>
+          <div onclick="setTicketStatus('${t.id}','closed')">Closed</div>
+        </div>
+      </div>`;
       const priClass = `priority-${t.priority}`;
       const date = t.created_at ? t.created_at.slice(0, 10) : '-';
       const source = t.source === 'email' ? ' 📧' : '';
@@ -2976,7 +2998,7 @@
         <td>${t.title}${source}${hasJanus}${secBadge}</td>
         <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '-'}</td>
         <td class="${priClass}">${t.priority}</td>
-        <td>${statusPill}</td>
+        <td>${statusDropdown}</td>
         <td style="font-size:12px;color:var(--muted)">${date}</td>
       </tr>`;
     }
@@ -3000,6 +3022,53 @@
     const all = [...builtIn, ...custom];
     sel.innerHTML = all.map(o => `<option value="${o.value}"${o.value===cur?' selected':''}>${o.label}</option>`).join('');
   }
+
+  // ── Inline status menu ────────────────────────────────────────────────────
+  function toggleStatusMenu(e, ticketId) {
+    e.stopPropagation();
+    // Close any other open menus first
+    document.querySelectorAll('.inline-status-menu').forEach(m => {
+      if (m.id !== 'smenu-' + ticketId) m.style.display = 'none';
+    });
+    const menu = document.getElementById('smenu-' + ticketId);
+    if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  }
+
+  // Close inline menus when clicking anywhere outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.inline-status-menu').forEach(m => m.style.display = 'none');
+  });
+
+  async function setTicketStatus(ticketId, newStatus) {
+    // Close menu
+    const menu = document.getElementById('smenu-' + ticketId);
+    if (menu) menu.style.display = 'none';
+
+    try {
+      const res = await fetch(`/dashboard/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      // Update local state and re-render
+      const t = _allTickets.find(t => t.id === ticketId);
+      if (t) t.status = newStatus;
+      filterTickets();
+      // If this ticket is open in the modal, sync its status badge too
+      if (document.getElementById('ticket-modal')?.style.display !== 'none') {
+        const curId = document.getElementById('td-title')?._ticketId;
+        if (curId === ticketId) {
+          const STATUS_LABELS = { open:'Open', in_progress:'In progress', resolved:'Resolved', closed:'Closed' };
+          const el = document.getElementById('td-status');
+          if (el) el.textContent = STATUS_LABELS[newStatus] || newStatus;
+        }
+      }
+    } catch (err) {
+      console.error('Status update failed:', err);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   function filterTickets() {
     const q = (document.getElementById('ticket-search')?.value || '').toLowerCase();
@@ -3139,6 +3208,7 @@
     btn.title         = 'Minimize to panel';
 
     document.getElementById('td-title').textContent = 'Loading…';
+    document.getElementById('td-title')._ticketId = ticketId;
     document.getElementById('td-number').textContent = '#' + ticketId.slice(0, 6).toUpperCase();
     document.getElementById('td-actions').innerHTML = '';
 

@@ -83,6 +83,18 @@ def main():
     headers   = {"X-API-Key": api_key, "Content-Type": "application/json"}
     timeout   = config.get("timeout_seconds", 10)
 
+    # Inject WinRM credentials from config into environment so ad_bridge picks them up.
+    # (When running via the Windows Service installer these are set before import;
+    #  when running agent.py directly they come from agent-config.json here.)
+    for key, env in [
+        ("ad_vm_ip",      "AD_VM_IP"),
+        ("ad_domain",     "AD_DOMAIN"),
+        ("ad_admin_user", "AD_ADMIN_USER"),
+        ("ad_admin_pass", "AD_ADMIN_PASS"),
+    ]:
+        if config.get(key):
+            os.environ.setdefault(env, config[key])
+
     print("\n AD Helpdesk -- Cloud Agent")
     print(" --------------------------------")
     print(f" Cloud: {cloud_url}")

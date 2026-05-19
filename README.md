@@ -58,19 +58,15 @@ Go to **Settings** in your dashboard and copy your tenant API key.
 
 ### 3. Run the agent on your Windows Server
 
-Download and run the agent installer from your dashboard. When prompted, paste your API key.
+Download `aid-agent-setup.exe` from your dashboard and double-click it. The setup wizard walks you through three screens:
 
-```
-> aid-agent-setup.exe
-AID Helpdesk Agent Setup
-Enter your API key: ••••••••••••••••
-✓ Connected to web-production-01ecc.up.railway.app
-✓ Active Directory found: LAB.local
-✓ Agent registered as Windows Service
-✓ Done — your dashboard is live
-```
+1. **Cloud** - paste your API key; wizard verifies connectivity
+2. **AD Credentials** - enter your AD server IP, domain name, and service account
+3. **Install** - wizard copies the agent to `C:\Program Files\AID Helpdesk Agent\`, writes `agent-config.json`, and registers + starts the Windows Service automatically
 
 That's it. Your dashboard shows **Agent: Online** and you're ready to receive tickets.
+
+> **Build the installer yourself:** See `installer/build.bat` in this repo. Requires Python 3.9+ and PyInstaller on Windows.
 
 ---
 
@@ -175,7 +171,7 @@ git clone https://github.com/lachydotmcg/ad-helpdesk.git
 cd ad-helpdesk
 pip install -r requirements.txt
 cp agent-config.example.json agent-config.json
-# fill in your cloud_url and tenant_api_key
+# fill in cloud_url, tenant_api_key, ad_vm_ip, ad_domain, ad_admin_user, ad_admin_pass
 python agent.py
 ```
 
