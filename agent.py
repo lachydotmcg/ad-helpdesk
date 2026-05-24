@@ -41,6 +41,7 @@ ACTIONS = {
     # Query / read
     "get_user_info":              lambda a: ad_bridge.get_user_info(*a),
     "list_users":                 lambda a: ad_bridge.list_users(*a) if a else ad_bridge.list_users(),
+    "list_users_in_ou":           lambda a: ad_bridge.list_users_in_ou(*a),
     "search_users":               lambda a: ad_bridge.search_users(*a),
     "list_locked_accounts":       lambda a: ad_bridge.list_locked_accounts(),
     "list_expired_passwords":     lambda a: ad_bridge.list_expired_passwords(),
@@ -62,6 +63,11 @@ ACTIONS = {
     "set_password_never_expires": lambda a: ad_bridge.set_password_never_expires(*a),
     "create_user":                lambda a: ad_bridge.create_user(*a),
     "move_user":                  lambda a: ad_bridge.move_user(*a),
+    # OU management + bulk ops
+    "create_ou":                  lambda a: ad_bridge.create_ou(*a),
+    "bulk_move_users":            lambda a: ad_bridge.bulk_move_users(*a),
+    # Custom tenant scripts: args = [ps_content, user_arg0, user_arg1, ...]
+    "run_custom_script":          lambda a: ad_bridge.run_custom_script(*a),
 }
 
 

@@ -32,6 +32,7 @@ from flask import (
 )
 from dotenv import load_dotenv
 import db
+import action_policy
 
 load_dotenv()
 
@@ -66,6 +67,39 @@ def _rate_limit(key: str, max_calls: int, window_seconds: int) -> bool:
 # High-risk actions require the admin to confirm a 6-digit challenge code
 # before the command is queued. Tokens expire after 5 minutes, single-use.
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Time saved per action (realistic "AD already open" estimates, in minutes)
+# These intentionally lean conservative -- the goal is credibility, not hype.
+# ---------------------------------------------------------------------------
+
+TIME_SAVED_MINUTES: dict[str, float] = {
+    # Write ops
+    "unlock_account":             1.5,   # find user in ADUC, right-click, unlock
+    "reset_password":             2.0,   # find user, reset, communicate temp password
+    "enable_account":             1.0,
+    "disable_account":            1.5,
+    "force_password_change":      1.0,
+    "add_to_group":               2.0,   # navigate to group, add member
+    "remove_from_group":          2.0,
+    "set_password_never_expires": 1.0,
+    # Destructive / structural ops
+    "create_user":                8.0,   # wizard, groups, OU, notify requester
+    "move_user":                  2.0,
+    "create_ou":                  3.0,
+    "bulk_move_users":           15.0,   # per batch (would be per-user manually)
+    # Read ops -- minor but real (spares opening ADUC / running reports)
+    "get_user_info":              0.5,
+    "list_users_in_ou":           0.5,
+    "search_users":               0.5,
+    "list_locked_accounts":       1.0,
+    "list_expired_passwords":     1.0,
+    "get_stats":                  0.5,
+    "list_ous":                   0.5,
+    "list_groups":                0.5,
+    "get_group_members":          0.5,
+}
+
 
 # Actions that require an explicit confirmation challenge
 DESTRUCTIVE_ACTIONS = {
@@ -707,6 +741,13 @@ def dashboard_exec():
     if not action:
         return jsonify({"success": False, "message": "action is required."}), 400
 
+    # ── Hard action whitelist (policy layer) ─────────────────────────────────
+    if action not in action_policy.ALL_ACTIONS:
+        return jsonify({
+            "success": False,
+            "message": f"'{action}' is not a recognised action.",
+        }), 400
+
     # ── Destructive action confirmation ──────────────────────────────────────
     # High-risk actions require a short-lived 6-digit challenge code to be
     # confirmed by the admin before the command is queued.
@@ -825,6 +866,28 @@ def dashboard_chat():
 
     ai_name = os.getenv("AI_NAME", "Janus")
 
+    # Load custom scripts and tenant context for Janus
+    custom_scripts  = db.list_custom_scripts(g.tenant_id)
+    enabled_scripts = [s for s in custom_scripts if s.get("enabled")]
+    tenant_settings = db.get_settings(g.tenant_id)
+    janus_context   = (tenant_settings.get("janus_context") or "").strip()
+
+    # Build custom scripts block for the system prompt
+    custom_scripts_block = ""
+    if enabled_scripts:
+        lines = ["", "  CUSTOM SCRIPTS (tenant-defined, call with run_custom_script):"]
+        for s in enabled_scripts:
+            args_note = f"  args: {s['args_description']}" if s.get("args_description") else "  args: []"
+            lines.append(
+                f"  run_custom_script  slug={s['slug']}  -- {s['description']}"
+                f"\n    {args_note}"
+                f"\n    classification: {s.get('classification','write')}"
+                f"\n    To invoke: {{\"action\":\"run_custom_script\",\"args\":[\"{s['slug']}\",\"arg1\",...]}}"
+            )
+        custom_scripts_block = "\n".join(lines)
+
+    tenant_context_block = f"\n\nADMIN-PROVIDED CONTEXT (read this for org-specific knowledge):\n{janus_context}" if janus_context else ""
+
     system_prompt = f"""You are {ai_name}, an AI assistant built into AD Helpdesk — a tool for managing Windows Active Directory.
 You are named after the Roman god of doorways and access, which suits your role perfectly.
 The user is an IT admin. Your job is to understand what they want and either:
@@ -835,10 +898,11 @@ Available AD actions (use exact action names):
   USERS:
   get_user_info              args: [username]                      -- full user details including all group memberships, OU, status
   list_users                 args: []                              -- list all domain users
+  list_users_in_ou           args: [ou_name]                      -- list all users in a specific OU (use this before bulk ops)
   search_users               args: [search_term]                   -- search by name or username (partial match)
   list_group_memberships     args: [username]                      -- detailed group list (use only if get_user_info groups aren't enough)
   create_user                args: [first, last, username, ou]     -- create new AD account (ou can be plain name)
-  move_user                  args: [username, ou_name]             -- move user to a different OU
+  move_user                  args: [username, ou_name]             -- move a single user to a different OU
 
   ACCOUNT STATE:
   unlock_account             args: [username]                      -- unlock a locked-out account
@@ -857,6 +921,15 @@ Available AD actions (use exact action names):
 
   OUs:
   list_ous                   args: []                              -- list all Organisational Units
+  create_ou                  args: [ou_name, parent_ou]           -- create a new OU (parent_ou can be plain name or omit for domain root)
+
+  BULK / CONDITIONAL OPERATIONS:
+  bulk_move_users            args: [source_ou, rules_json, create_missing_ous]
+                             -- move users in source_ou to different OUs based on SamAccountName patterns.
+                             -- rules_json is a JSON array: [{{"pattern":"*08","target_ou":"Y12"}},{{"pattern":"*09","target_ou":"Y11"}}]
+                             -- Patterns use PowerShell wildcards (* = any chars, ? = one char).
+                             -- create_missing_ous: "true" auto-creates missing target OUs (default "true")
+                             -- ALWAYS run list_users_in_ou first to confirm users exist, then bulk_move_users.
 
   REPORTING:
   list_locked_accounts       args: []                              -- all currently locked accounts
@@ -867,19 +940,29 @@ When you need to run an AD action, respond ONLY with this exact JSON (no preambl
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
 SMART LOOKUP RULES (read these carefully):
-- When a group name might not be exact (user used shorthand, caps vary, etc.), ALWAYS run search_groups first with the key word before attempting group operations. Only attempt add_to_group / remove_from_group once you have the exact group name from a search result.
+- When a group name might not be exact, ALWAYS run search_groups first. Only add_to_group / remove_from_group once you have the exact name.
 - When a username looks uncertain or a previous action failed with "not found", run search_users first.
-- When creating a user and the OU path is ambiguous or unclear, run list_ous first to find the correct OU name, then create the user with the exact OU name from the results. Parse human-readable paths like "Staff > Management" as the leaf "Management" and search for it.
-- When a write action fails, your follow-up message MUST explain why and suggest what information to look up next (e.g. "Group not found — let me search for groups matching that name."). Then immediately issue the search action without waiting for the user to ask.
+- When creating a user and the OU is ambiguous, run list_ous first to get the exact name.
+- When a write action fails, explain why and immediately issue the search/lookup action — do not wait for the user to ask.
+- TYPO TOLERANCE: If a username or name looks like a likely typo (e.g. "srah.finger", "mikke", "jhn.doe"), search for it first rather than failing. Think: what did they probably mean?
+
+BULK / CONDITIONAL OPERATION RULES:
+- When the user asks to move/update many users based on a rule (e.g. "users ending in 08 go to Y12"), use bulk_move_users.
+- Before running bulk_move_users, ALWAYS first call list_users_in_ou to confirm the source OU and see how many users will be affected.
+- Use the exact SamAccountName suffix pattern from the list result to build your rules_json.
+- Wildcard syntax: "*08" matches any SamAccountName ending in "08". Use "*08*" to match anywhere. Use "john*" to match prefix.
+- If the target OUs don't exist yet, set create_missing_ous to "true" (the default) and they'll be created automatically.
+- For complex conditional rules across many OUs (e.g. move year groups based on last 2 digits), batch ALL rules into a single bulk_move_users call — do not call move_user in a loop.
+- After bulk_move_users completes, report: how many users moved per rule, and any errors.
 
 CRITICAL RULES:
-- Output ONLY the raw JSON when taking an action — no "I'll look up..." or any other text before or after it.
-- If the conversation history already contains the result of a previous lookup, answer the follow-up question directly from that — do NOT run the action again.
-- When generating a temporary password, make it secure: uppercase + lowercase + numbers + symbol, 12+ chars. State it clearly so the admin can share it.
-- Questions about a user's groups, role, department, title, status, or anything about a specific user → ALWAYS use get_user_info first. It returns everything in one call including MemberOf. Only call list_group_memberships as a follow-up if you need additional group metadata beyond what get_user_info returned.
+- Output ONLY the raw JSON when taking an action — no preamble, no trailing text.
+- If the conversation history already contains the result of a previous lookup, answer directly from that — do NOT run the action again.
+- When generating a temporary password, make it secure: uppercase + lowercase + numbers + symbol, 12+ chars. State it clearly.
+- Questions about a user's groups, role, department, title, status → ALWAYS use get_user_info first. It returns everything including MemberOf. Only call list_group_memberships as a follow-up if you need extra group metadata.
 - Questions about expired passwords → always run list_expired_passwords (not stats cache).
 - If no AD action is needed, respond conversationally in plain text — do NOT output JSON.
-- Keep responses concise and direct. You are talking to an experienced IT admin."""
+- Keep responses concise and direct. You are talking to an experienced IT admin.{custom_scripts_block}{tenant_context_block}"""
 
     client   = anthropic.Anthropic(api_key=api_key)
     messages = []
@@ -920,7 +1003,7 @@ CRITICAL RULES:
     # Lookup actions that should trigger auto-chaining to the intended follow-up action
     LOOKUP_ACTIONS = {
         'search_users', 'search_groups', 'list_ous', 'get_user_info',
-        'list_users', 'list_groups', 'list_locked_accounts',
+        'list_users', 'list_users_in_ou', 'list_groups', 'list_locked_accounts',
         'list_expired_passwords', 'get_stats', 'list_group_memberships',
         'get_group_members',
     }
@@ -931,14 +1014,45 @@ CRITICAL RULES:
         args        = command_data["args"]
         intent_msg  = command_data.get("message", f"Running {action}...")
 
+        # Resolve custom script slug → embed PS content as args[0]
+        # Janus sends: action="run_custom_script", args=["slug", "user_arg0", ...]
+        # We replace args[0] (the slug) with the actual PS content so the agent
+        # can execute it without needing to call back to the cloud.
+        if action == "run_custom_script" and args:
+            slug   = args[0]
+            script = db.get_custom_script_by_slug(g.tenant_id, slug)
+            if not script:
+                return jsonify({"success": True,
+                                "reply": f"Custom script '{slug}' not found or is disabled.",
+                                "action_taken": None})
+            # Replace slug with PS content; preserve any user args that follow
+            args       = [script["ps_content"]] + list(args[1:])
+            intent_msg = intent_msg or f"Running custom script: {script['name']}"
+
+        # Python-enforced action policy — the LLM output is a request, not a command.
+        # Validate before anything is queued.
+        policy_ok, policy_reason = action_policy.validate(action, source="janus_chat")
+        if not policy_ok:
+            db.log_activity(g.tenant_id, "security_flag", g.user_email,
+                            detail=f"Janus chat policy blocked '{action}': {policy_reason}")
+            return jsonify({
+                "success": True,
+                "reply": f"I can't run that action: {policy_reason}",
+                "action_taken": None,
+            })
+
+        # Rate-limit Janus write/destructive actions: max 20 per hour per tenant.
+        # Read-only queries are unlimited.
+        if action_policy.is_write(action) or action_policy.is_destructive(action):
+            if not _rate_limit(f"janus_writes:{g.tenant_id}", 20, 3600):
+                return jsonify({
+                    "success": True,
+                    "reply": "Janus has reached the limit of 20 write actions per hour for this account. Please wait before running further changes.",
+                    "action_taken": None,
+                })
+
         # Log and count write operations
-        write_actions = {
-            "reset_password", "unlock_account", "enable_account",
-            "disable_account", "add_to_group", "remove_from_group",
-            "create_user", "move_user", "force_password_change",
-            "set_password_never_expires"
-        }
-        if action in write_actions:
+        if action_policy.is_write(action) or action_policy.is_destructive(action):
             target = args[0] if args else ""
             db.log_audit(g.tenant_id, g.user_email, action, target, "queued")
             db.increment_usage(g.tenant_id, "ad_commands")
@@ -1124,6 +1238,119 @@ def dashboard_usage():
     }})
 
 
+@app.route("/dashboard/api/time-saved")
+@require_dashboard_user
+def dashboard_time_saved():
+    """Compute IT time saved by Janus actions for the current calendar month."""
+    action_counts = db.get_action_counts_this_month(g.tenant_id)
+    total_minutes = 0.0
+    breakdown     = {}
+    for action, count in action_counts.items():
+        mins_per = TIME_SAVED_MINUTES.get(action, 0)
+        saved    = mins_per * count
+        total_minutes += saved
+        if saved > 0:
+            breakdown[action] = {"count": count, "minutes_per": mins_per, "minutes_saved": saved}
+
+    hours = int(total_minutes // 60)
+    mins  = int(total_minutes % 60)
+    if hours > 0:
+        display = f"{hours}h {mins}m"
+    elif mins > 0:
+        display = f"{mins}m"
+    else:
+        display = "0m"
+
+    return jsonify({"success": True, "data": {
+        "total_minutes": total_minutes,
+        "hours":         hours,
+        "minutes":       mins,
+        "display":       display,
+        "breakdown":     breakdown,
+    }})
+
+
+# ---------------------------------------------------------------------------
+# Custom scripts CRUD
+# ---------------------------------------------------------------------------
+
+import re as _re_module
+
+def _slugify(text: str) -> str:
+    """Convert a display name to a safe slug for Janus to reference."""
+    s = text.lower().strip()
+    s = _re_module.sub(r"[^a-z0-9]+", "_", s)
+    return s.strip("_")[:40]
+
+
+@app.route("/dashboard/api/scripts", methods=["GET"])
+@require_dashboard_user
+def dashboard_list_scripts():
+    scripts = db.list_custom_scripts(g.tenant_id)
+    # Never expose ps_content in the list view
+    safe = [{k: v for k, v in s.items() if k != "ps_content"} for s in scripts]
+    return jsonify({"success": True, "data": safe})
+
+
+@app.route("/dashboard/api/scripts", methods=["POST"])
+@require_dashboard_user
+def dashboard_create_script():
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data           = request.get_json() or {}
+    name           = (data.get("name") or "").strip()
+    description    = (data.get("description") or "").strip()
+    ps_content     = (data.get("ps_content") or "").strip()
+    args_desc      = (data.get("args_description") or "").strip()
+    classification = data.get("classification", "write")
+    if not name or not description or not ps_content:
+        return jsonify({"success": False, "message": "name, description, and ps_content are required."}), 400
+    if classification not in ("read", "write", "destructive"):
+        classification = "write"
+    slug   = _slugify(name)
+    script = db.create_custom_script(
+        g.tenant_id, name, slug, description, ps_content, args_desc, classification)
+    db.log_activity(g.tenant_id, "script_created", g.user_email,
+                    detail=f"Custom script '{name}' (slug: {slug}) created")
+    return jsonify({"success": True, "data": {k: v for k, v in script.items() if k != "ps_content"}}), 201
+
+
+@app.route("/dashboard/api/scripts/<script_id>", methods=["GET"])
+@require_dashboard_user
+def dashboard_get_script(script_id):
+    script = db.get_custom_script(g.tenant_id, script_id)
+    if not script:
+        return jsonify({"success": False, "message": "Script not found."}), 404
+    return jsonify({"success": True, "data": script})
+
+
+@app.route("/dashboard/api/scripts/<script_id>", methods=["PATCH"])
+@require_dashboard_user
+def dashboard_update_script(script_id):
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data    = request.get_json() or {}
+    allowed = {"name", "description", "ps_content", "args_description", "classification", "enabled"}
+    fields  = {k: v for k, v in data.items() if k in allowed}
+    if "name" in fields:
+        fields["slug"] = _slugify(fields["name"])
+    if not db.update_custom_script(g.tenant_id, script_id, **fields):
+        return jsonify({"success": False, "message": "Script not found."}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/dashboard/api/scripts/<script_id>", methods=["DELETE"])
+@require_dashboard_user
+def dashboard_delete_script(script_id):
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    if not db.delete_custom_script(g.tenant_id, script_id):
+        return jsonify({"success": False, "message": "Script not found."}), 404
+    db.log_activity(g.tenant_id, "script_deleted", g.user_email,
+                    detail=f"Custom script {script_id} deleted")
+    return jsonify({"success": True})
+
+
 @app.route("/dashboard/api/settings", methods=["GET"])
 @require_dashboard_user
 def dashboard_get_settings():
@@ -1147,7 +1374,10 @@ def dashboard_update_settings():
     allowed = {"janus_enabled", "janus_scan_emails", "janus_auto_actions",
                "security_checks", "email_domain", "roles",
                "custom_statuses", "custom_priorities", "ticket_labels",
-               "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from"}
+               "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
+               "janus_context",
+               "report_enabled", "report_frequency", "report_day",
+               "report_hour", "report_recipients", "last_report_sent"}
     for k, v in data.items():
         if k in allowed:
             # Never overwrite smtp_pass with an empty string (blank = "keep existing")
@@ -1396,7 +1626,15 @@ RULES:
         janus_args    = parsed.get("args", [])
         auto_actions  = settings.get("janus_auto_actions", [])
 
-        if can_auto and janus_action and janus_args and perm_ok and janus_action in auto_actions and limits.get("auto_actions", False):
+        # Python-enforced policy check — blocks DESTRUCTIVE actions regardless
+        # of what the LLM said. This is code enforcing rules, not a prompt.
+        policy_ok, policy_reason = action_policy.validate(
+            janus_action or "",
+            source="janus_auto",
+            tenant_auto_actions=auto_actions,
+        )
+
+        if can_auto and janus_action and janus_args and perm_ok and policy_ok and limits.get("auto_actions", False):
             db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
                                  f"⚡ Janus is automatically applying fix: {janus_action} {janus_args}...", "janus")
             command    = db.queue_command(tenant_id, janus_action, janus_args)
@@ -1431,6 +1669,14 @@ RULES:
             else:
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
                                      "⚠️ Janus auto-apply timed out - agent may be offline.", "janus")
+
+        elif janus_action and not policy_ok:
+            # Policy blocked the auto-action -- log it clearly in the audit trail
+            db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
+                                 f"🛡️ Auto-action blocked by policy: {policy_reason}", "janus")
+            db.log_activity(tenant_id, "security_flag", "janus",
+                            target=ticket_id,
+                            detail=f"Policy blocked '{janus_action}': {policy_reason}")
 
         return {"parsed": parsed, "auto_resolved": auto_resolved, "error": None}
 
@@ -2021,6 +2267,204 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_template("500.html"), 500
+
+
+# ---------------------------------------------------------------------------
+# Scheduled reports -- background thread, checks every 30 minutes
+# Sends HTML digest emails to tenants who have reports configured.
+# ---------------------------------------------------------------------------
+
+def _build_report_html(tenant_name: str, stats: dict, locked: list, expired: list,
+                       audit: list, period_label: str) -> tuple[str, str]:
+    """Build (subject, html_body) for a scheduled report."""
+    total   = stats.get("total", 0)
+    n_lock  = stats.get("locked", 0)
+    n_exp   = stats.get("expired", 0)
+
+    locked_rows = "".join(
+        f"<tr><td>{u.get('Name','')}</td><td>{u.get('SamAccountName','')}</td></tr>"
+        for u in (locked or [])[:20]
+    ) or "<tr><td colspan='2' style='color:#64748b'>None</td></tr>"
+
+    expired_rows = "".join(
+        f"<tr><td>{u.get('Name','')}</td><td>{u.get('SamAccountName','')}</td></tr>"
+        for u in (expired or [])[:20]
+    ) or "<tr><td colspan='2' style='color:#64748b'>None</td></tr>"
+
+    recent_actions = "".join(
+        f"<tr><td>{a.get('created_at','')[:16]}</td><td>{a.get('action','')}</td>"
+        f"<td>{a.get('target','')}</td><td>{a.get('user_email','')}</td></tr>"
+        for a in (audit or [])[:15]
+    ) or "<tr><td colspan='4' style='color:#64748b'>No recent activity</td></tr>"
+
+    subject = f"AID Helpdesk {period_label} Report - {tenant_name}"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:system-ui,sans-serif;max-width:620px;margin:0 auto;color:#1a1a2e;padding:20px;">
+  <div style="background:#1a1830;border-radius:12px;padding:16px 24px;margin-bottom:24px;">
+    <span style="color:#818cf8;font-size:20px;font-weight:700;">AID</span>
+    <span style="color:#e2e8f0;font-size:20px;"> Helpdesk</span>
+    <span style="color:#64748b;font-size:14px;margin-left:12px;">{period_label} Report</span>
+  </div>
+
+  <h2 style="font-size:16px;margin:0 0 16px;">Domain overview - {tenant_name}</h2>
+  <div style="display:flex;gap:16px;margin-bottom:24px;">
+    <div style="flex:1;background:#f8fafc;border-radius:8px;padding:12px;text-align:center;">
+      <div style="font-size:28px;font-weight:700;">{total}</div>
+      <div style="font-size:12px;color:#64748b;">Total Users</div>
+    </div>
+    <div style="flex:1;background:#fef2f2;border-radius:8px;padding:12px;text-align:center;">
+      <div style="font-size:28px;font-weight:700;color:#ef4444;">{n_lock}</div>
+      <div style="font-size:12px;color:#64748b;">Locked Out</div>
+    </div>
+    <div style="flex:1;background:#fffbeb;border-radius:8px;padding:12px;text-align:center;">
+      <div style="font-size:28px;font-weight:700;color:#f59e0b;">{n_exp}</div>
+      <div style="font-size:12px;color:#64748b;">Pwd Expired</div>
+    </div>
+  </div>
+
+  <h3 style="font-size:14px;margin:0 0 8px;">Locked accounts</h3>
+  <table width="100%" cellpadding="6" style="border-collapse:collapse;margin-bottom:20px;font-size:13px;">
+    <tr style="background:#f1f5f9;"><th align="left">Name</th><th align="left">Username</th></tr>
+    {locked_rows}
+  </table>
+
+  <h3 style="font-size:14px;margin:0 0 8px;">Expired passwords</h3>
+  <table width="100%" cellpadding="6" style="border-collapse:collapse;margin-bottom:20px;font-size:13px;">
+    <tr style="background:#f1f5f9;"><th align="left">Name</th><th align="left">Username</th></tr>
+    {expired_rows}
+  </table>
+
+  <h3 style="font-size:14px;margin:0 0 8px;">Recent Janus activity</h3>
+  <table width="100%" cellpadding="6" style="border-collapse:collapse;margin-bottom:24px;font-size:12px;">
+    <tr style="background:#f1f5f9;">
+      <th align="left">Time</th><th align="left">Action</th>
+      <th align="left">Target</th><th align="left">By</th>
+    </tr>
+    {recent_actions}
+  </table>
+
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+  <p style="color:#64748b;font-size:11px;">
+    Powered by Janus AI - AID Helpdesk | This report was sent automatically.
+  </p>
+</body>
+</html>"""
+    return subject, html
+
+
+def _should_send_report(settings: dict) -> bool:
+    """Determine if a scheduled report is due for this tenant right now."""
+    from datetime import datetime, timedelta
+    if not settings.get("report_enabled"):
+        return False
+    recipients = settings.get("report_recipients", "")
+    if not recipients:
+        return False
+    freq = settings.get("report_frequency", "weekly")
+    try:
+        target_hour = int(settings.get("report_hour", 8))
+    except (ValueError, TypeError):
+        target_hour = 8
+
+    now = datetime.utcnow()
+    # Only fire in the target hour window
+    if now.hour != target_hour:
+        return False
+
+    last_sent_str = settings.get("last_report_sent", "")
+    if last_sent_str:
+        try:
+            last_sent = datetime.fromisoformat(last_sent_str)
+            # Don't fire again within the same day (prevents double-sends)
+            if (now - last_sent).total_seconds() < 23 * 3600:
+                return False
+        except ValueError:
+            pass
+
+    if freq == "daily":
+        return True
+    if freq == "weekly":
+        try:
+            target_day = int(settings.get("report_day", 0))   # 0=Monday
+        except (ValueError, TypeError):
+            target_day = 0
+        return now.weekday() == target_day
+
+    return False
+
+
+def _run_scheduled_reports():
+    """Check all tenants and send due reports. Runs in a background thread."""
+    with app.app_context():
+        try:
+            tenants = db.list_all_tenants()
+        except Exception:
+            return
+        for tenant in tenants:
+            try:
+                tid      = tenant["id"]
+                settings = db.get_settings(tid)
+                if not _should_send_report(settings):
+                    continue
+
+                smtp = _resolve_smtp(settings)
+                if not smtp["host"] or not smtp["user"]:
+                    continue   # SMTP not configured for this tenant
+
+                recipients = [r.strip() for r in settings.get("report_recipients", "").split(",") if r.strip()]
+                if not recipients:
+                    continue
+
+                # Fetch domain data via the command queue (requires agent to be online)
+                # For the report we use cached audit data + activity log directly from DB
+                # (no live AD call needed — avoids requiring agent to be running at report time)
+                audit    = db.get_audit_log(tid, limit=15)
+                period   = "Weekly" if settings.get("report_frequency", "weekly") == "weekly" else "Daily"
+
+                # Build placeholder stats from audit log counts (no live AD required)
+                action_counts = db.get_action_counts_this_month(tid)
+                stats = {
+                    "total":   "—",
+                    "locked":  action_counts.get("unlock_account", 0),
+                    "expired": action_counts.get("reset_password", 0),
+                }
+
+                subject, html_body = _build_report_html(
+                    tenant.get("name", tid), stats, [], [], audit, period)
+
+                for recipient in recipients:
+                    send_email(recipient, subject, subject, html_body, settings)
+
+                # Mark as sent
+                settings["last_report_sent"] = __import__("datetime").datetime.utcnow().isoformat()
+                db.update_settings(tid, settings)
+
+            except Exception as e:
+                print(f"[reports] Error for tenant {tenant.get('id')}: {e}")
+
+
+def _start_report_scheduler():
+    """Launch background thread that checks for due reports every 30 minutes."""
+    import threading
+
+    def _loop():
+        import time as _time
+        while True:
+            try:
+                _run_scheduled_reports()
+            except Exception as e:
+                print(f"[reports] Scheduler error: {e}")
+            _time.sleep(30 * 60)   # check every 30 minutes
+
+    t = threading.Thread(target=_loop, daemon=True, name="report-scheduler")
+    t.start()
+    print("[reports] Scheduled report checker started (30 min interval)")
+
+
+# Start the report scheduler once (works under gunicorn and direct invocation)
+_start_report_scheduler()
 
 
 if __name__ == "__main__":

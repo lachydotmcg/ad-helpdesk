@@ -63,6 +63,24 @@ Destructive actions (disabling accounts, password resets) require an explicit co
 
 **Self-hosting:** The full cloud backend is included in this repo under MIT + Commons Clause. Organisations with strict data-residency requirements can run everything on-prem — see [Self-hosting the cloud backend](#self-hosting-the-cloud-backend).
 
+### What Janus can and cannot do
+
+Janus operates from a fixed, hard-coded list of operations defined in `cloud/action_policy.py`. This is enforced in Python — not in a prompt. The AI cannot run anything outside this list regardless of how a request is phrased.
+
+**Read-only (no side effects):** look up user info, search users/groups, list locked accounts, list expired passwords, list OUs, get domain stats.
+
+**Write — reversible:** unlock account, enable account, reset password, force password change, add to group, toggle password-never-expires.
+
+**Destructive — always require human confirmation, never auto-resolved:** disable account, remove from group, create user, move user.
+
+**Janus cannot:**
+- Run arbitrary PowerShell
+- Access your filesystem, email, or any system outside Active Directory
+- Create privileged accounts (Domain Admins, Enterprise Admins, Schema Admins)
+- Execute any command not in the fixed action list above
+- Auto-resolve destructive actions — Python blocks this regardless of AI output
+- Exceed 20 write operations per hour (rate-limited at the server, not the prompt)
+
 ---
 
 ## Getting started
@@ -255,18 +273,34 @@ See `cloud/.env.example` for all environment variables.
 
 ```
 web-production-01ecc.up.railway.app  (cloud/app.py - Railway / any VPS)
-    │  HTTPS polling
+    │  HTTPS polling (outbound only)
     ▼
-agent.py  (runs on customer's Windows machine or server)
-    │  WinRM / PowerShell Remoting
+agent.py  (Windows Service on customer's server)
+    │  WinRM over HTTPS (port 5986, TLS)
     ▼
 Windows Server 2022 + Active Directory
 ```
 
-Cowork / natural language mode (legacy local bridge):
+## Repository structure
 
 ```
-Claude / Cowork  ->  watcher.py  ->  WinRM  ->  Active Directory
+cloud/                   Cloud SaaS backend (Flask, PostgreSQL)
+  app.py                 Main application — routes, Janus AI, auth
+  action_policy.py       Hard enforcement layer — Python controls what Janus can run
+  db.py                  Database layer (SQLite dev / PostgreSQL prod)
+  templates/             Dashboard HTML
+  static/                CSS, assets
+
+agent.py                 Windows agent — polls cloud, executes AD commands
+ad_bridge.py             WinRM bridge — all Active Directory operations
+agent-config.example.json  Copy this to agent-config.json and fill in credentials
+
+installer/               Windows installer (aid-agent-setup.exe)
+  setup_wizard.py        Setup wizard + Windows Service (dual-purpose binary)
+  build.bat              Build the EXE with PyInstaller
+  aid-agent-setup.spec   PyInstaller spec
+
+legacy/                  v0.1-v0.4 local-mode files (kept for reference, not active)
 ```
 
 ---

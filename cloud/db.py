@@ -203,6 +203,20 @@ _SCHEMA = [
         FOREIGN KEY (user_id)   REFERENCES tenant_users(id),
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS custom_scripts (
+        id               TEXT PRIMARY KEY,
+        tenant_id        TEXT NOT NULL,
+        name             TEXT NOT NULL,
+        slug             TEXT NOT NULL,
+        description      TEXT NOT NULL,
+        args_description TEXT,
+        ps_content       TEXT NOT NULL,
+        classification   TEXT NOT NULL DEFAULT 'write',
+        enabled          INTEGER NOT NULL DEFAULT 1,
+        created_at       TEXT NOT NULL,
+        updated_at       TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    )""",
 ]
 
 
@@ -259,6 +273,20 @@ def migrate_db():
             tcols = [r["name"] for r in cur.fetchall()]
             if "labels" not in tcols:
                 cur.execute("ALTER TABLE tickets ADD COLUMN labels TEXT")
+        # v5: custom_scripts table (idempotent)
+        cur.execute("""CREATE TABLE IF NOT EXISTS custom_scripts (
+            id               TEXT PRIMARY KEY,
+            tenant_id        TEXT NOT NULL,
+            name             TEXT NOT NULL,
+            slug             TEXT NOT NULL,
+            description      TEXT NOT NULL,
+            args_description TEXT,
+            ps_content       TEXT NOT NULL,
+            classification   TEXT NOT NULL DEFAULT 'write',
+            enabled          INTEGER NOT NULL DEFAULT 1,
+            created_at       TEXT NOT NULL,
+            updated_at       TEXT NOT NULL
+        )""")
         conn.commit()
     except Exception:
         pass  # Safe to ignore — already exists
@@ -320,6 +348,17 @@ def create_tenant(name: str) -> dict:
     finally:
         conn.close()
     return {"id": tenant_id, "name": name, "api_key": api_key}
+
+
+def list_all_tenants() -> list:
+    """Return all tenants (for scheduled background tasks)."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute("SELECT * FROM tenants ORDER BY name")
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
 
 
 def get_tenant_by_key(api_key: str) -> dict | None:
@@ -559,6 +598,126 @@ def log_audit(tenant_id: str, user_email: str, action: str, target: str, status:
             (log_id, tenant_id, user_email, action, target, status, now)
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Custom scripts helpers
+# ---------------------------------------------------------------------------
+
+def list_custom_scripts(tenant_id: str) -> list:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM custom_scripts WHERE tenant_id = {_PH} ORDER BY name",
+            (tenant_id,)
+        )
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def get_custom_script(tenant_id: str, script_id: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM custom_scripts WHERE id = {_PH} AND tenant_id = {_PH}",
+            (script_id, tenant_id)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def get_custom_script_by_slug(tenant_id: str, slug: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM custom_scripts WHERE slug = {_PH} AND tenant_id = {_PH} AND enabled = 1",
+            (slug, tenant_id)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def create_custom_script(tenant_id: str, name: str, slug: str, description: str,
+                         ps_content: str, args_description: str = "",
+                         classification: str = "write") -> dict:
+    script_id = str(uuid.uuid4())
+    now       = datetime.utcnow().isoformat()
+    conn      = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"INSERT INTO custom_scripts (id, tenant_id, name, slug, description, "
+            f"args_description, ps_content, classification, enabled, created_at, updated_at) "
+            f"VALUES ({_PH},{_PH},{_PH},{_PH},{_PH},{_PH},{_PH},{_PH},1,{_PH},{_PH})",
+            (script_id, tenant_id, name, slug, description,
+             args_description, ps_content, classification, now, now)
+        )
+        conn.commit()
+        return {"id": script_id, "tenant_id": tenant_id, "name": name, "slug": slug,
+                "description": description, "args_description": args_description,
+                "ps_content": ps_content, "classification": classification,
+                "enabled": 1, "created_at": now, "updated_at": now}
+    finally:
+        conn.close()
+
+
+def update_custom_script(tenant_id: str, script_id: str, **fields) -> bool:
+    allowed = {"name", "slug", "description", "args_description",
+               "ps_content", "classification", "enabled"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    now = datetime.utcnow().isoformat()
+    updates["updated_at"] = now
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        set_clause = ", ".join(f"{k} = {_PH}" for k in updates)
+        values     = list(updates.values()) + [script_id, tenant_id]
+        cur.execute(
+            f"UPDATE custom_scripts SET {set_clause} WHERE id = {_PH} AND tenant_id = {_PH}",
+            values
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_custom_script(tenant_id: str, script_id: str) -> bool:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"DELETE FROM custom_scripts WHERE id = {_PH} AND tenant_id = {_PH}",
+            (script_id, tenant_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_action_counts_this_month(tenant_id: str) -> dict:
+    """Return {action: count} for all logged audit actions in the current calendar month."""
+    from datetime import datetime
+    start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT action, COUNT(*) FROM audit_log WHERE tenant_id = {_PH} AND created_at >= {_PH} GROUP BY action",
+            (tenant_id, start)
+        )
+        return {row[0]: row[1] for row in cur.fetchall()}
     finally:
         conn.close()
 

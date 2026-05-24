@@ -988,6 +988,9 @@
     <div class="nav-item" onclick="showPage('settings')">
       <span class="nav-icon">⚙️</span> Settings
     </div>
+    <div class="nav-item" onclick="showPage('janus-config')">
+      <span class="nav-icon">🧠</span> Configure Janus
+    </div>
     {% endif %}
   </aside>
 
@@ -1082,6 +1085,11 @@
         <div class="stat-card">
           <div class="stat-label">Pwd Expired</div>
           <div class="stat-value yellow" id="stat-expired">—</div>
+        </div>
+        <div class="stat-card" id="time-saved-card" style="border-color:rgba(167,139,250,0.25);cursor:default;" title="Estimated IT time saved by Janus this month">
+          <div class="stat-label" style="color:var(--accent);">Time Saved</div>
+          <div class="stat-value" id="stat-time-saved" style="color:var(--accent);">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">this month</div>
         </div>
       </div>
 
@@ -1310,7 +1318,8 @@
           <option value="urgent">Urgent</option>
         </select>
         <button class="btn btn-ghost" style="font-size:12px;" onclick="rerunJanus()" title="Re-analyse with Janus">✨ Re-analyse</button>
-        <button class="btn btn-ghost" id="td-expand-btn" style="font-size:16px;padding:6px 10px;line-height:1;" onclick="toggleTicketExpand()" title="Minimize to panel">⤡</button>
+        <button class="btn btn-ghost" id="td-expand-btn" style="font-size:16px;padding:6px 10px;line-height:1;" onclick="toggleTicketExpand()" title="Expand / shrink">⤡</button>
+        <button class="btn btn-ghost" style="font-size:14px;padding:6px 10px;line-height:1;" onclick="minimiseTicket()" title="Minimise — keep ticket open while you work">─</button>
         <button class="btn btn-ghost" style="font-size:18px;padding:6px 10px;line-height:1;" onclick="closeTicketModal()" title="Close">×</button>
       </div>
     </div>
@@ -1795,8 +1804,151 @@
       </div>
     </div>
 
+    <!-- ===== CONFIGURE JANUS PAGE ===== -->
+    <div class="page" id="page-janus-config">
+      <div style="max-width:760px;">
+
+        <!-- Janus Behaviour -->
+        <div class="panel" style="margin-bottom:18px;">
+          <div class="panel-header"><span class="panel-title">🧠 Janus Behaviour</span></div>
+          <div class="panel-body">
+            <div class="settings-section">
+              <div class="settings-section-title">Core settings</div>
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                  <input type="checkbox" id="jc-janus-enabled" onchange="saveJanusSettings()">
+                  <span style="font-size:13px;">Enable Janus AI <span style="color:var(--muted);font-size:11px;">(powers ticket analysis and chat)</span></span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                  <input type="checkbox" id="jc-janus-scan" onchange="saveJanusSettings()">
+                  <span style="font-size:13px;">Auto-analyse new tickets with Janus</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                  <input type="checkbox" id="jc-auto-actions" onchange="saveJanusSettings()">
+                  <span style="font-size:13px;">Allow Janus to auto-resolve tickets <span style="color:var(--muted);font-size:11px;">(Pro+ only)</span></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-section-title">Identity &amp; domain</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">AI Name</label>
+                  <input id="jc-ai-name" type="text" class="search-input" placeholder="Janus" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Trusted Email Domain</label>
+                  <input id="jc-email-domain" type="text" class="search-input" placeholder="yourcompany.com" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
+              <div class="settings-section-title">Janus context <span style="font-weight:400;color:var(--muted);font-size:11px;">— Janus reads this before every response</span></div>
+              <textarea id="jc-context" rows="5" class="search-input" placeholder="e.g. We are a school. Student OUs are: Year7, Year8... Staff are in OU=Staff. Never reset passwords for Domain Admins without a manager approval email. Our MSP contact is helpdesk@itprovider.com." style="font-size:13px;width:100%;resize:vertical;line-height:1.5;" oninput="markJanusDirty()"></textarea>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">Describe your org structure, naming conventions, policies, or anything Janus should know.</div>
+              <button id="jc-save-btn" class="btn btn-primary" style="margin-top:12px;display:none;" onclick="saveJanusSettings()">Save changes</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scheduled Reports -->
+        <div class="panel" style="margin-bottom:18px;">
+          <div class="panel-header"><span class="panel-title">📊 Scheduled Reports</span></div>
+          <div class="panel-body">
+            <div class="settings-section">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
+                <input type="checkbox" id="jc-report-enabled" onchange="saveJanusSettings()">
+                <span style="font-size:13px;">Send scheduled domain reports via email</span>
+              </label>
+              <div id="report-options" style="display:none;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Frequency</label>
+                  <select id="jc-report-freq" class="search-input" style="font-size:13px;width:100%;" onchange="saveJanusSettings();toggleReportDay()">
+                    <option value="daily">Daily</option>
+                    <option value="weekly" selected>Weekly</option>
+                  </select>
+                </div>
+                <div id="report-day-wrap">
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Day</label>
+                  <select id="jc-report-day" class="search-input" style="font-size:13px;width:100%;" onchange="saveJanusSettings()">
+                    <option value="0">Monday</option><option value="1">Tuesday</option>
+                    <option value="2">Wednesday</option><option value="3">Thursday</option>
+                    <option value="4">Friday</option><option value="5">Saturday</option>
+                    <option value="6">Sunday</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Time (UTC)</label>
+                  <select id="jc-report-hour" class="search-input" style="font-size:13px;width:100%;" onchange="saveJanusSettings()">
+                    ${Array.from({length:24},(_,i)=>`<option value="${i}">${String(i).padStart(2,'0')}:00</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Recipients <span style="font-weight:400;">(comma-separated)</span></label>
+                <input id="jc-report-recipients" type="text" class="search-input" placeholder="admin@yourco.com, manager@yourco.com" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:8px;">Reports include: domain stats, locked accounts, expired passwords, recent Janus activity. Requires SMTP to be configured in Settings.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom Scripts -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">🔧 Custom Scripts</span>
+            <button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openNewScriptModal()">+ Add script</button>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <div id="scripts-list">
+              <div class="loading" style="padding:24px;"><span class="spinner"></span> Loading scripts...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
+
+<!-- Add/Edit custom script modal -->
+<div class="modal-overlay" id="modal-script" style="display:none;">
+  <div class="modal" style="max-width:600px;width:95%;">
+    <h2 id="modal-script-title">Add Custom Script</h2>
+    <input type="hidden" id="script-edit-id">
+    <div class="field" style="margin-bottom:12px;">
+      <label>Script name <span style="color:var(--muted);font-size:11px;">(plain English, e.g. "Deprovision user from all systems")</span></label>
+      <input id="script-name" type="text" class="search-input" placeholder="My Custom Script" style="width:100%;font-size:13px;">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Description <span style="color:var(--muted);font-size:11px;">(Janus reads this to know when to use it)</span></label>
+      <input id="script-desc" type="text" class="search-input" placeholder="What does this script do?" style="width:100%;font-size:13px;">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Arguments <span style="color:var(--muted);font-size:11px;">(optional — how Janus should call it)</span></label>
+      <input id="script-args" type="text" class="search-input" placeholder='e.g. args: [username] -- the user to deprovision' style="width:100%;font-size:13px;">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Classification</label>
+      <select id="script-class" class="search-input" style="width:100%;font-size:13px;">
+        <option value="read">Read — no side effects</option>
+        <option value="write" selected>Write — reversible change</option>
+        <option value="destructive">Destructive — requires human confirmation</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:0;">
+      <label>PowerShell script <span style="color:var(--muted);font-size:11px;">Use $ARGS[0], $ARGS[1] for Janus-provided arguments</span></label>
+      <textarea id="script-content" rows="10" class="search-input" placeholder="Import-Module ActiveDirectory&#10;# Your PowerShell here&#10;# $ARGS[0] = first argument Janus passes" style="font-family:monospace;font-size:12px;width:100%;resize:vertical;line-height:1.5;"></textarea>
+    </div>
+    <div class="modal-footer" style="margin-top:16px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-script')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitScript()">Save Script</button>
+    </div>
+  </div>
+</div>
 
 <!-- Toast container -->
 <div id="toast-container"></div>
@@ -2184,6 +2336,20 @@
       }
     } catch (e) {
       console.warn('Stats failed:', e.message);
+    }
+    // Load time saved independently (non-blocking)
+    loadTimeSaved();
+  }
+
+  async function loadTimeSaved() {
+    try {
+      const res  = await fetch('/dashboard/api/time-saved');
+      const body = await res.json();
+      if (!body.success) return;
+      const el = document.getElementById('stat-time-saved');
+      if (el) el.textContent = body.data.display || '0m';
+    } catch (e) {
+      console.warn('Time saved fetch failed:', e.message);
     }
   }
 
@@ -4270,6 +4436,277 @@
     else if (k === 's' || k === 'S') showPage('settings');
     else if (k === 'm' || k === 'M') showPage('team');
   });
+
+  // =========================================================
+  // Configure Janus page
+  // =========================================================
+
+  let _janusDirty = false;
+
+  function markJanusDirty() {
+    _janusDirty = true;
+    document.getElementById('jc-save-btn').style.display = 'inline-block';
+  }
+
+  function toggleReportDay() {
+    const freq = document.getElementById('jc-report-freq').value;
+    document.getElementById('report-day-wrap').style.display = freq === 'weekly' ? '' : 'none';
+  }
+
+  async function loadJanusConfig() {
+    try {
+      const res  = await fetch('/dashboard/api/settings');
+      const body = await res.json();
+      if (!body.success) return;
+      const s = body.data;
+      document.getElementById('jc-janus-enabled').checked = !!s.janus_enabled;
+      document.getElementById('jc-janus-scan').checked    = !!s.janus_scan_emails;
+      document.getElementById('jc-auto-actions').checked  = !!s.janus_auto_actions;
+      document.getElementById('jc-email-domain').value    = s.email_domain || '';
+      document.getElementById('jc-context').value         = s.janus_context || '';
+      document.getElementById('jc-report-enabled').checked = !!s.report_enabled;
+      document.getElementById('jc-report-freq').value     = s.report_frequency || 'weekly';
+      document.getElementById('jc-report-day').value      = s.report_day ?? 0;
+      document.getElementById('jc-report-hour').value     = s.report_hour ?? 8;
+      document.getElementById('jc-report-recipients').value = s.report_recipients || '';
+      const reOpts = document.getElementById('report-options');
+      if (reOpts) reOpts.style.display = s.report_enabled ? 'grid' : 'none';
+      toggleReportDay();
+      _janusDirty = false;
+      document.getElementById('jc-save-btn').style.display = 'none';
+    } catch(e) { console.warn('Janus config load failed:', e); }
+    loadScriptsList();
+  }
+
+  async function saveJanusSettings() {
+    // Toggle report options visibility on checkbox change
+    const reEnabled = document.getElementById('jc-report-enabled').checked;
+    const reOpts    = document.getElementById('report-options');
+    if (reOpts) reOpts.style.display = reEnabled ? 'grid' : 'none';
+
+    const payload = {
+      janus_enabled:      document.getElementById('jc-janus-enabled').checked,
+      janus_scan_emails:  document.getElementById('jc-janus-scan').checked,
+      janus_auto_actions: document.getElementById('jc-auto-actions').checked,
+      email_domain:       document.getElementById('jc-email-domain').value.trim(),
+      janus_context:      document.getElementById('jc-context').value,
+      report_enabled:     reEnabled,
+      report_frequency:   document.getElementById('jc-report-freq').value,
+      report_day:         parseInt(document.getElementById('jc-report-day').value),
+      report_hour:        parseInt(document.getElementById('jc-report-hour').value),
+      report_recipients:  document.getElementById('jc-report-recipients').value.trim(),
+    };
+    try {
+      const res = await fetch('/dashboard/api/settings', {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const body = await res.json();
+      if (body.success) {
+        toast('Janus settings saved.', 'success');
+        _janusDirty = false;
+        document.getElementById('jc-save-btn').style.display = 'none';
+      } else {
+        toast(body.message || 'Save failed.', 'error');
+      }
+    } catch(e) { toast('Save failed.', 'error'); }
+  }
+
+  // --- Custom Scripts ---
+
+  let _scripts = [];
+
+  async function loadScriptsList() {
+    const wrap = document.getElementById('scripts-list');
+    try {
+      const res  = await fetch('/dashboard/api/scripts');
+      const body = await res.json();
+      if (!body.success) { wrap.innerHTML = '<div style="padding:20px;color:var(--muted);">Failed to load scripts.</div>'; return; }
+      _scripts = body.data;
+      if (!_scripts.length) {
+        wrap.innerHTML = `<div style="padding:28px;text-align:center;color:var(--muted);">
+          <div style="font-size:28px;margin-bottom:8px;">🔧</div>
+          <div style="font-weight:600;margin-bottom:4px;">No custom scripts yet</div>
+          <div style="font-size:12px;">Upload a PowerShell script and give it a plain-English name — Janus will be able to run it on demand.</div>
+        </div>`;
+        return;
+      }
+      const classColors = {read:'var(--success)', write:'var(--accent)', destructive:'var(--error)'};
+      wrap.innerHTML = _scripts.map(s => `
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="font-weight:600;font-size:14px;">${s.name}</span>
+              <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(0,0,0,0.2);color:${classColors[s.classification]||'var(--muted)'};">${s.classification}</span>
+              ${!s.enabled ? '<span style="font-size:10px;color:var(--muted);">disabled</span>' : ''}
+            </div>
+            <div style="font-size:12px;color:var(--muted);">${s.description}</div>
+            ${s.args_description ? `<div style="font-size:11px;color:var(--accent2);margin-top:2px;">Args: ${s.args_description}</div>` : ''}
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;font-family:monospace;">slug: ${s.slug}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;">
+            <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;" onclick="openEditScriptModal('${s.id}')">Edit</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;color:var(--error);" onclick="deleteScript('${s.id}','${s.name.replace(/'/g,'')}')">Delete</button>
+          </div>
+        </div>`).join('');
+    } catch(e) { wrap.innerHTML = '<div style="padding:20px;color:var(--error);">Error loading scripts.</div>'; }
+  }
+
+  function openNewScriptModal() {
+    document.getElementById('modal-script-title').textContent = 'Add Custom Script';
+    document.getElementById('script-edit-id').value   = '';
+    document.getElementById('script-name').value      = '';
+    document.getElementById('script-desc').value      = '';
+    document.getElementById('script-args').value      = '';
+    document.getElementById('script-class').value     = 'write';
+    document.getElementById('script-content').value   = '';
+    openModal('modal-script');
+  }
+
+  function openEditScriptModal(id) {
+    const s = _scripts.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('modal-script-title').textContent = 'Edit Script';
+    document.getElementById('script-edit-id').value   = s.id;
+    document.getElementById('script-name').value      = s.name;
+    document.getElementById('script-desc').value      = s.description;
+    document.getElementById('script-args').value      = s.args_description || '';
+    document.getElementById('script-class').value     = s.classification;
+    // Fetch full content
+    fetch(`/dashboard/api/scripts/${s.id}`)
+      .then(r => r.json())
+      .then(b => { if (b.success) document.getElementById('script-content').value = b.data.ps_content || ''; });
+    openModal('modal-script');
+  }
+
+  async function submitScript() {
+    const id      = document.getElementById('script-edit-id').value;
+    const payload = {
+      name:            document.getElementById('script-name').value.trim(),
+      description:     document.getElementById('script-desc').value.trim(),
+      args_description:document.getElementById('script-args').value.trim(),
+      classification:  document.getElementById('script-class').value,
+      ps_content:      document.getElementById('script-content').value,
+    };
+    if (!payload.name || !payload.description || !payload.ps_content) {
+      toast('Name, description, and script content are required.', 'error'); return;
+    }
+    try {
+      const url    = id ? `/dashboard/api/scripts/${id}` : '/dashboard/api/scripts';
+      const method = id ? 'PATCH' : 'POST';
+      const res    = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+      const body   = await res.json();
+      if (body.success) {
+        toast(id ? 'Script updated.' : 'Script added.', 'success');
+        closeModal('modal-script');
+        loadScriptsList();
+      } else {
+        toast(body.message || 'Save failed.', 'error');
+      }
+    } catch(e) { toast('Save failed.', 'error'); }
+  }
+
+  async function deleteScript(id, name) {
+    if (!confirm(`Delete script "${name}"? Janus will no longer be able to run it.`)) return;
+    try {
+      const res  = await fetch(`/dashboard/api/scripts/${id}`, {method:'DELETE'});
+      const body = await res.json();
+      if (body.success) { toast('Script deleted.', 'success'); loadScriptsList(); }
+      else toast(body.message || 'Delete failed.', 'error');
+    } catch(e) { toast('Delete failed.', 'error'); }
+  }
+
+  // Load Janus config page when navigated to
+  const _origShowPage = showPage;
+  showPage = function(p) {
+    _origShowPage(p);
+    if (p === 'janus-config') loadJanusConfig();
+  };
+
+  // =========================================================
+  // Draggable minimised ticket mini-bar
+  // =========================================================
+
+  let _miniTicket = null; // {id, ref, title, status}
+
+  // Inject mini-bar HTML once
+  (function() {
+    const bar = document.createElement('div');
+    bar.id = 'ticket-mini-bar';
+    bar.style.cssText = `
+      display:none;position:fixed;bottom:24px;right:24px;z-index:9000;
+      background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      padding:10px 14px;display:none;align-items:center;gap:10px;
+      box-shadow:0 8px 32px rgba(0,0,0,0.4);cursor:move;min-width:260px;max-width:380px;
+      user-select:none;
+    `;
+    bar.innerHTML = `
+      <span style="font-size:16px;">🎫</span>
+      <div style="flex:1;min-width:0;">
+        <div id="mini-ticket-ref" style="font-size:10px;color:var(--muted);"></div>
+        <div id="mini-ticket-title" style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+      </div>
+      <span id="mini-ticket-status" style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(99,102,241,0.15);color:var(--accent);flex-shrink:0;"></span>
+      <button title="Expand ticket" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 2px;" onclick="expandMiniTicket()">□</button>
+      <button title="Close" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 2px;" onclick="closeMiniTicket()">×</button>
+    `;
+    document.body.appendChild(bar);
+
+    // Make it draggable
+    let startX, startY, startL, startT;
+    bar.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'BUTTON') return;
+      startX = e.clientX; startY = e.clientY;
+      const rect = bar.getBoundingClientRect();
+      startL = rect.left; startT = rect.top;
+      bar.style.right = 'auto';
+      bar.style.bottom = 'auto';
+      bar.style.left = startL + 'px';
+      bar.style.top  = startT + 'px';
+      const onMove = ev => {
+        bar.style.left = (startL + ev.clientX - startX) + 'px';
+        bar.style.top  = (startT + ev.clientY - startY) + 'px';
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  })();
+
+  function minimiseTicket() {
+    const overlay = document.getElementById('ticket-modal-overlay');
+    const modal   = document.getElementById('ticket-modal');
+    if (!overlay || overlay.style.display === 'none') return;
+    const numEl    = document.getElementById('td-number');
+    const titleEl  = document.getElementById('td-title');
+    const statusEl = document.getElementById('td-status');
+    _miniTicket = {
+      ref:    numEl    ? numEl.textContent    : '',
+      title:  titleEl  ? titleEl.textContent  : 'Ticket',
+      status: statusEl ? statusEl.value       : '',
+    };
+    document.getElementById('mini-ticket-ref').textContent    = _miniTicket.ref;
+    document.getElementById('mini-ticket-title').textContent  = _miniTicket.title;
+    document.getElementById('mini-ticket-status').textContent = _miniTicket.status.replace('_',' ');
+    overlay.style.display = 'none';
+    const bar = document.getElementById('ticket-mini-bar');
+    bar.style.display = 'flex';
+  }
+
+  function expandMiniTicket() {
+    if (!_miniTicket) return;
+    document.getElementById('ticket-mini-bar').style.display = 'none';
+    document.getElementById('ticket-modal-overlay').style.display = 'block';
+  }
+
+  function closeMiniTicket() {
+    _miniTicket = null;
+    document.getElementById('ticket-mini-bar').style.display = 'none';
+    document.getElementById('ticket-modal-overlay').style.display = 'none';
+  }
 </script>
 </body>
 </html>

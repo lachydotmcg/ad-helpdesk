@@ -472,3 +472,166 @@ Write-Output '{{"result":"moved","user":"{u}","ou":"{ou_esc}"}}'
     if r["success"]:
         r["message"] = f"{username} moved to {ou_path}."
     return r
+
+
+# ---------------------------------------------------------------------------
+# Custom script execution
+# ---------------------------------------------------------------------------
+
+def run_custom_script(ps_content: str, *user_args) -> dict:
+    """Execute a tenant-uploaded PowerShell script.
+
+    The script may reference positional arguments as $ARGS[0], $ARGS[1], etc.
+    These are substituted with the escaped values of user_args before execution.
+    The script runs in the same WinRM session as all other AD operations.
+    """
+    script = ps_content
+    for i, arg in enumerate(user_args):
+        script = script.replace(f"$ARGS[{i}]", _ps_escape(str(arg)))
+    return _run(script)
+
+
+# ---------------------------------------------------------------------------
+# OU management
+# ---------------------------------------------------------------------------
+
+def create_ou(ou_name: str, parent_ou: str = "") -> dict:
+    """Create a new Organisational Unit. parent_ou can be a plain name or full DN.
+    If parent_ou is omitted, creates at the domain root.
+    Idempotent: if the OU already exists it returns success without error.
+    """
+    n = _ps_escape(ou_name)
+    parent_path = _make_ou_path(parent_ou) if parent_ou else _domain_dn()
+    p = _ps_escape(parent_path)
+    script = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory
+$existing = Get-ADOrganizationalUnit -Filter {{Name -eq '{n}'}} `
+            -SearchBase '{p}' -SearchScope OneLevel -ErrorAction SilentlyContinue
+if ($existing) {{
+    Write-Output '{{"result":"already_exists","ou":"{n}","path":"{p}"}}'
+}} else {{
+    New-ADOrganizationalUnit -Name '{n}' -Path '{p}'
+    Write-Output '{{"result":"created","ou":"{n}","path":"{p}"}}'
+}}
+"""
+    r = _run(script)
+    if r["success"]:
+        data = r.get("data") or {}
+        if isinstance(data, dict) and data.get("result") == "already_exists":
+            r["message"] = f"OU '{ou_name}' already exists under {parent_path}."
+        else:
+            r["message"] = f"OU '{ou_name}' created under {parent_path}."
+    return r
+
+
+def list_users_in_ou(ou_name: str) -> dict:
+    """List all users in a specific OU (searches subtree). ou_name can be plain name or full DN."""
+    ou_path = _make_ou_path(ou_name)
+    ou_esc  = _ps_escape(ou_path)
+    script = f"""
+Import-Module ActiveDirectory
+Get-ADUser -Filter * -SearchBase '{ou_esc}' -SearchScope Subtree `
+  -Properties LockedOut, PasswordExpired, LastLogonDate, Department, Title |
+  Select-Object Name, SamAccountName, GivenName, Surname, Enabled, LockedOut,
+                PasswordExpired, LastLogonDate, Department, Title,
+                @{{Name='OU';Expression={{($_.DistinguishedName -split ',OU=')[1]}}}} |
+  Sort-Object Name |
+  ConvertTo-Json
+"""
+    r = _run(script)
+    if r["success"]:
+        r["data"]    = _normalise_list(r["data"])
+        r["message"] = f"{len(r['data'])} user(s) in OU '{ou_name}'."
+    return r
+
+
+def bulk_move_users(source_ou: str, rules_json: str, create_missing_ous: str = "true") -> dict:
+    """Move users in source_ou to target OUs based on SamAccountName pattern rules.
+
+    rules_json : JSON array of {"pattern": "*08", "target_ou": "Y12"} objects.
+                 Pattern uses PowerShell -like wildcards (* = any chars).
+    create_missing_ous : "true" (default) auto-creates target OUs that don't exist.
+
+    Returns counts moved per rule and any per-user errors.
+    """
+    import json as _json
+    try:
+        rules = _json.loads(rules_json)
+    except Exception:
+        return {"success": False, "message": "Invalid rules_json — must be a JSON array.", "data": None}
+
+    if not rules:
+        return {"success": False, "message": "No rules provided.", "data": None}
+
+    source_path = _make_ou_path(source_ou)
+    src = _ps_escape(source_path)
+    do_create   = str(create_missing_ous).lower() in ("true", "1", "yes")
+
+    # Build PowerShell rules array
+    ps_rule_lines = []
+    for rule in rules:
+        pattern    = _ps_escape(str(rule.get("pattern", "")))
+        target_raw = str(rule.get("target_ou", ""))
+        target_dn  = _make_ou_path(target_raw) if target_raw else ""
+        target_esc = _ps_escape(target_dn)
+        ps_rule_lines.append(f"    @{{Pattern='{pattern}'; TargetOU='{target_esc}'}}")
+
+    ps_rules_str   = ",\n".join(ps_rule_lines)
+
+    # Optional OU creation block — injected per rule if create_missing_ous is true
+    create_ou_block = """
+        # Auto-create target OU if missing
+        $ouLeaf   = ($rule.TargetOU -split ',')[0] -replace '^OU=',''
+        $ouParent = $rule.TargetOU -replace '^OU=[^,]+,',''
+        $exists   = Get-ADOrganizationalUnit -Filter {Name -eq $ouLeaf} `
+                    -SearchBase $ouParent -SearchScope OneLevel -ErrorAction SilentlyContinue
+        if (-not $exists) {
+            New-ADOrganizationalUnit -Name $ouLeaf -Path $ouParent -ErrorAction SilentlyContinue
+        }
+""" if do_create else ""
+
+    script = f"""
+$ErrorActionPreference = 'Continue'
+Import-Module ActiveDirectory
+
+$rules = @(
+{ps_rules_str}
+)
+
+$users   = Get-ADUser -Filter * -SearchBase '{src}' -SearchScope Subtree
+$moved   = @{{}}
+$errList = @()
+
+foreach ($rule in $rules) {{
+{create_ou_block}
+    $matched = $users | Where-Object {{ $_.SamAccountName -like $rule.Pattern }}
+    $count   = 0
+    foreach ($u in $matched) {{
+        try {{
+            Move-ADObject -Identity $u.DistinguishedName -TargetPath $rule.TargetOU
+            $count++
+        }} catch {{
+            $errList += "$($u.SamAccountName): $_"
+        }}
+    }}
+    $moved[$rule.Pattern] = $count
+}}
+
+$total = 0
+foreach ($v in $moved.Values) {{ $total += $v }}
+
+@{{
+    moved  = $moved
+    errors = $errList
+    total  = $total
+}} | ConvertTo-Json -Depth 4
+"""
+    r = _run(script)
+    if r["success"] and r.get("data"):
+        data  = r["data"]
+        total = data.get("total", 0)
+        errs  = data.get("errors", [])
+        err_note = f" ({len(errs)} error(s) — check data.errors for details)" if errs else ""
+        r["message"] = f"Bulk move complete: {total} user(s) moved across {len(rules)} rule(s){err_note}."
+    return r
