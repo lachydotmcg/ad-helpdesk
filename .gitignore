@@ -1,3 +1,6 @@
+# Project brief (local only — not for GitHub)
+CLAUDE.md
+
 # Credentials and secrets -- never commit these
 .env
 cloud/.env
