@@ -1810,7 +1810,7 @@
 
         <!-- Janus Behaviour -->
         <div class="panel" style="margin-bottom:18px;">
-          <div class="panel-header"><span class="panel-title">🧠 Janus Behaviour</span></div>
+          <div class="panel-header"><span class="panel-title">🧠 AI Behaviour</span></div>
           <div class="panel-body">
             <div class="settings-section">
               <div class="settings-section-title">Core settings</div>
@@ -1895,6 +1895,48 @@
           </div>
         </div>
 
+        <!-- AI Memory -->
+        <div class="panel" style="margin-bottom:18px;">
+          <div class="panel-header">
+            <span class="panel-title">🧠 AI Memory</span>
+            <button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="openAddMemoryModal()">+ Add memory</button>
+          </div>
+          <div class="panel-body" style="padding:0 0 8px;">
+            <div style="padding:12px 20px 4px;font-size:12px;color:var(--muted);">
+              Facts your AI has learned about your organisation. Auto-extracted from interactions; edit or delete anything here. These are injected into every response.
+            </div>
+            <div id="memory-list">
+              <div class="loading" style="padding:24px;"><span class="spinner"></span> Loading memory...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Integrations -->
+        <div class="panel" style="margin-bottom:18px;">
+          <div class="panel-header"><span class="panel-title">🔗 Integrations</span></div>
+          <div class="panel-body">
+            <div class="settings-section">
+              <div class="settings-section-title">Slack</div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Incoming webhook URL <span style="font-weight:400;">(new tickets and resolutions will be posted here)</span></label>
+              <div style="display:flex;gap:8px;">
+                <input id="jc-slack-webhook" type="text" class="search-input" placeholder="https://hooks.slack.com/services/..." style="font-size:13px;flex:1;" oninput="markJanusDirty()">
+                <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;flex-shrink:0;" onclick="testWebhook('slack')">Test</button>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">In Slack: Apps &rarr; Incoming Webhooks &rarr; Add to Slack &rarr; copy the webhook URL.</div>
+            </div>
+            <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
+              <div class="settings-section-title">Microsoft Teams</div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Incoming webhook URL</label>
+              <div style="display:flex;gap:8px;">
+                <input id="jc-teams-webhook" type="text" class="search-input" placeholder="https://outlook.office.com/webhook/..." style="font-size:13px;flex:1;" oninput="markJanusDirty()">
+                <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;flex-shrink:0;" onclick="testWebhook('teams')">Test</button>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">In Teams: channel &rarr; Connectors &rarr; Incoming Webhook &rarr; copy the webhook URL.</div>
+            </div>
+            <button id="jc-integrations-save-btn" class="btn btn-primary" style="margin-top:14px;" onclick="saveJanusSettings()">Save integrations</button>
+          </div>
+        </div>
+
         <!-- Custom Scripts -->
         <div class="panel">
           <div class="panel-header">
@@ -1913,6 +1955,36 @@
 
   </div><!-- /content -->
 </div><!-- /main -->
+
+<!-- Add/Edit memory modal -->
+<div class="modal-overlay" id="modal-memory" style="display:none;">
+  <div class="modal" style="max-width:480px;width:95%;">
+    <h2 id="modal-memory-title">Add Memory</h2>
+    <input type="hidden" id="memory-edit-id">
+    <div class="field" style="margin-bottom:12px;">
+      <label>Key <span style="color:var(--muted);font-size:11px;">(short label, e.g. "Student OU naming")</span></label>
+      <input id="memory-key-input" type="text" class="search-input" placeholder="e.g. Semester rollover schedule" style="width:100%;font-size:13px;">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Value <span style="color:var(--muted);font-size:11px;">(the fact your AI should remember)</span></label>
+      <textarea id="memory-val-input" rows="3" class="search-input" placeholder="e.g. Bulk moves happen in January and June at semester rollover." style="width:100%;font-size:13px;resize:vertical;"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:16px;">
+      <label>Category</label>
+      <select id="memory-cat-input" class="search-input" style="width:100%;font-size:13px;">
+        <option value="general">General</option>
+        <option value="org">Organisation</option>
+        <option value="ou_structure">OU Structure</option>
+        <option value="preference">Admin Preference</option>
+        <option value="user">User</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-memory')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMemory()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- Add/Edit custom script modal -->
 <div class="modal-overlay" id="modal-script" style="display:none;">
@@ -4462,8 +4534,11 @@
       document.getElementById('jc-janus-enabled').checked = !!s.janus_enabled;
       document.getElementById('jc-janus-scan').checked    = !!s.janus_scan_emails;
       document.getElementById('jc-auto-actions').checked  = !!s.janus_auto_actions;
+      document.getElementById('jc-ai-name').value         = s.janus_name || '';
       document.getElementById('jc-email-domain').value    = s.email_domain || '';
       document.getElementById('jc-context').value         = s.janus_context || '';
+      document.getElementById('jc-slack-webhook').value   = s.slack_webhook_url || '';
+      document.getElementById('jc-teams-webhook').value   = s.teams_webhook_url || '';
       document.getElementById('jc-report-enabled').checked = !!s.report_enabled;
       document.getElementById('jc-report-freq').value     = s.report_frequency || 'weekly';
       document.getElementById('jc-report-day').value      = s.report_day ?? 0;
@@ -4476,6 +4551,111 @@
       document.getElementById('jc-save-btn').style.display = 'none';
     } catch(e) { console.warn('Janus config load failed:', e); }
     loadScriptsList();
+    loadMemoryList();
+  }
+
+  // --- AI Memory ---
+
+  async function loadMemoryList() {
+    const wrap = document.getElementById('memory-list');
+    if (!wrap) return;
+    try {
+      const res  = await fetch('/dashboard/api/memory');
+      const body = await res.json();
+      if (!body.success) { wrap.innerHTML = '<div style="padding:20px;color:var(--muted);">Failed to load memory.</div>'; return; }
+      const mems = body.data;
+      if (!mems.length) {
+        wrap.innerHTML = `<div style="padding:28px;text-align:center;color:var(--muted);">
+          <div style="font-size:28px;margin-bottom:8px;">🧠</div>
+          <div style="font-weight:600;margin-bottom:4px;">No memories yet</div>
+          <div style="font-size:12px;">Your AI will start learning about your environment after a few interactions. You can also add facts manually.</div>
+        </div>`;
+        return;
+      }
+      const catColors = {org:'var(--accent2)',preference:'var(--success)',user:'var(--warn)',ou_structure:'var(--accent2)',general:'var(--muted)'};
+      wrap.innerHTML = mems.map(m => `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="font-weight:600;font-size:13px;">${escHtml(m.key)}</span>
+              <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(0,0,0,0.2);color:${catColors[m.category]||'var(--muted)'};">${m.category}</span>
+              <span style="font-size:10px;color:var(--muted);">${m.source === 'manual' ? '✏️ manual' : '🤖 auto'}</span>
+            </div>
+            <div style="font-size:13px;color:var(--text);">${escHtml(m.value)}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;">confidence: ${Math.round((m.confidence||0)*100)}% &nbsp;·&nbsp; learned ${m.created_at ? m.created_at.split('T')[0] : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;margin-top:2px;">
+            <button class="btn btn-ghost" style="font-size:12px;padding:3px 9px;" onclick="editMemory('${m.id}','${escHtml(m.key).replace(/'/g,"\\'")}','${escHtml(m.value).replace(/'/g,"\\'")}','${m.category}')">Edit</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:3px 9px;color:var(--error);" onclick="deleteMemory('${m.id}')">Delete</button>
+          </div>
+        </div>`).join('');
+    } catch(e) { wrap.innerHTML = '<div style="padding:20px;color:var(--error);">Error loading memory.</div>'; }
+  }
+
+  function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function openAddMemoryModal() {
+    document.getElementById('memory-edit-id').value    = '';
+    document.getElementById('memory-key-input').value  = '';
+    document.getElementById('memory-val-input').value  = '';
+    document.getElementById('memory-cat-input').value  = 'general';
+    document.getElementById('modal-memory-title').textContent = 'Add Memory';
+    openModal('modal-memory');
+  }
+
+  function editMemory(id, key, value, category) {
+    document.getElementById('memory-edit-id').value    = id;
+    document.getElementById('memory-key-input').value  = key;
+    document.getElementById('memory-val-input').value  = value;
+    document.getElementById('memory-cat-input').value  = category || 'general';
+    document.getElementById('modal-memory-title').textContent = 'Edit Memory';
+    openModal('modal-memory');
+  }
+
+  async function saveMemory() {
+    const id  = document.getElementById('memory-edit-id').value.trim();
+    const key = document.getElementById('memory-key-input').value.trim();
+    const val = document.getElementById('memory-val-input').value.trim();
+    const cat = document.getElementById('memory-cat-input').value.trim();
+    if (!key || !val) { toast('Key and value are required.', 'error'); return; }
+    const isEdit = !!id;
+    const url    = isEdit ? `/dashboard/api/memory/${id}` : '/dashboard/api/memory';
+    const method = isEdit ? 'PATCH' : 'POST';
+    try {
+      const res  = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify({key,value:val,category:cat}) });
+      const body = await res.json();
+      if (body.success) {
+        toast(isEdit ? 'Memory updated.' : 'Memory added.', 'success');
+        closeModal('modal-memory');
+        loadMemoryList();
+      } else { toast(body.message || 'Save failed.', 'error'); }
+    } catch(e) { toast('Save failed.', 'error'); }
+  }
+
+  async function deleteMemory(id) {
+    if (!confirm('Delete this memory? Your AI will no longer have this knowledge.')) return;
+    try {
+      const res  = await fetch(`/dashboard/api/memory/${id}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (body.success) { toast('Memory deleted.', 'success'); loadMemoryList(); }
+      else { toast(body.message || 'Delete failed.', 'error'); }
+    } catch(e) { toast('Delete failed.', 'error'); }
+  }
+
+  async function testWebhook(platform) {
+    const urlEl = document.getElementById(platform === 'slack' ? 'jc-slack-webhook' : 'jc-teams-webhook');
+    const url   = urlEl ? urlEl.value.trim() : '';
+    if (!url) { toast('Paste a webhook URL first.', 'error'); return; }
+    try {
+      const res  = await fetch('/dashboard/api/integrations/test', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ platform, webhook_url: url })
+      });
+      const body = await res.json();
+      toast(body.success ? 'Test message sent!' : (body.message || 'Test failed.'), body.success ? 'success' : 'error');
+    } catch(e) { toast('Test failed.', 'error'); }
   }
 
   async function saveJanusSettings() {
@@ -4488,6 +4668,7 @@
       janus_enabled:      document.getElementById('jc-janus-enabled').checked,
       janus_scan_emails:  document.getElementById('jc-janus-scan').checked,
       janus_auto_actions: document.getElementById('jc-auto-actions').checked,
+      janus_name:         document.getElementById('jc-ai-name').value.trim(),
       email_domain:       document.getElementById('jc-email-domain').value.trim(),
       janus_context:      document.getElementById('jc-context').value,
       report_enabled:     reEnabled,
@@ -4495,6 +4676,8 @@
       report_day:         parseInt(document.getElementById('jc-report-day').value),
       report_hour:        parseInt(document.getElementById('jc-report-hour').value),
       report_recipients:  document.getElementById('jc-report-recipients').value.trim(),
+      slack_webhook_url:  document.getElementById('jc-slack-webhook').value.trim(),
+      teams_webhook_url:  document.getElementById('jc-teams-webhook').value.trim(),
     };
     try {
       const res = await fetch('/dashboard/api/settings', {

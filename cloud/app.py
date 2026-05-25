@@ -265,6 +265,99 @@ def send_email(to_email, subject, body_text, body_html,
 
 
 # ---------------------------------------------------------------------------
+# Slack / Teams webhook notifications
+# ---------------------------------------------------------------------------
+
+def _send_webhook_notification(webhook_url: str, text: str, platform: str = "slack") -> None:
+    """POST a simple notification to a Slack or Teams incoming webhook. Silently skips on failure."""
+    if not webhook_url:
+        return
+    try:
+        import urllib.request
+        if platform == "teams":
+            payload = json.dumps({"text": text}).encode()
+        else:
+            payload = json.dumps({"text": text}).encode()
+        req = urllib.request.Request(
+            webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print(f"[webhook] {platform} notification failed: {e}")
+
+
+def notify_integrations(tenant_id: str, text: str) -> None:
+    """Send a notification to all configured Slack/Teams webhooks for this tenant."""
+    settings = db.get_settings(tenant_id)
+    slack_url = settings.get("slack_webhook_url", "")
+    teams_url = settings.get("teams_webhook_url", "")
+    if slack_url:
+        _send_webhook_notification(slack_url, text, platform="slack")
+    if teams_url:
+        _send_webhook_notification(teams_url, text, platform="teams")
+
+
+# ---------------------------------------------------------------------------
+# AI reflection pass (organisational memory extraction)
+# ---------------------------------------------------------------------------
+
+def _run_reflection_pass(tenant_id: str, ai_name: str, user_message: str,
+                         action: str, args: list, result_success: bool) -> None:
+    """
+    After a meaningful action, ask Claude to extract any org-specific facts worth remembering.
+    Runs in a background thread so it never blocks the chat response.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key or not result_success:
+        return
+    try:
+        import anthropic as _ant
+        client = _ant.Anthropic(api_key=api_key)
+        prompt = f"""An IT admin asked their AI assistant ("{ai_name}") to: "{user_message}"
+The action taken was: {action} with args {args}
+The action succeeded.
+
+Extract any organisation-specific facts from this interaction that would help the AI do its job better in the future.
+Examples of useful facts:
+  - "Username suffix 08 = Year 8 students"
+  - "Bulk moves happen at semester rollover"
+  - "Finance OU requires extra confirmation"
+  - "Admin prefers dry-run summary before bulk ops"
+  - "OU named 'Teachers' contains all teaching staff"
+
+Reply with a JSON array of facts, or an empty array [] if nothing meaningful was learned.
+Each fact: {{"category": "org|preference|user|ou_structure", "key": "short label", "value": "the fact"}}
+Output ONLY the JSON array, no other text."""
+
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = resp.content[0].text.strip()
+        import re as _re
+        match = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        if not match:
+            return
+        facts = json.loads(match.group())
+        for f in facts:
+            if isinstance(f, dict) and f.get("key") and f.get("value"):
+                db.upsert_memory(
+                    tenant_id,
+                    category=f.get("category", "general"),
+                    key=f["key"],
+                    value=f["value"],
+                    confidence=0.75,
+                    source="auto"
+                )
+    except Exception as e:
+        print(f"[reflection] Failed: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Auth decorators
 # ---------------------------------------------------------------------------
 
@@ -864,13 +957,12 @@ def dashboard_chat():
     # Save the user message
     db.add_chat_message(session_id, g.tenant_id, "user", message)
 
-    ai_name = os.getenv("AI_NAME", "Janus")
-
-    # Load custom scripts and tenant context for Janus
+    # Load custom scripts and tenant context for AI
     custom_scripts  = db.list_custom_scripts(g.tenant_id)
     enabled_scripts = [s for s in custom_scripts if s.get("enabled")]
     tenant_settings = db.get_settings(g.tenant_id)
     janus_context   = (tenant_settings.get("janus_context") or "").strip()
+    ai_name         = (tenant_settings.get("janus_name") or "").strip() or os.getenv("AI_NAME", "Janus")
 
     # Build custom scripts block for the system prompt
     custom_scripts_block = ""
@@ -888,8 +980,19 @@ def dashboard_chat():
 
     tenant_context_block = f"\n\nADMIN-PROVIDED CONTEXT (read this for org-specific knowledge):\n{janus_context}" if janus_context else ""
 
-    system_prompt = f"""You are {ai_name}, an AI assistant built into AD Helpdesk — a tool for managing Windows Active Directory.
-You are named after the Roman god of doorways and access, which suits your role perfectly.
+    # Inject organisational memories into the system prompt
+    memories         = db.get_memories_for_context(g.tenant_id, limit=20)
+    memory_block     = ""
+    if memories:
+        lines = ["\n\nORGANISATIONAL MEMORY (facts learned about this environment; use these to inform your responses):"]
+        for m in memories:
+            lines.append(f"  [{m['category']}] {m['key']}: {m['value']}")
+        memory_block = "\n".join(lines)
+        # Touch the used memories so recency tracking stays accurate
+        for m in memories:
+            db.touch_memory(g.tenant_id, m["id"])
+
+    system_prompt = f"""You are {ai_name}, an AI assistant built into AD Helpdesk, a tool for managing Windows Active Directory.
 The user is an IT admin. Your job is to understand what they want and either:
   (a) Execute an AD operation by responding with a JSON command block, OR
   (b) Answer a general question conversationally if no AD action is needed.
@@ -962,7 +1065,7 @@ CRITICAL RULES:
 - Questions about a user's groups, role, department, title, status → ALWAYS use get_user_info first. It returns everything including MemberOf. Only call list_group_memberships as a follow-up if you need extra group metadata.
 - Questions about expired passwords → always run list_expired_passwords (not stats cache).
 - If no AD action is needed, respond conversationally in plain text — do NOT output JSON.
-- Keep responses concise and direct. You are talking to an experienced IT admin.{custom_scripts_block}{tenant_context_block}"""
+- Keep responses concise and direct. You are talking to an experienced IT admin.{custom_scripts_block}{tenant_context_block}{memory_block}"""
 
     client   = anthropic.Anthropic(api_key=api_key)
     messages = []
@@ -1199,6 +1302,14 @@ Keep it under 5 sentences. Be direct."""
         db.log_activity(g.tenant_id, "janus_action", g.user_email,
                         target=args[0] if args else None,
                         detail=f"{action} via Janus chat - {('success' if result_data['success'] else 'failed')}")
+        # Fire reflection pass in background to extract organisational memory
+        if result_data.get("success") and action not in LOOKUP_ACTIONS:
+            import threading
+            threading.Thread(
+                target=_run_reflection_pass,
+                args=(g.tenant_id, ai_name, message, action, args, True),
+                daemon=True
+            ).start()
         return jsonify({
             "success":      True,
             "reply":        final_reply,
@@ -1375,9 +1486,10 @@ def dashboard_update_settings():
                "security_checks", "email_domain", "roles",
                "custom_statuses", "custom_priorities", "ticket_labels",
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
-               "janus_context",
+               "janus_context", "janus_name",
                "report_enabled", "report_frequency", "report_day",
-               "report_hour", "report_recipients", "last_report_sent"}
+               "report_hour", "report_recipients", "last_report_sent",
+               "slack_webhook_url", "teams_webhook_url"}
     for k, v in data.items():
         if k in allowed:
             # Never overwrite smtp_pass with an empty string (blank = "keep existing")
@@ -1387,6 +1499,79 @@ def dashboard_update_settings():
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
     return jsonify({"success": True, "data": current})
+
+
+@app.route("/dashboard/api/integrations/test", methods=["POST"])
+@require_dashboard_user
+def dashboard_test_webhook():
+    """Send a test notification to a Slack or Teams webhook."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data     = request.get_json() or {}
+    platform = data.get("platform", "slack")
+    url      = data.get("webhook_url", "").strip()
+    if not url:
+        return jsonify({"success": False, "message": "webhook_url is required."}), 400
+    try:
+        _send_webhook_notification(url, f":white_check_mark: AID Helpdesk test notification from {g.tenant_name}. Your {platform.capitalize()} integration is working.", platform)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/dashboard/api/memory", methods=["GET"])
+@require_dashboard_user
+def dashboard_list_memory():
+    """Return all stored AI memories for this tenant."""
+    memories = db.list_memories(g.tenant_id)
+    return jsonify({"success": True, "data": memories})
+
+
+@app.route("/dashboard/api/memory", methods=["POST"])
+@require_dashboard_user
+def dashboard_create_memory():
+    """Manually add a memory (admin only)."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data     = request.get_json() or {}
+    key      = data.get("key", "").strip()
+    value    = data.get("value", "").strip()
+    category = data.get("category", "general").strip()
+    if not key or not value:
+        return jsonify({"success": False, "message": "key and value are required."}), 400
+    mem = db.create_memory(g.tenant_id, category, key, value,
+                           confidence=1.0, source="manual")
+    db.log_activity(g.tenant_id, "memory_added", g.user_email,
+                    detail=f"Memory added: {key}")
+    return jsonify({"success": True, "data": mem}), 201
+
+
+@app.route("/dashboard/api/memory/<memory_id>", methods=["PATCH"])
+@require_dashboard_user
+def dashboard_update_memory(memory_id):
+    """Edit a memory entry (admin only)."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data = request.get_json() or {}
+    ok   = db.update_memory(g.tenant_id, memory_id,
+                             key=data.get("key"), value=data.get("value"),
+                             category=data.get("category"), confidence=data.get("confidence"))
+    if not ok:
+        return jsonify({"success": False, "message": "Memory not found."}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/dashboard/api/memory/<memory_id>", methods=["DELETE"])
+@require_dashboard_user
+def dashboard_delete_memory(memory_id):
+    """Delete a memory entry (admin only)."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    if not db.delete_memory(g.tenant_id, memory_id):
+        return jsonify({"success": False, "message": "Memory not found."}), 404
+    db.log_activity(g.tenant_id, "memory_deleted", g.user_email,
+                    detail=f"Memory {memory_id} deleted")
+    return jsonify({"success": True})
 
 
 @app.route("/dashboard/api/users/<user_id>", methods=["DELETE"])
@@ -1731,6 +1916,12 @@ def create_ticket():
     db.log_activity(g.tenant_id, "ticket_created", g.user_email, target=ticket["id"],
                     detail=f"Ticket created: {title}")
 
+    # Notify Slack/Teams
+    notify_integrations(
+        g.tenant_id,
+        f":ticket: New ticket from {requester_name or g.user_email}: *{title}*\n{description[:200]}"
+    )
+
     # Janus auto-analysis via shared helper
     result = _run_janus_analysis(
         g.tenant_id, g.tenant_name, ticket["id"],
@@ -1770,6 +1961,12 @@ def update_ticket(ticket_id):
         if new_status:
             db.add_ticket_action(ticket_id, g.tenant_id, "status_change",
                                  f"Status changed to {new_status}", g.user_email)
+            # Notify Slack/Teams on status changes
+            if new_status in ("resolved", "closed"):
+                notify_integrations(
+                    g.tenant_id,
+                    f":white_check_mark: Ticket *{ticket.get('title', ticket_id)}* marked {new_status} by {g.user_email}"
+                )
             # Send email notification when ticket is resolved or closed
             if new_status in ("resolved", "closed"):
                 requester_email = ticket.get("requester_email", "")

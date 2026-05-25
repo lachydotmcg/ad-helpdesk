@@ -217,6 +217,18 @@ _SCHEMA = [
         updated_at       TEXT NOT NULL,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS agent_memory (
+        id          TEXT PRIMARY KEY,
+        tenant_id   TEXT NOT NULL,
+        category    TEXT NOT NULL DEFAULT 'general',
+        key         TEXT NOT NULL,
+        value       TEXT NOT NULL,
+        confidence  REAL NOT NULL DEFAULT 0.8,
+        source      TEXT NOT NULL DEFAULT 'auto',
+        created_at  TEXT NOT NULL,
+        last_used   TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    )""",
 ]
 
 
@@ -286,6 +298,18 @@ def migrate_db():
             enabled          INTEGER NOT NULL DEFAULT 1,
             created_at       TEXT NOT NULL,
             updated_at       TEXT NOT NULL
+        )""")
+        # v6: agent_memory table for named AI persona and organisational learning
+        cur.execute("""CREATE TABLE IF NOT EXISTS agent_memory (
+            id          TEXT PRIMARY KEY,
+            tenant_id   TEXT NOT NULL,
+            category    TEXT NOT NULL DEFAULT 'general',
+            key         TEXT NOT NULL,
+            value       TEXT NOT NULL,
+            confidence  REAL NOT NULL DEFAULT 0.8,
+            source      TEXT NOT NULL DEFAULT 'auto',
+            created_at  TEXT NOT NULL,
+            last_used   TEXT NOT NULL
         )""")
         conn.commit()
     except Exception:
@@ -1017,6 +1041,9 @@ _SETTINGS_DEFAULTS = {
     "custom_statuses":    [],
     "custom_priorities":  [],
     "ticket_labels":      [],
+    "janus_name":         "Janus",
+    "slack_webhook_url":  "",
+    "teams_webhook_url":  "",
 }
 
 
@@ -1270,3 +1297,126 @@ def get_activity_feed(tenant_id: str, limit: int = 100) -> list:
         return _rows(cur.fetchall())
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Agent memory (named AI persona + organisational learning)
+# ---------------------------------------------------------------------------
+
+def list_memories(tenant_id: str, limit: int = 100) -> list:
+    """Return all memories for this tenant, ordered by most recently used."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM agent_memory WHERE tenant_id = {_PH} ORDER BY last_used DESC LIMIT {_PH}",
+            (tenant_id, limit)
+        )
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def get_memories_for_context(tenant_id: str, limit: int = 20) -> list:
+    """Return the most recently used memories for injection into the AI system prompt."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM agent_memory WHERE tenant_id = {_PH} "
+            f"ORDER BY last_used DESC LIMIT {_PH}",
+            (tenant_id, limit)
+        )
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def create_memory(tenant_id: str, category: str, key: str, value: str,
+                  confidence: float = 0.8, source: str = "auto") -> dict:
+    mem_id = str(uuid.uuid4())
+    now    = datetime.utcnow().isoformat()
+    conn   = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"INSERT INTO agent_memory (id, tenant_id, category, key, value, confidence, source, created_at, last_used) "
+            f"VALUES ({_PH},{_PH},{_PH},{_PH},{_PH},{_PH},{_PH},{_PH},{_PH})",
+            (mem_id, tenant_id, category, key, value, confidence, source, now, now)
+        )
+        conn.commit()
+        return {"id": mem_id, "tenant_id": tenant_id, "category": category,
+                "key": key, "value": value, "confidence": confidence,
+                "source": source, "created_at": now, "last_used": now}
+    finally:
+        conn.close()
+
+
+def update_memory(tenant_id: str, memory_id: str, **fields) -> bool:
+    allowed = {"category", "key", "value", "confidence"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    now = datetime.utcnow().isoformat()
+    updates["last_used"] = now
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        set_clause = ", ".join(f"{k} = {_PH}" for k in updates)
+        values     = list(updates.values()) + [memory_id, tenant_id]
+        cur.execute(
+            f"UPDATE agent_memory SET {set_clause} WHERE id = {_PH} AND tenant_id = {_PH}",
+            values
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_memory(tenant_id: str, memory_id: str) -> bool:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"DELETE FROM agent_memory WHERE id = {_PH} AND tenant_id = {_PH}",
+            (memory_id, tenant_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def touch_memory(tenant_id: str, memory_id: str) -> None:
+    """Update last_used timestamp to signal this memory was accessed."""
+    now  = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE agent_memory SET last_used = {_PH} WHERE id = {_PH} AND tenant_id = {_PH}",
+            (now, memory_id, tenant_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def upsert_memory(tenant_id: str, category: str, key: str, value: str,
+                  confidence: float = 0.8, source: str = "auto") -> dict:
+    """Create a memory or update its value if one with the same key already exists."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT id FROM agent_memory WHERE tenant_id = {_PH} AND key = {_PH}",
+            (tenant_id, key)
+        )
+        row = _row(cur.fetchone())
+    finally:
+        conn.close()
+    if row:
+        update_memory(tenant_id, row["id"], value=value, confidence=confidence)
+        return {"id": row["id"], "updated": True}
+    return create_memory(tenant_id, category, key, value, confidence, source)
