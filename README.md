@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>Your IT Admin, powered by AI.</strong><br/>
-  Manage Windows Active Directory in plain English - with a smart ticket system, AI auto-resolution, and a cloud dashboard your whole team can use.
+  Manage Windows Active Directory in plain English — with a smart ticket system,<br/>
+  your own named AI assistant, and a cloud dashboard your whole team can use.
 </p>
 
 <p align="center">
@@ -14,11 +15,16 @@
   <a href="https://web-production-01ecc.up.railway.app/signup">Get started free</a>
 </p>
 
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue"/>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue"/>
+</p>
+
 ---
 
 ## What is AID Helpdesk?
 
-AID Helpdesk is a multi-tenant SaaS that puts an AI layer in front of your Windows Server Active Directory. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **Janus** - AID's built-in AI - analyses, triages, and resolves them automatically, then logs every action for your audit trail.
+AID Helpdesk is a multi-tenant SaaS that puts an AI layer in front of your Windows Server Active Directory. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **your AI assistant** — which you name, and which gets smarter about your organisation over time — analyses, triages, and resolves them automatically, then logs every action for your audit trail.
 
 No scripting. No clicking through MMC consoles. Just describe the problem and it gets handled.
 
@@ -27,63 +33,36 @@ No scripting. No clicking through MMC consoles. Just describe the problem and it
 ## How it works
 
 ```
-Staff member submits ticket (web or email)
-    │
-    ▼
-Janus AI analyses the request
-    │ checks requester identity, permissions, security flags
-    ▼
-Auto-resolve (Pro+) or queue for admin approval
-    │
-    ▼
-AID Agent (running on your Windows Server)
-    │ polls outbound over HTTPS - no inbound ports, no firewall rules
-    ▼
-PowerShell executed locally against Active Directory
-    │ your AD never touches the internet
-    ▼
-Result logged to audit trail + email sent back to requester
+  Staff Browser
+       │  HTTPS
+       ▼
+  ┌──────────────────────────────────┐
+  │   AID Cloud Dashboard            │  ← Railway / any VPS
+  │   web-production-01ecc.up.       │
+  │   railway.app                    │
+  └──────────────┬───────────────────┘
+                 │
+                 │  outbound HTTPS polling
+                 │  ◀── no inbound ports · no VPN · no firewall rules
+                 ▼
+  ┌──────────────────────────────────┐
+  │   AID Agent                      │  ← Windows Service on your server
+  │   (agent.py)                     │
+  └──────────────┬───────────────────┘
+                 │
+                 │  WinRM over HTTPS (TLS · port 5986 · local network only)
+                 ▼
+  ┌──────────────────────────────────┐
+  │   Windows Server                 │
+  │   Active Directory               │  ← never touches the internet
+  └──────────────────────────────────┘
 ```
 
-The **AID Agent** is a lightweight Windows Service that runs on your server. It makes outbound HTTPS connections to the cloud dashboard — your Active Directory never exposes itself, no firewall rules are needed, and it works behind NAT, Tailscale, or any network topology. **Your AD stays completely internal.**
-
-Destructive actions (disabling accounts, password resets) require an explicit confirmation code before execution, so nothing irreversible happens by accident.
+The **AID Agent** is a lightweight Windows Service that polls *outbound* — your Active Directory never exposes itself to the internet, no firewall rules are needed, and it works behind NAT, Tailscale, or any network topology.
 
 ---
 
-## Security architecture
-
-**Your AD never touches the internet.** The agent polls *outbound* — no inbound ports, no firewall rules, no VPN configuration. It works the same whether your server is on-prem, in a private data centre, or behind a strict corporate firewall.
-
-- All WinRM communication is encrypted over HTTPS (TLS, port 5986) by default
-- The service account (`svc.helpdesk`) uses delegated OU permissions only — not local Administrators or Domain Admins
-- Destructive actions (disable account, password reset, group removal) require a 6-digit confirmation code before execution
-- Every AD action is logged with timestamp, requester identity, and Janus confidence score
-- Credentials live only in environment variables — never hardcoded, never committed
-
-**Self-hosting:** The full cloud backend is included in this repo under MIT + Commons Clause. Organisations with strict data-residency requirements can run everything on-prem — see [Self-hosting the cloud backend](#self-hosting-the-cloud-backend).
-
-### What Janus can and cannot do
-
-Janus operates from a fixed, hard-coded list of operations defined in `cloud/action_policy.py`. This is enforced in Python — not in a prompt. The AI cannot run anything outside this list regardless of how a request is phrased.
-
-**Read-only (no side effects):** look up user info, search users/groups, list locked accounts, list expired passwords, list OUs, get domain stats.
-
-**Write — reversible:** unlock account, enable account, reset password, force password change, add to group, toggle password-never-expires.
-
-**Destructive — always require human confirmation, never auto-resolved:** disable account, remove from group, create user, move user.
-
-**Janus cannot:**
-- Run arbitrary PowerShell
-- Access your filesystem, email, or any system outside Active Directory
-- Create privileged accounts (Domain Admins, Enterprise Admins, Schema Admins)
-- Execute any command not in the fixed action list above
-- Auto-resolve destructive actions — Python blocks this regardless of AI output
-- Exceed 20 write operations per hour (rate-limited at the server, not the prompt)
-
----
-
-## Getting started
+## Quickstart
 
 ### 1. Create an account
 
@@ -93,93 +72,59 @@ Sign up free at [web-production-01ecc.up.railway.app/signup](https://web-product
 
 Go to **Settings** in your dashboard and copy your tenant API key.
 
-### 3. Run the agent on your Windows Server
+### 3. Install the agent on your Windows Server
 
-Download `aid-agent-setup.exe` from your dashboard and double-click it. The setup wizard walks you through three screens:
+Download `aid-agent-setup.exe` from your dashboard and run it. The setup wizard walks you through three screens:
 
-1. **Cloud** - paste your API key; wizard verifies connectivity
-2. **AD Credentials** - enter your AD server IP, domain name, and service account
-3. **Install** - wizard copies the agent to `C:\Program Files\AID Helpdesk Agent\`, writes `agent-config.json`, and registers + starts the Windows Service automatically
+1. **Cloud** — paste your API key; wizard verifies connectivity
+2. **AD Credentials** — enter your AD server IP, domain name, and service account
+3. **Install** — wizard copies the agent to `C:\Program Files\AID Helpdesk Agent\`, writes `agent-config.json`, and registers + starts the Windows Service
 
-That's it. Your dashboard shows **Agent: Online** and you're ready to receive tickets.
+Your dashboard shows **Agent: Online** and you're ready to receive tickets.
 
-> **Build the installer yourself:** See `installer/build.bat` in this repo. Requires Python 3.9+ and PyInstaller on Windows.
+> **Build the installer yourself:** `installer/build.bat` — requires Python 3.9+ and PyInstaller on Windows.
 
 ---
 
 ## Features
 
-### Janus AI ticketing
-Staff submit tickets in plain English. Janus reads the request, checks the requester's identity against your AD domain, assigns a threat score (1-10), flags anything suspicious, and either resolves it automatically or surfaces it for admin review with a full analysis and recommended action.
+### Your own named AI assistant
+Give your AI a name that fits your organisation — "Max", "Alex", or whatever your team will actually use. It's not a generic chatbot; it's your organisation's AI, with its own name, its own understanding of your environment, and its own growing memory of how your AD is structured.
 
-### Janus AI chat
-Talk to Janus directly in plain English to manage your AD. Janus chains lookups automatically - if it needs to search for a group before adding a user, it does both in one step without asking you to repeat yourself.
+### AI that learns your environment
+Your AI assistant builds institutional knowledge over time — username patterns, OU structure, team naming conventions, recurring requests. The longer you use AID Helpdesk, the more it understands about your specific environment without you having to explain it every time. It's the IT brain that never forgets.
+
+### Smart ticketing
+Staff submit tickets in plain English. Your AI reads the request, checks the requester's identity against your AD domain, assigns a threat score (1–10), flags anything suspicious, and either resolves it automatically or surfaces it for admin review with a full analysis and recommended action.
+
+### AI chat
+Talk to your AI directly in plain English to manage your AD. It chains lookups automatically — if it needs to find a group before adding a user, it does both in one step without asking you to repeat yourself.
 
 ### Auto-actions (Pro+)
-Janus can unlock accounts, reset passwords, enable/disable users, and more - hands-free, without waiting for an admin to click approve. Every action is logged.
+Unlock accounts, reset passwords, enable accounts — hands-free, without waiting for an admin to click approve. Every action is logged.
 
 ### Email ticket intake (Pro+)
-Point a Mailgun, SendGrid, or Postmark webhook at your dashboard and tickets flow in directly from email. Janus analyses them and sends the resolution back to the requester automatically.
+Point a Mailgun, SendGrid, or Postmark webhook at your dashboard and tickets flow in from email. Your AI sends the resolution back to the requester automatically.
 
-### Team management
-Invite helpdesk staff to your dashboard. Each team member gets their own login. Assign, comment on, and close tickets collaboratively.
+### Scheduled reports (Pro+)
+Automated HTML email reports on a schedule you set — daily, weekly, or monthly.
 
-### Activity feed & audit log
-Every AD action - who requested it, what Janus decided, what was executed - is timestamped and searchable. Export to CSV any time.
-
----
-
-## Janus AI Skills
-
-Janus understands plain English requests and maps them to the following AD operations:
-
-**Users**
-- Look up a user's details, groups, and account state
-- Search users by name or username (partial match)
-- Create a new AD account with optional OU placement
-- Move a user to a different Organisational Unit
-- List all users in the domain
-
-**Account state**
-- Unlock a locked-out account
-- Enable or disable an account
-- Reset a password (generates a secure temp password)
-- Force password change at next logon
-- Toggle password never expires
-
-**Groups**
-- List all groups or search by name
-- Add or remove a user from a group
-- List all members of a group
-- List all groups a user belongs to
-
-**Organisational Units**
-- List all OUs in the domain
-
-**Reporting**
-- Show all currently locked accounts
-- Show all accounts with expired passwords
-- Get domain summary stats (total users, locked, expired)
-
-Janus chains lookups automatically. For example: "add sarah to the IT Support group" will search for the exact group name first, then add her - all in one step.
+### Full audit trail
+Every action — who requested it, what the AI decided, what was executed — is timestamped, searchable, and exportable to CSV.
 
 ---
 
-## AD operations reference
+## Audit log
 
-| Operation | Natural language | Auto-resolvable |
-|---|---|---|
-| Unlock account | "I'm locked out" | Pro+ |
-| Reset password | "I need a temp password" | Pro+ |
-| Enable / disable account | "Re-enable sarah's account" | Pro+ |
-| Get user info | "Look up jake.miller" | - |
-| Search users | "Find all users named Smith" | - |
-| List locked accounts | "Who's locked out?" | - |
-| List expired passwords | "Who has an expired password?" | - |
-| Create user | "New IT user for Tom Brady" | - |
-| Move OU | "Move test.mcgee to Teachers" | - |
-| Add / remove group | "Add mike to IT-Admins" | - |
-| Bulk operations | "Reset all expired passwords in Students OU" | - |
+Every AD action produces a structured, immutable log entry:
+
+```
+2025-11-03 08:42:17 UTC  requester=sarah.jones@school.edu  action=unlock_account   target=CN=Tom Brady,OU=Staff,DC=lab,DC=local       approval=ai-auto (confidence 0.96)       executor=svc.helpdesk@lab.local
+2025-11-03 08:59:04 UTC  requester=admin@school.edu        action=reset_password   target=CN=Jake Miller,OU=Students,DC=lab,DC=local   approval=ai-auto (confidence 0.91)       executor=svc.helpdesk@lab.local
+2025-11-03 09:14:38 UTC  requester=admin@school.edu        action=disable_account  target=CN=Ex Teacher,OU=Staff,DC=lab,DC=local       approval=human-confirmed (token 482016)  executor=svc.helpdesk@lab.local
+```
+
+Destructive actions like `disable_account` always require a human-confirmed 6-digit token — no exceptions, regardless of what the AI suggests.
 
 ---
 
@@ -187,160 +132,48 @@ Janus chains lookups automatically. For example: "add sarah to the IT Support gr
 
 | | Free | Pro | Enterprise |
 |---|---|---|---|
-| Janus AI scans / month | 10 | 500 | 2,000 |
+| AI scans / month | 10 | 500 | 2,000 |
 | AD actions / month | 5 | 200 | 1,000 |
 | Tickets | Up to 20 | Unlimited | Unlimited |
 | Team members | 1 | Up to 5 | Unlimited |
-| Email ticket intake | - | ✓ | ✓ |
-| Janus auto-actions | - | ✓ | ✓ |
-| Scheduled reports | - | ✓ | ✓ |
+| Email ticket intake | — | ✓ | ✓ |
+| AI auto-actions | — | ✓ | ✓ |
+| Scheduled reports | — | ✓ | ✓ |
 | Support | Community | Email | Priority |
 | Price | A$0 | A$29/month | A$99/month |
 
-**MSP licence:** Managing multiple client environments? An MSP licence lets you run AID Helpdesk across your client base under a single agreement. Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
-
-**On-prem / compliance tier:** Organisations with strict data-residency requirements can self-host the full cloud backend. See [Self-hosting the cloud backend](#self-hosting-the-cloud-backend).
+**MSP licence:** Managing multiple client environments under one agreement? Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
 
 ---
 
-## Self-hosting the agent
+## Documentation
 
-The AD agent is open source. Clone the repo and run it directly if you prefer not to use the installer:
-
-```bash
-git clone https://github.com/lachydotmcg/ad-helpdesk.git
-cd ad-helpdesk
-pip install -r requirements.txt
-cp agent-config.example.json agent-config.json
-# fill in cloud_url, tenant_api_key, ad_vm_ip, ad_domain, ad_admin_user, ad_admin_pass
-python agent.py
-```
-
-**Requirements:**
-- Python 3.9+ on a machine with WinRM access to your AD server
-- Windows Server 2019/2022 with Active Directory Domain Services
-- WinRM enabled on the server:
-
-```powershell
-Enable-PSRemoting -Force
-```
-
-- A dedicated service account with the minimum required permissions (no local Administrator membership needed):
-
-```powershell
-# 1. Create the service account
-New-ADUser -Name "Helpdesk Service" -SamAccountName "svc.helpdesk" `
-  -AccountPassword (ConvertTo-SecureString "YourPassword" -AsPlainText -Force) `
-  -Enabled $true -PasswordNeverExpires $true
-
-# 2. Allow it to connect via WinRM
-Add-ADGroupMember -Identity "Remote Management Users" -Members "svc.helpdesk"
-
-# 3. Grant rights to manage AD users and groups (no local Admins required)
-#    Delegate "Reset Password", "Read/Write Account Restrictions", and
-#    "Read/Write Group Membership" at the OU level in ADUC, or run:
-$ou = "OU=YourOU,DC=lab,DC=local"
-dsacls $ou /G "LAB\svc.helpdesk:CA;Reset Password;user" /I:S
-dsacls $ou /G "LAB\svc.helpdesk:RPWP;pwdLastSet;user" /I:S
-dsacls $ou /G "LAB\svc.helpdesk:RPWP;lockoutTime;user" /I:S
-dsacls $ou /G "LAB\svc.helpdesk:RPWP;userAccountControl;user" /I:S
-```
-
-> **Tip:** Use the NetBIOS domain name (e.g. `LAB`), not the FQDN (`lab.local`). NTLM auth will fail with the FQDN.
-
-> **Security note:** `svc.helpdesk` does **not** need to be a member of local Administrators or Domain Admins. The delegated OU permissions above give it exactly what it needs and nothing more.
-
----
-
-## Self-hosting the cloud backend
-
-The full cloud backend (`cloud/`) is included in this repo. You can deploy your own instance to Railway, Render, or any VPS:
-
-```bash
-cd cloud
-pip install -r requirements.txt
-# Set env vars: SECRET_KEY, DATABASE_URL (PostgreSQL), ANTHROPIC_API_KEY
-python app.py
-```
-
-See `cloud/.env.example` for all environment variables.
-
-> **License note:** Self-hosting for your own organisation is fine and encouraged. Reselling a hosted instance of the `cloud/` backend as a subscription service to third parties requires a separate commercial licence - see [Licence](#licence) below.
-
----
-
-## Architecture
-
-```
-web-production-01ecc.up.railway.app  (cloud/app.py - Railway / any VPS)
-    │  HTTPS polling (outbound only)
-    ▼
-agent.py  (Windows Service on customer's server)
-    │  WinRM over HTTPS (port 5986, TLS)
-    ▼
-Windows Server 2022 + Active Directory
-```
-
-## Repository structure
-
-```
-cloud/                   Cloud SaaS backend (Flask, PostgreSQL)
-  app.py                 Main application — routes, Janus AI, auth
-  action_policy.py       Hard enforcement layer — Python controls what Janus can run
-  db.py                  Database layer (SQLite dev / PostgreSQL prod)
-  templates/             Dashboard HTML
-  static/                CSS, assets
-
-agent.py                 Windows agent — polls cloud, executes AD commands
-ad_bridge.py             WinRM bridge — all Active Directory operations
-agent-config.example.json  Copy this to agent-config.json and fill in credentials
-
-installer/               Windows installer (aid-agent-setup.exe)
-  setup_wizard.py        Setup wizard + Windows Service (dual-purpose binary)
-  build.bat              Build the EXE with PyInstaller
-  aid-agent-setup.spec   PyInstaller spec
-
-legacy/                  v0.1-v0.4 local-mode files (kept for reference, not active)
-```
+| | |
+|---|---|
+| [SECURITY.md](SECURITY.md) | AI safety model, trust architecture, WinRM security, tenant isolation, audit logging |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Full system design, polling model, action flow, DB schema |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deploy to Railway, environment variables, PostgreSQL |
+| [SELF_HOSTING.md](SELF_HOSTING.md) | Run the agent or full backend yourself |
 
 ---
 
 ## Roadmap
 
-- [x] v0.1 - Core WinRM bridge, CLI, PowerShell scripts, audit log
-- [x] v0.2 - Local web dashboard, REST API, live user panel
-- [x] v0.3 - Cowork skill for natural language AD management
-- [x] v0.4 - Cloud agent, multi-tenant backend, system tray, setup wizard
-- [x] v0.5 - Hosted SaaS dashboard, multi-user auth, per-tenant isolation
-- [x] v0.6 - Janus AI chat + ticket analysis (Claude Haiku)
-- [x] v0.7 - Smart ticketing system with AI auto-resolution, auto-actions
-- [x] v0.8 - Email ticket intake, enterprise tier, usage-based plans
-- [x] v0.9 - Threat scores, search chaining, ticket views, onboarding panel
-- [ ] v1.0 - Windows Service installer (.exe), Stripe billing, scheduled reports
-- [ ] v1.1 - Usage top-ups, mobile-friendly dashboard, Slack/Teams integration
-
----
-
-## Security
-
-- Credentials live only in environment variables - never hardcoded, never committed
-- The agent uses a dedicated service account (`svc.helpdesk`) rather than domain Administrator
-- WinRM runs over HTTP - acceptable within a Tailscale tunnel (encrypted end-to-end); do not expose port 5985 to the open internet
-- All write operations are logged with timestamp, requester identity, and Janus confidence score
-- Janus flags requests where the requester email domain does not match your configured trusted domain
+- [x] v0.1–v0.4 — WinRM bridge, local dashboard, cloud agent, multi-tenant backend
+- [x] v0.5–v0.9 — Hosted SaaS, Janus AI, ticketing, threat scores, email intake, search chaining
+- [x] v1.0 — Windows Service installer (.exe), scheduled reports, custom PS scripts, bulk AD ops
+- [ ] v1.1 — Named AI persona, AI memory / organisational learning, Slack/Teams integration
 
 ---
 
 ## Contributing
 
-PRs welcome on the agent, PowerShell scripts, and skill. Please open an issue first for major changes. The `cloud/` backend is source-available - bug fixes and improvements are welcome, but forks intended as competing hosted services are not.
+PRs welcome on the agent, PowerShell scripts, and skill. Please open an issue first for major changes. The `cloud/` backend is source-available — bug fixes and improvements are welcome, but forks intended as competing hosted services are not.
 
 ---
 
 ## Licence
 
-**Agent, bridge, CLI, PowerShell scripts, Cowork skill** (`agent.py`, `ad_bridge.py`, `cli.py`, `ps-scripts/`, `skill/`, `watcher.py`): [MIT](https://opensource.org/licenses/MIT)
+**Agent + bridge** (`agent.py`, `ad_bridge.py`, scripts): [MIT](https://opensource.org/licenses/MIT)
 
-**Cloud SaaS backend** (`cloud/`): MIT + [Commons Clause](https://commonsclause.com/)
-
-The Commons Clause means: you may use, modify, and self-host the cloud backend freely, but you may not sell it - i.e. offer a hosted version of AID Helpdesk as a subscription service to others - without a separate commercial agreement. Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com) if you want to discuss licensing.
+**Cloud SaaS backend** (`cloud/`): MIT + [Commons Clause](https://commonsclause.com/) — self-host freely, do not resell as a hosted service without a commercial agreement. Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
