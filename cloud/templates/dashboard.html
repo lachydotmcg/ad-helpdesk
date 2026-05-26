@@ -972,7 +972,7 @@
     </div>
     <div class="nav-section">Activity</div>
     <div class="nav-item" onclick="showPage('chat')">
-      <span class="nav-icon">✨</span> Janus AI
+      <span class="nav-icon">✨</span> <span id="nav-ai-label">AI Assistant</span>
     </div>
     <div class="nav-item" onclick="showPage('activity')">
       <span class="nav-icon">⚡</span> Activity Feed
@@ -989,7 +989,7 @@
       <span class="nav-icon">⚙️</span> Settings
     </div>
     <div class="nav-item" onclick="showPage('janus-config')">
-      <span class="nav-icon">🧠</span> Configure Janus
+      <span class="nav-icon">🧠</span> <span id="nav-ai-config-label">Configure AI</span>
     </div>
     {% endif %}
   </aside>
@@ -1100,7 +1100,7 @@
           <div>
             <span id="usage-janus" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span>
             <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-janus-limit"></span>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Janus scans</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;"><span id="usage-ai-label">AI</span> scans</div>
             <div style="margin-top:4px;background:var(--surface2);border-radius:99px;height:3px;width:80px;overflow:hidden;"><div id="usage-janus-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width 0.4s;"></div></div>
           </div>
           <div>
@@ -1343,7 +1343,7 @@
         <div class="thread-entry janus_analysis" id="td-janus" style="display:none">
           <div class="thread-header">
             <div class="thread-avatar" style="background:var(--accent2);font-size:11px;">AI</div>
-            <span class="thread-sender">Janus</span>
+            <span class="thread-sender" id="ticket-ai-sender">AI</span>
             <span class="thread-tag">analysis</span>
           </div>
           <div class="janus-card-top">
@@ -1411,7 +1411,7 @@
     <div class="page" id="page-chat">
       <div class="panel" style="display:flex;flex-direction:column;height:calc(100vh - 130px);">
         <div class="panel-header">
-          <span class="panel-title">✨ Janus AI</span>
+          <span class="panel-title">✨ <span id="chat-panel-title">AI Assistant</span></span>
           <div style="display:flex;gap:8px;align-items:center;">
             <button class="btn btn-ghost" onclick="loadChatHistory()" style="font-size:12px;">History</button>
             <button class="btn btn-ghost" onclick="clearChat()">New chat</button>
@@ -1421,7 +1421,7 @@
         <div class="chat-messages" id="chat-messages">
           <div class="chat-empty" id="chat-empty">
             <div class="chat-empty-icon">✨</div>
-            <h3>Hi, I'm Janus</h3>
+            <h3>Hi, I'm <span id="chat-greeting-name">your AI assistant</span></h3>
             <p>I'm your AI assistant for Active Directory. Ask me anything: look up users, unlock accounts, reset passwords, manage groups, all in plain English.</p>
             <div class="chat-suggestions">
               <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
@@ -1506,107 +1506,6 @@
             <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()" disabled style="opacity:0.45;cursor:default;">Save changes</button>
           </div>
           <div style="padding:24px;">
-
-            <!-- Janus Intelligence toggles -->
-            <div class="settings-section">
-              <div class="settings-section-title">Janus Intelligence</div>
-              <div class="toggle-row">
-                <label class="toggle-switch" for="s-janus-enabled">
-                  <input type="checkbox" id="s-janus-enabled"/>
-                  <span class="toggle-track"></span>
-                </label>
-                <label for="s-janus-enabled">
-                  <div class="label-title">Enable Janus AI</div>
-                  <div class="label-desc">Janus analyses incoming tickets and suggests fixes using Claude AI</div>
-                </label>
-              </div>
-              <div class="toggle-row">
-                <label class="toggle-switch" for="s-scan-emails">
-                  <input type="checkbox" id="s-scan-emails"/>
-                  <span class="toggle-track"></span>
-                </label>
-                <label for="s-scan-emails">
-                  <div class="label-title">Scan incoming emails</div>
-                  <div class="label-desc">Auto-analyse tickets created from inbound support emails</div>
-                </label>
-              </div>
-              <div class="toggle-row">
-                <label class="toggle-switch" for="s-security-checks">
-                  <input type="checkbox" id="s-security-checks"/>
-                  <span class="toggle-track"></span>
-                </label>
-                <label for="s-security-checks">
-                  <div class="label-title">Security checks</div>
-                  <div class="label-desc">Flag typosquatting, impersonation, and unauthorised requests in tickets</div>
-                </label>
-              </div>
-            </div>
-
-            <!-- Trusted domain -->
-            <div class="settings-section">
-              <div class="settings-section-title">Trusted Email Domain</div>
-              <input class="search-input" id="s-email-domain" placeholder="company.com" style="max-width:280px;margin-bottom:6px;"/>
-              <div style="font-size:12px;color:var(--muted);">Used for security checks — emails not matching this domain are scrutinised for spoofing</div>
-            </div>
-
-            <!-- Auto-actions -->
-            <div class="settings-section">
-              <div class="settings-section-title">Janus Auto-Actions</div>
-              {% if tenant_plan in ['pro', 'enterprise'] %}
-              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">AD actions Janus can apply automatically without requiring admin approval. Use with caution.</div>
-              <div style="display:flex;flex-direction:column;gap:0;">
-                <div class="toggle-row">
-                  <label class="toggle-switch" for="s-auto-unlock">
-                    <input type="checkbox" id="s-auto-unlock"/>
-                    <span class="toggle-track"></span>
-                  </label>
-                  <label for="s-auto-unlock">
-                    <div class="label-title">Unlock account</div>
-                    <div class="label-desc">Automatically unlock locked accounts when Janus is confident</div>
-                  </label>
-                </div>
-                <div class="toggle-row">
-                  <label class="toggle-switch" for="s-auto-reset">
-                    <input type="checkbox" id="s-auto-reset"/>
-                    <span class="toggle-track"></span>
-                  </label>
-                  <label for="s-auto-reset">
-                    <div class="label-title">Reset password</div>
-                    <div class="label-desc">Automatically reset passwords — Janus will generate a secure temporary one</div>
-                  </label>
-                </div>
-                <div class="toggle-row">
-                  <label class="toggle-switch" for="s-auto-enable">
-                    <input type="checkbox" id="s-auto-enable"/>
-                    <span class="toggle-track"></span>
-                  </label>
-                  <label for="s-auto-enable">
-                    <div class="label-title">Enable account</div>
-                    <div class="label-desc">Automatically re-enable disabled accounts</div>
-                  </label>
-                </div>
-                <div class="toggle-row">
-                  <label class="toggle-switch" for="s-auto-disable">
-                    <input type="checkbox" id="s-auto-disable"/>
-                    <span class="toggle-track"></span>
-                  </label>
-                  <label for="s-auto-disable">
-                    <div class="label-title">Disable account</div>
-                    <div class="label-desc">Automatically disable accounts — requires high Janus confidence</div>
-                  </label>
-                </div>
-              </div>
-              {% else %}
-              <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:18px 20px;display:flex;align-items:center;gap:16px;">
-                <div style="font-size:28px;line-height:1;">🔒</div>
-                <div>
-                  <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">Pro feature</div>
-                  <div style="font-size:12px;color:var(--muted);line-height:1.6;">Janus auto-actions let the AI resolve tickets hands-free — unlocking accounts, resetting passwords, and more without admin approval. Available on Pro and Enterprise plans.</div>
-                  <a href="/billing" style="display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:var(--accent2);text-decoration:none;">Upgrade to Pro — A$29/month →</a>
-                </div>
-              </div>
-              {% endif %}
-            </div>
 
             <!-- Requester Roles -->
             <div class="settings-section">
@@ -1808,46 +1707,119 @@
     <div class="page" id="page-janus-config">
       <div style="max-width:760px;">
 
-        <!-- Janus Behaviour -->
+        <!-- AI Behaviour -->
         <div class="panel" style="margin-bottom:18px;">
           <div class="panel-header"><span class="panel-title">🧠 AI Behaviour</span></div>
           <div class="panel-body">
-            <div class="settings-section">
-              <div class="settings-section-title">Core settings</div>
-              <div style="display:flex;flex-direction:column;gap:12px;">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-                  <input type="checkbox" id="jc-janus-enabled" onchange="saveJanusSettings()">
-                  <span style="font-size:13px;">Enable Janus AI <span style="color:var(--muted);font-size:11px;">(powers ticket analysis and chat)</span></span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-                  <input type="checkbox" id="jc-janus-scan" onchange="saveJanusSettings()">
-                  <span style="font-size:13px;">Auto-analyse new tickets with Janus</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-                  <input type="checkbox" id="jc-auto-actions" onchange="saveJanusSettings()">
-                  <span style="font-size:13px;">Allow Janus to auto-resolve tickets <span style="color:var(--muted);font-size:11px;">(Pro+ only)</span></span>
-                </label>
-              </div>
-            </div>
 
             <div class="settings-section">
-              <div class="settings-section-title">Identity &amp; domain</div>
+              <div class="settings-section-title">Identity</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
-                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">AI Name</label>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">AI Name <span style="font-weight:400;">(what your team calls it)</span></label>
                   <input id="jc-ai-name" type="text" class="search-input" placeholder="Janus" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
                 </div>
                 <div>
-                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Trusted Email Domain</label>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Trusted Email Domain <span style="font-weight:400;">(for security checks)</span></label>
                   <input id="jc-email-domain" type="text" class="search-input" placeholder="yourcompany.com" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
                 </div>
               </div>
             </div>
 
+            <div class="settings-section">
+              <div class="settings-section-title">Core behaviour</div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="jc-janus-enabled">
+                  <input type="checkbox" id="jc-janus-enabled" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-janus-enabled">
+                  <div class="label-title">Enable AI assistant</div>
+                  <div class="label-desc">Powers ticket analysis and the AI chat interface</div>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="jc-janus-scan">
+                  <input type="checkbox" id="jc-janus-scan" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-janus-scan">
+                  <div class="label-title">Auto-analyse new tickets</div>
+                  <div class="label-desc">AI reads and triages every ticket as it comes in</div>
+                </label>
+              </div>
+              <div class="toggle-row" style="border-bottom:none;margin-bottom:0;">
+                <label class="toggle-switch" for="jc-security-checks">
+                  <input type="checkbox" id="jc-security-checks" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-security-checks">
+                  <div class="label-title">Security checks</div>
+                  <div class="label-desc">Flag typosquatting, impersonation, and requests from untrusted domains</div>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-section-title">Auto-actions <span style="font-weight:400;font-size:11px;color:var(--muted);">Pro+</span></div>
+              {% if tenant_plan in ['pro', 'enterprise'] %}
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">AD actions your AI can apply automatically without admin approval. Requires high confidence.</div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="jc-auto-unlock">
+                  <input type="checkbox" id="jc-auto-unlock" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-auto-unlock">
+                  <div class="label-title">Unlock account</div>
+                  <div class="label-desc">Automatically unlock locked-out accounts</div>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="jc-auto-reset">
+                  <input type="checkbox" id="jc-auto-reset" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-auto-reset">
+                  <div class="label-title">Reset password</div>
+                  <div class="label-desc">Automatically reset passwords; AI generates a secure temporary one</div>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <label class="toggle-switch" for="jc-auto-enable">
+                  <input type="checkbox" id="jc-auto-enable" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-auto-enable">
+                  <div class="label-title">Enable account</div>
+                  <div class="label-desc">Automatically re-enable disabled accounts</div>
+                </label>
+              </div>
+              <div class="toggle-row" style="border-bottom:none;margin-bottom:0;">
+                <label class="toggle-switch" for="jc-auto-disable">
+                  <input type="checkbox" id="jc-auto-disable" onchange="saveJanusSettings()"/>
+                  <span class="toggle-track"></span>
+                </label>
+                <label for="jc-auto-disable">
+                  <div class="label-title">Disable account</div>
+                  <div class="label-desc">Automatically disable accounts; requires very high AI confidence</div>
+                </label>
+              </div>
+              {% else %}
+              <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:18px 20px;display:flex;align-items:center;gap:16px;">
+                <div style="font-size:28px;line-height:1;">🔒</div>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">Pro feature</div>
+                  <div style="font-size:12px;color:var(--muted);line-height:1.6;">Auto-actions let your AI resolve tickets hands-free; unlocking accounts, resetting passwords, and more without admin approval.</div>
+                  <a href="/billing" style="display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:var(--accent2);text-decoration:none;">Upgrade to Pro — A$29/month →</a>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+
             <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
-              <div class="settings-section-title">Janus context <span style="font-weight:400;color:var(--muted);font-size:11px;">— Janus reads this before every response</span></div>
+              <div class="settings-section-title">AI context <span style="font-weight:400;color:var(--muted);font-size:11px;">read before every response</span></div>
               <textarea id="jc-context" rows="5" class="search-input" placeholder="e.g. We are a school. Student OUs are: Year7, Year8... Staff are in OU=Staff. Never reset passwords for Domain Admins without a manager approval email. Our MSP contact is helpdesk@itprovider.com." style="font-size:13px;width:100%;resize:vertical;line-height:1.5;" oninput="markJanusDirty()"></textarea>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px;">Describe your org structure, naming conventions, policies, or anything Janus should know.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">Describe your org structure, naming conventions, policies, or anything your AI should always know.</div>
               <button id="jc-save-btn" class="btn btn-primary" style="margin-top:12px;display:none;" onclick="saveJanusSettings()">Save changes</button>
             </div>
           </div>
@@ -3992,17 +3964,6 @@
 
       if (sJson.success) {
         const s = sJson.data;
-        document.getElementById('s-janus-enabled').checked  = !!s.janus_enabled;
-        document.getElementById('s-scan-emails').checked    = !!s.janus_scan_emails;
-        document.getElementById('s-security-checks').checked = !!s.security_checks;
-        document.getElementById('s-email-domain').value     = s.email_domain || '';
-
-        const aa = s.janus_auto_actions || [];
-        document.getElementById('s-auto-unlock').checked  = aa.includes('unlock_account');
-        document.getElementById('s-auto-reset').checked   = aa.includes('reset_password');
-        document.getElementById('s-auto-enable').checked  = aa.includes('enable_account');
-        document.getElementById('s-auto-disable').checked = aa.includes('disable_account');
-
         _settingsRoles = s.roles || [];
         renderRoles();
 
@@ -4162,14 +4123,6 @@
   function _captureSettingsSnapshot() {
     const el = id => document.getElementById(id);
     return JSON.stringify({
-      janus_enabled:     el('s-janus-enabled')?.checked,
-      janus_scan_emails: el('s-scan-emails')?.checked,
-      security_checks:   el('s-security-checks')?.checked,
-      email_domain:      el('s-email-domain')?.value.trim(),
-      auto_unlock:       el('s-auto-unlock')?.checked,
-      auto_reset:        el('s-auto-reset')?.checked,
-      auto_enable:       el('s-auto-enable')?.checked,
-      auto_disable:      el('s-auto-disable')?.checked,
       roles:             JSON.stringify(_settingsRoles),
       custom_statuses:   JSON.stringify(_customStatuses),
       custom_priorities: JSON.stringify(_customPriorities),
@@ -4192,12 +4145,7 @@
 
   // Hook onto all settings inputs so dirty is detected immediately
   function _bindSettingsDirtyListeners() {
-    ['s-janus-enabled','s-scan-emails','s-security-checks',
-     's-auto-unlock','s-auto-reset','s-auto-enable','s-auto-disable'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('change', markSettingsDirty);
-    });
-    ['s-email-domain','smtp-host','smtp-port','smtp-user','smtp-from','smtp-pass'].forEach(id => {
+    ['smtp-host','smtp-port','smtp-user','smtp-from','smtp-pass'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', markSettingsDirty);
     });
@@ -4205,19 +4153,8 @@
 
   async function saveSettings() {
     const el = id => document.getElementById(id);
-    const autoActions = [];
-    if (el('s-auto-unlock')?.checked)  autoActions.push('unlock_account');
-    if (el('s-auto-reset')?.checked)   autoActions.push('reset_password');
-    if (el('s-auto-enable')?.checked)  autoActions.push('enable_account');
-    if (el('s-auto-disable')?.checked) autoActions.push('disable_account');
-
     const smtpPass = el('smtp-pass')?.value || '';
     const payload = {
-      janus_enabled:      el('s-janus-enabled').checked,
-      janus_scan_emails:  el('s-scan-emails').checked,
-      security_checks:    el('s-security-checks').checked,
-      email_domain:       el('s-email-domain').value.trim(),
-      janus_auto_actions: autoActions,
       roles:              _settingsRoles,
       custom_statuses:    _customStatuses,
       custom_priorities:  _customPriorities,
@@ -4423,6 +4360,40 @@
     }
   }
 
+  // =========================================================
+  // Dynamic AI name — update all labelled elements at once
+  // =========================================================
+
+  function updateAiNameElements(name) {
+    if (!name) return;
+    const ids = {
+      'nav-ai-label':       name,
+      'nav-ai-config-label': 'Configure ' + name,
+      'chat-panel-title':   name,
+      'chat-greeting-name': name,
+      'usage-ai-label':     name,
+      'ticket-ai-sender':   name,
+    };
+    Object.entries(ids).forEach(([id, text]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    });
+    // Also update the chat placeholder to mention the AI by name
+    const inp = document.getElementById('chat-input');
+    if (inp) inp.placeholder = `Ask ${name} to unlock an account, reset a password, look up a user…`;
+  }
+
+  // Fetch settings once at page load to wire up the AI name everywhere
+  fetch('/dashboard/api/settings')
+    .then(r => r.json())
+    .then(j => {
+      if (j.success) {
+        const name = (j.data.janus_name || '').trim() || 'Janus';
+        updateAiNameElements(name);
+      }
+    })
+    .catch(() => {});
+
   (async () => {
     pageLoaded['users'] = true;
 
@@ -4531,14 +4502,19 @@
       const body = await res.json();
       if (!body.success) return;
       const s = body.data;
-      document.getElementById('jc-janus-enabled').checked = !!s.janus_enabled;
-      document.getElementById('jc-janus-scan').checked    = !!s.janus_scan_emails;
-      document.getElementById('jc-auto-actions').checked  = !!s.janus_auto_actions;
-      document.getElementById('jc-ai-name').value         = s.janus_name || '';
-      document.getElementById('jc-email-domain').value    = s.email_domain || '';
-      document.getElementById('jc-context').value         = s.janus_context || '';
-      document.getElementById('jc-slack-webhook').value   = s.slack_webhook_url || '';
-      document.getElementById('jc-teams-webhook').value   = s.teams_webhook_url || '';
+      document.getElementById('jc-janus-enabled').checked   = !!s.janus_enabled;
+      document.getElementById('jc-janus-scan').checked      = !!s.janus_scan_emails;
+      document.getElementById('jc-security-checks').checked = !!s.security_checks;
+      document.getElementById('jc-ai-name').value           = s.janus_name || '';
+      document.getElementById('jc-email-domain').value      = s.email_domain || '';
+      document.getElementById('jc-context').value           = s.janus_context || '';
+      document.getElementById('jc-slack-webhook').value     = s.slack_webhook_url || '';
+      document.getElementById('jc-teams-webhook').value     = s.teams_webhook_url || '';
+      const aa = s.janus_auto_actions || [];
+      if (document.getElementById('jc-auto-unlock'))  document.getElementById('jc-auto-unlock').checked  = aa.includes('unlock_account');
+      if (document.getElementById('jc-auto-reset'))   document.getElementById('jc-auto-reset').checked   = aa.includes('reset_password');
+      if (document.getElementById('jc-auto-enable'))  document.getElementById('jc-auto-enable').checked  = aa.includes('enable_account');
+      if (document.getElementById('jc-auto-disable')) document.getElementById('jc-auto-disable').checked = aa.includes('disable_account');
       document.getElementById('jc-report-enabled').checked = !!s.report_enabled;
       document.getElementById('jc-report-freq').value     = s.report_frequency || 'weekly';
       document.getElementById('jc-report-day').value      = s.report_day ?? 0;
@@ -4664,10 +4640,17 @@
     const reOpts    = document.getElementById('report-options');
     if (reOpts) reOpts.style.display = reEnabled ? 'grid' : 'none';
 
+    const _aa = [];
+    if (document.getElementById('jc-auto-unlock')?.checked)  _aa.push('unlock_account');
+    if (document.getElementById('jc-auto-reset')?.checked)   _aa.push('reset_password');
+    if (document.getElementById('jc-auto-enable')?.checked)  _aa.push('enable_account');
+    if (document.getElementById('jc-auto-disable')?.checked) _aa.push('disable_account');
+
     const payload = {
       janus_enabled:      document.getElementById('jc-janus-enabled').checked,
       janus_scan_emails:  document.getElementById('jc-janus-scan').checked,
-      janus_auto_actions: document.getElementById('jc-auto-actions').checked,
+      security_checks:    document.getElementById('jc-security-checks').checked,
+      janus_auto_actions: _aa,
       janus_name:         document.getElementById('jc-ai-name').value.trim(),
       email_domain:       document.getElementById('jc-email-domain').value.trim(),
       janus_context:      document.getElementById('jc-context').value,
@@ -4686,7 +4669,8 @@
       });
       const body = await res.json();
       if (body.success) {
-        toast('Janus settings saved.', 'success');
+        toast('AI settings saved.', 'success');
+        updateAiNameElements(document.getElementById('jc-ai-name').value.trim() || 'Janus');
         _janusDirty = false;
         document.getElementById('jc-save-btn').style.display = 'none';
       } else {
