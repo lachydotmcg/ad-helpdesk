@@ -737,18 +737,76 @@ def reset_password(token):
 
 
 # ---------------------------------------------------------------------------
-# Public API v1 — API-key authenticated, intended for the Claude Code plugin
-# and any external integrations. Uses the same X-API-Key / require_tenant
-# auth as the Windows agent endpoints.
+# Public API v1 — direct action endpoints (no AI layer).
+# API-key authenticated via X-API-Key header → require_tenant.
+# Claude Code's own session handles natural-language → action mapping;
+# the backend just queues commands and returns raw results.
 # ---------------------------------------------------------------------------
+
+# Ordered parameter spec for each action: (field_name, required)
+_ACTION_PARAMS: dict[str, list[tuple[str, bool]]] = {
+    # Users
+    "get_user_info":              [("username", True)],
+    "list_users":                 [],
+    "list_users_in_ou":           [("ou", True)],
+    "search_users":               [("query", True)],
+    "list_group_memberships":     [("username", True)],
+    "create_user":                [("first_name", True), ("last_name", True), ("username", True), ("ou", False)],
+    "move_user":                  [("username", True), ("ou", True)],
+    # Account state
+    "unlock_account":             [("username", True)],
+    "enable_account":             [("username", True)],
+    "disable_account":            [("username", True)],
+    "reset_password":             [("username", True), ("password", True)],
+    "force_password_change":      [("username", True)],
+    "set_password_never_expires": [("username", True), ("enabled", False)],
+    # Groups
+    "list_groups":                [],
+    "search_groups":              [("query", True)],
+    "get_group_members":          [("group", True)],
+    "add_to_group":               [("username", True), ("group", True)],
+    "remove_from_group":          [("username", True), ("group", True)],
+    # OUs
+    "list_ous":                   [],
+    "create_ou":                  [("name", True), ("parent_ou", False)],
+    # Reporting
+    "list_locked_accounts":       [],
+    "list_expired_passwords":     [],
+    "get_stats":                  [],
+    # Bulk
+    "bulk_move_users":            [("source_ou", True), ("rules", False), ("create_missing_ous", False)],
+}
+
+
+def _build_args(action: str, data: dict) -> list | None:
+    """
+    Map a flat JSON/query-param dict to the positional args list the agent expects.
+    Returns None if a required parameter is missing.
+    """
+    spec = _ACTION_PARAMS.get(action)
+    if spec is None:
+        return None
+    args = []
+    for field, required in spec:
+        val = data.get(field)
+        if val is None:
+            if required:
+                return None
+            args.append("")
+        else:
+            args.append(str(val))
+    # Trim trailing empty strings (optional args not supplied)
+    while args and args[-1] == "":
+        args.pop()
+    return args
+
 
 @app.route("/api/v1/status", methods=["GET"])
 @require_tenant
 def api_v1_status():
-    """Return tenant info and agent status. Used by /aid:setup to verify connectivity."""
+    """Return tenant info and agent online/offline status."""
     tenant   = g.tenant
     settings = db.get_settings(tenant["id"])
-    # Check agent liveness (last_seen within 90s)
     import datetime as _dt
     last_seen = tenant.get("agent_last_seen") or ""
     try:
@@ -761,25 +819,7 @@ def api_v1_status():
         "tenant":  tenant.get("name", ""),
         "plan":    tenant.get("plan", "free"),
         "agent":   "online" if online else "offline",
-        "ai_name": (settings.get("janus_name") or "").strip() or "Janus",
     })
-
-
-@app.route("/api/v1/chat", methods=["POST"])
-@require_tenant
-def api_v1_chat():
-    """
-    Send a plain-English message to the AID AI and get a response.
-    Body: { "message": "unlock john.smith", "history": [...] }
-    Uses the full _run_chat pipeline — same as the dashboard.
-    """
-    data      = request.get_json() or {}
-    message   = (data.get("message") or "").strip()
-    history   = data.get("history") or []
-    tenant_id = g.tenant["id"]
-    result    = _run_chat(tenant_id, "api-plugin", message, history)
-    status    = 200 if result.get("success") else 400
-    return jsonify(result), status
 
 
 @app.route("/api/v1/tickets", methods=["GET"])
@@ -792,19 +832,90 @@ def api_v1_tickets():
     return jsonify({"success": True, "data": tickets})
 
 
-@app.route("/api/v1/users", methods=["GET"])
+@app.route("/api/v1/actions", methods=["GET"])
 @require_tenant
-def api_v1_users():
+def api_v1_list_actions():
+    """List all available actions with their parameter spec and classification."""
+    actions = []
+    for act, params in _ACTION_PARAMS.items():
+        actions.append({
+            "action":         act,
+            "classification": action_policy.classify(act),
+            "params":         [{"name": f, "required": r} for f, r in params],
+        })
+    return jsonify({"success": True, "data": actions})
+
+
+@app.route("/api/v1/actions/<action>", methods=["GET", "POST"])
+@require_tenant
+def api_v1_action(action):
     """
-    Look up Active Directory users via the AI chat pipeline.
-    Optional ?q= search query. Live query — goes through the Windows agent.
+    Execute a direct AD action — no AI layer.
+
+    POST: JSON body supplies parameters  {"username": "john.smith", ...}
+    GET:  query-string supplies parameters  ?username=john.smith
+
+    Queues the command to the Windows agent, polls up to 25 s, returns the
+    raw result.  Claude Code's session is the intelligence layer; this
+    endpoint is just a thin, audited queue.
     """
+    if action not in action_policy.ALL_ACTIONS:
+        return jsonify({
+            "success": False,
+            "message": f"Unknown action '{action}'. Call GET /api/v1/actions for the full list.",
+        }), 404
+
     tenant_id = g.tenant["id"]
-    q         = (request.args.get("q") or "").strip()
-    message   = f"Look up user: {q}" if q else "List all AD users"
-    result    = _run_chat(tenant_id, "api-plugin", message)
-    status    = 200 if result.get("success") else 400
-    return jsonify(result), status
+
+    if request.method == "POST":
+        data = request.get_json() or {}
+    else:
+        data = dict(request.args)
+
+    args = _build_args(action, data)
+    if args is None:
+        spec    = _ACTION_PARAMS.get(action, [])
+        missing = [f for f, req in spec if req and not data.get(f)]
+        return jsonify({
+            "success": False,
+            "message": f"Missing required parameter(s): {', '.join(missing)}",
+            "params":  [{"name": f, "required": r} for f, r in spec],
+        }), 400
+
+    ok, reason = action_policy.validate(action, source="human")
+    if not ok:
+        return jsonify({"success": False, "message": reason}), 403
+
+    if action_policy.is_write(action) or action_policy.is_destructive(action):
+        if not _rate_limit(f"api_writes:{tenant_id}", 30, 3600):
+            return jsonify({"success": False, "message": "Rate limit: 30 write actions/hour."}), 429
+        username = data.get("username", "")
+        db.log_audit(tenant_id, "api-plugin", action, username, "queued")
+        db.increment_usage(tenant_id, "ad_commands")
+
+    command    = db.queue_command(tenant_id, action, args)
+    command_id = command["id"]
+
+    result_data = None
+    deadline    = time.time() + 25
+    while time.time() < deadline:
+        time.sleep(0.6)
+        res = db.get_command_result(command_id, tenant_id)
+        if res:
+            result_data = res
+            break
+
+    if not result_data:
+        return jsonify({
+            "success": False,
+            "message": "Agent did not respond in time. Is the Windows agent running?",
+        }), 504
+
+    return jsonify({
+        "success": result_data.get("success", False),
+        "message": result_data.get("message", ""),
+        "data":    result_data.get("data"),
+    }), status
 
 
 # ---------------------------------------------------------------------------
