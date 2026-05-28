@@ -737,6 +737,77 @@ def reset_password(token):
 
 
 # ---------------------------------------------------------------------------
+# Public API v1 — API-key authenticated, intended for the Claude Code plugin
+# and any external integrations. Uses the same X-API-Key / require_tenant
+# auth as the Windows agent endpoints.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/v1/status", methods=["GET"])
+@require_tenant
+def api_v1_status():
+    """Return tenant info and agent status. Used by /aid:setup to verify connectivity."""
+    tenant   = g.tenant
+    settings = db.get_settings(tenant["id"])
+    # Check agent liveness (last_seen within 90s)
+    import datetime as _dt
+    last_seen = tenant.get("agent_last_seen") or ""
+    try:
+        ls_dt  = _dt.datetime.fromisoformat(last_seen)
+        online = (_dt.datetime.utcnow() - ls_dt).total_seconds() < 90
+    except Exception:
+        online = False
+    return jsonify({
+        "success": True,
+        "tenant":  tenant.get("name", ""),
+        "plan":    tenant.get("plan", "free"),
+        "agent":   "online" if online else "offline",
+        "ai_name": (settings.get("janus_name") or "").strip() or "Janus",
+    })
+
+
+@app.route("/api/v1/chat", methods=["POST"])
+@require_tenant
+def api_v1_chat():
+    """
+    Send a plain-English message to the AID AI and get a response.
+    Body: { "message": "unlock john.smith", "history": [...] }
+    Uses the full _run_chat pipeline — same as the dashboard.
+    """
+    data      = request.get_json() or {}
+    message   = (data.get("message") or "").strip()
+    history   = data.get("history") or []
+    tenant_id = g.tenant["id"]
+    result    = _run_chat(tenant_id, "api-plugin", message, history)
+    status    = 200 if result.get("success") else 400
+    return jsonify(result), status
+
+
+@app.route("/api/v1/tickets", methods=["GET"])
+@require_tenant
+def api_v1_tickets():
+    """Return tickets for this tenant. Optional ?status= filter."""
+    tenant_id = g.tenant["id"]
+    status    = request.args.get("status", "")
+    tickets   = db.list_tickets(tenant_id, status=status or None, limit=50)
+    return jsonify({"success": True, "data": tickets})
+
+
+@app.route("/api/v1/users", methods=["GET"])
+@require_tenant
+def api_v1_users():
+    """
+    Look up Active Directory users via the AI chat pipeline.
+    Optional ?q= search query. Live query — goes through the Windows agent.
+    """
+    tenant_id = g.tenant["id"]
+    q         = (request.args.get("q") or "").strip()
+    message   = f"Look up user: {q}" if q else "List all AD users"
+    result    = _run_chat(tenant_id, "api-plugin", message)
+    status    = 200 if result.get("success") else 400
+    return jsonify(result), status
+
+
+# ---------------------------------------------------------------------------
 # Dashboard -- main page
 # ---------------------------------------------------------------------------
 
@@ -921,50 +992,45 @@ def dashboard_result(command_id):
     return jsonify({"success": True, "pending": False, "data": result})
 
 
-@app.route("/dashboard/chat", methods=["POST"])
-@require_dashboard_user
-def dashboard_chat():
+def _run_chat(tenant_id: str, user_email: str, message: str,
+              history: list = None, session_id: str = None) -> dict:
     """
-    AI chat interface — takes a plain English message, asks Claude what AD
-    command to run, queues it through the agent, and returns a natural language reply.
+    Core AI chat pipeline shared by the dashboard and the public API.
+    Returns a plain dict (suitable for jsonify). Never raises — errors are
+    returned as {"success": False, "message": "..."}.
     """
     try:
         import anthropic
     except ImportError:
-        return jsonify({"success": False, "message": "anthropic package not installed. Run: pip install anthropic"}), 500
+        return {"success": False, "message": "anthropic package not installed."}
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
-        return jsonify({"success": False, "message": "ANTHROPIC_API_KEY not set in environment."}), 500
+        return {"success": False, "message": "ANTHROPIC_API_KEY not set in environment."}
 
-    data       = request.get_json() or {}
-    message    = data.get("message", "").strip()
-    history    = data.get("history", [])   # list of {role, content} for context
-    session_id = data.get("session_id")    # existing session, or None to create new
+    history = history or []
 
     if not message:
-        return jsonify({"success": False, "message": "message is required."}), 400
+        return {"success": False, "message": "message is required."}
 
-    # Get or create a chat session
+    # ---- session -------------------------------------------------------
     if session_id:
-        chat_session = db.get_chat_session(session_id, g.tenant_id)
+        chat_session = db.get_chat_session(session_id, tenant_id)
         if not chat_session:
             session_id = None
     if not session_id:
-        new_session = db.create_chat_session(g.tenant_id, g.user_email)
+        new_session = db.create_chat_session(tenant_id, user_email)
         session_id  = new_session["id"]
 
-    # Save the user message
-    db.add_chat_message(session_id, g.tenant_id, "user", message)
+    db.add_chat_message(session_id, tenant_id, "user", message)
 
-    # Load custom scripts and tenant context for AI
-    custom_scripts  = db.list_custom_scripts(g.tenant_id)
+    # ---- system prompt -------------------------------------------------
+    custom_scripts  = db.list_custom_scripts(tenant_id)
     enabled_scripts = [s for s in custom_scripts if s.get("enabled")]
-    tenant_settings = db.get_settings(g.tenant_id)
+    tenant_settings = db.get_settings(tenant_id)
     janus_context   = (tenant_settings.get("janus_context") or "").strip()
     ai_name         = (tenant_settings.get("janus_name") or "").strip() or os.getenv("AI_NAME", "Janus")
 
-    # Build custom scripts block for the system prompt
     custom_scripts_block = ""
     if enabled_scripts:
         lines = ["", "  CUSTOM SCRIPTS (tenant-defined, call with run_custom_script):"]
@@ -980,17 +1046,15 @@ def dashboard_chat():
 
     tenant_context_block = f"\n\nADMIN-PROVIDED CONTEXT (read this for org-specific knowledge):\n{janus_context}" if janus_context else ""
 
-    # Inject organisational memories into the system prompt
-    memories         = db.get_memories_for_context(g.tenant_id, limit=20)
-    memory_block     = ""
+    memories     = db.get_memories_for_context(tenant_id, limit=20)
+    memory_block = ""
     if memories:
         lines = ["\n\nORGANISATIONAL MEMORY (facts learned about this environment; use these to inform your responses):"]
         for m in memories:
             lines.append(f"  [{m['category']}] {m['key']}: {m['value']}")
         memory_block = "\n".join(lines)
-        # Touch the used memories so recency tracking stays accurate
         for m in memories:
-            db.touch_memory(g.tenant_id, m["id"])
+            db.touch_memory(tenant_id, m["id"])
 
     system_prompt = f"""You are {ai_name}, an AI assistant built into AD Helpdesk, a tool for managing Windows Active Directory.
 The user is an IT admin. Your job is to understand what they want and either:
@@ -1028,11 +1092,6 @@ Available AD actions (use exact action names):
 
   BULK / CONDITIONAL OPERATIONS:
   bulk_move_users            args: [source_ou, rules_json, create_missing_ous]
-                             -- move users in source_ou to different OUs based on SamAccountName patterns.
-                             -- rules_json is a JSON array: [{{"pattern":"*08","target_ou":"Y12"}},{{"pattern":"*09","target_ou":"Y11"}}]
-                             -- Patterns use PowerShell wildcards (* = any chars, ? = one char).
-                             -- create_missing_ous: "true" auto-creates missing target OUs (default "true")
-                             -- ALWAYS run list_users_in_ou first to confirm users exist, then bulk_move_users.
 
   REPORTING:
   list_locked_accounts       args: []                              -- all currently locked accounts
@@ -1042,59 +1101,37 @@ Available AD actions (use exact action names):
 When you need to run an AD action, respond ONLY with this exact JSON (no preamble, no extra text):
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
-SMART LOOKUP RULES (read these carefully):
-- When a group name might not be exact, ALWAYS run search_groups first. Only add_to_group / remove_from_group once you have the exact name.
-- When a username looks uncertain or a previous action failed with "not found", run search_users first.
-- When creating a user and the OU is ambiguous, run list_ous first to get the exact name.
-- When a write action fails, explain why and immediately issue the search/lookup action — do not wait for the user to ask.
-- TYPO TOLERANCE: If a username or name looks like a likely typo (e.g. "srah.finger", "mikke", "jhn.doe"), search for it first rather than failing. Think: what did they probably mean?
-
-BULK / CONDITIONAL OPERATION RULES:
-- When the user asks to move/update many users based on a rule (e.g. "users ending in 08 go to Y12"), use bulk_move_users.
-- Before running bulk_move_users, ALWAYS first call list_users_in_ou to confirm the source OU and see how many users will be affected.
-- Use the exact SamAccountName suffix pattern from the list result to build your rules_json.
-- Wildcard syntax: "*08" matches any SamAccountName ending in "08". Use "*08*" to match anywhere. Use "john*" to match prefix.
-- If the target OUs don't exist yet, set create_missing_ous to "true" (the default) and they'll be created automatically.
-- For complex conditional rules across many OUs (e.g. move year groups based on last 2 digits), batch ALL rules into a single bulk_move_users call — do not call move_user in a loop.
-- After bulk_move_users completes, report: how many users moved per rule, and any errors.
-
 CRITICAL RULES:
 - Output ONLY the raw JSON when taking an action — no preamble, no trailing text.
 - If the conversation history already contains the result of a previous lookup, answer directly from that — do NOT run the action again.
 - When generating a temporary password, make it secure: uppercase + lowercase + numbers + symbol, 12+ chars. State it clearly.
-- Questions about a user's groups, role, department, title, status → ALWAYS use get_user_info first. It returns everything including MemberOf. Only call list_group_memberships as a follow-up if you need extra group metadata.
-- Questions about expired passwords → always run list_expired_passwords (not stats cache).
+- Questions about a user's groups, role, department, title, status → ALWAYS use get_user_info first.
 - If no AD action is needed, respond conversationally in plain text — do NOT output JSON.
 - Keep responses concise and direct. You are talking to an experienced IT admin.{custom_scripts_block}{tenant_context_block}{memory_block}"""
 
+    LOOKUP_ACTIONS = {
+        'search_users', 'search_groups', 'list_ous', 'get_user_info',
+        'list_users', 'list_users_in_ou', 'list_groups', 'list_locked_accounts',
+        'list_expired_passwords', 'get_stats', 'list_group_memberships',
+        'get_group_members',
+    }
+
     client   = anthropic.Anthropic(api_key=api_key)
     messages = []
-
-    # Include conversation history for context (last 10 exchanges)
     for h in history[-10:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):
             messages.append({"role": h["role"], "content": h["content"]})
-
     messages.append({"role": "user", "content": message})
 
-    # Ask Claude what to do
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=512,
-        system=system_prompt,
-        messages=messages
+    response     = client.messages.create(
+        model="claude-haiku-4-5-20251001", max_tokens=512,
+        system=system_prompt, messages=messages
     )
-
-    reply = response.content[0].text.strip()
-
-    # Try to parse as a command — search for JSON anywhere in the reply
-    # (model sometimes adds preamble text before the JSON block)
+    reply        = response.content[0].text.strip()
     command_data = None
     try:
         import re
-        # Strip markdown code fences first
         clean = re.sub(r'```(?:json)?', '', reply).strip()
-        # Find the first { ... } block that contains "action"
         match = re.search(r'\{.*?"action".*?\}', clean, re.DOTALL)
         if match:
             parsed = json.loads(match.group())
@@ -1103,106 +1140,66 @@ CRITICAL RULES:
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Lookup actions that should trigger auto-chaining to the intended follow-up action
-    LOOKUP_ACTIONS = {
-        'search_users', 'search_groups', 'list_ous', 'get_user_info',
-        'list_users', 'list_users_in_ou', 'list_groups', 'list_locked_accounts',
-        'list_expired_passwords', 'get_stats', 'list_group_memberships',
-        'get_group_members',
-    }
-
-    # If it's a command, queue it and wait for the agent
     if command_data:
-        action      = command_data["action"]
-        args        = command_data["args"]
-        intent_msg  = command_data.get("message", f"Running {action}...")
+        action     = command_data["action"]
+        args       = command_data["args"]
+        intent_msg = command_data.get("message", f"Running {action}...")
 
-        # Resolve custom script slug → embed PS content as args[0]
-        # Janus sends: action="run_custom_script", args=["slug", "user_arg0", ...]
-        # We replace args[0] (the slug) with the actual PS content so the agent
-        # can execute it without needing to call back to the cloud.
         if action == "run_custom_script" and args:
             slug   = args[0]
-            script = db.get_custom_script_by_slug(g.tenant_id, slug)
+            script = db.get_custom_script_by_slug(tenant_id, slug)
             if not script:
-                return jsonify({"success": True,
-                                "reply": f"Custom script '{slug}' not found or is disabled.",
-                                "action_taken": None})
-            # Replace slug with PS content; preserve any user args that follow
+                return {"success": True, "reply": f"Custom script '{slug}' not found or is disabled.", "action_taken": None}
             args       = [script["ps_content"]] + list(args[1:])
             intent_msg = intent_msg or f"Running custom script: {script['name']}"
 
-        # Python-enforced action policy — the LLM output is a request, not a command.
-        # Validate before anything is queued.
         policy_ok, policy_reason = action_policy.validate(action, source="janus_chat")
         if not policy_ok:
-            db.log_activity(g.tenant_id, "security_flag", g.user_email,
-                            detail=f"Janus chat policy blocked '{action}': {policy_reason}")
-            return jsonify({
-                "success": True,
-                "reply": f"I can't run that action: {policy_reason}",
-                "action_taken": None,
-            })
+            db.log_activity(tenant_id, "security_flag", user_email,
+                            detail=f"Chat policy blocked '{action}': {policy_reason}")
+            return {"success": True, "reply": f"I can't run that action: {policy_reason}", "action_taken": None}
 
-        # Rate-limit Janus write/destructive actions: max 20 per hour per tenant.
-        # Read-only queries are unlimited.
         if action_policy.is_write(action) or action_policy.is_destructive(action):
-            if not _rate_limit(f"janus_writes:{g.tenant_id}", 20, 3600):
-                return jsonify({
-                    "success": True,
-                    "reply": "Janus has reached the limit of 20 write actions per hour for this account. Please wait before running further changes.",
-                    "action_taken": None,
-                })
+            if not _rate_limit(f"janus_writes:{tenant_id}", 20, 3600):
+                return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
 
-        # Log and count write operations
         if action_policy.is_write(action) or action_policy.is_destructive(action):
             target = args[0] if args else ""
-            db.log_audit(g.tenant_id, g.user_email, action, target, "queued")
-            db.increment_usage(g.tenant_id, "ad_commands")
+            db.log_audit(tenant_id, user_email, action, target, "queued")
+            db.increment_usage(tenant_id, "ad_commands")
 
-        command    = db.queue_command(g.tenant_id, action, args)
+        command    = db.queue_command(tenant_id, action, args)
         command_id = command["id"]
 
-        # Poll for result (up to 25s)
         result_data = None
         deadline    = time.time() + 25
         while time.time() < deadline:
             time.sleep(0.6)
-            result = db.get_command_result(command_id, g.tenant_id)
+            result = db.get_command_result(command_id, tenant_id)
             if result:
                 result_data = result
                 break
 
         if not result_data:
-            return jsonify({
-                "success": True,
-                "reply": f"{intent_msg}\n\nAgent did not respond in time. Is it running?",
-                "action_taken": action
-            })
+            return {"success": True, "reply": f"{intent_msg}\n\nAgent did not respond in time. Is it running?", "action_taken": action}
 
-        # ---------------------------------------------------------------
-        # SEARCH CHAINING: if this was a lookup, automatically follow up
-        # with the real action the user originally wanted (one chain max).
-        # ---------------------------------------------------------------
         if action in LOOKUP_ACTIONS and result_data.get("success"):
             chain_prompt = f"""You are {ai_name}. The user originally asked: "{message}"
 To prepare, you first ran: {action} {args}
 The lookup returned: {json.dumps(result_data.get('data', {}))[:1400]}
 
 Now complete the user's original request using the exact names/values from the lookup result above.
-If the original request is fully answered by the lookup (e.g. they just wanted to see a list), reply conversationally.
-If a follow-up write action is needed (e.g. add to group, create user, move OU), output ONLY the JSON command using the exact name from the result.
+If the original request is fully answered by the lookup, reply conversationally.
+If a follow-up write action is needed, output ONLY the JSON command.
 Do NOT run another lookup — use the data you already have.
 Output format for action: {{"action": "action_name", "args": ["arg1"], "message": "what you are doing"}}"""
 
             chain_resp = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=300,
+                model="claude-haiku-4-5-20251001", max_tokens=300,
                 messages=[{"role": "user", "content": chain_prompt}]
             )
             chain_text = chain_resp.content[0].text.strip()
 
-            # Try to parse a chained command
             chained = None
             try:
                 import re as _re
@@ -1218,27 +1215,22 @@ Output format for action: {{"action": "action_name", "args": ["arg1"], "message"
             if chained:
                 action2 = chained["action"]
                 args2   = chained["args"]
-                if action2 in write_actions:
-                    tgt2 = args2[0] if args2 else ""
-                    db.log_audit(g.tenant_id, g.user_email, action2, tgt2, "queued")
-                    db.increment_usage(g.tenant_id, "ad_commands")
-
-                cmd2    = db.queue_command(g.tenant_id, action2, args2)
-                result2 = None
+                if action_policy.is_write(action2) or action_policy.is_destructive(action2):
+                    db.log_audit(tenant_id, user_email, action2, args2[0] if args2 else "", "queued")
+                    db.increment_usage(tenant_id, "ad_commands")
+                cmd2      = db.queue_command(tenant_id, action2, args2)
+                result2   = None
                 deadline2 = time.time() + 25
                 while time.time() < deadline2:
                     time.sleep(0.6)
-                    r2 = db.get_command_result(cmd2["id"], g.tenant_id)
+                    r2 = db.get_command_result(cmd2["id"], tenant_id)
                     if r2:
                         result2 = r2
                         break
-
                 if result2:
-                    # Summarise the chained result
                     pw_note2 = f"\nIMPORTANT: New password set: {args2[1]} - include it in your reply." if action2 == "reset_password" and len(args2) >= 2 else ""
                     sum2 = client.messages.create(
-                        model="claude-haiku-4-5-20251001",
-                        max_tokens=300,
+                        model="claude-haiku-4-5-20251001", max_tokens=300,
                         messages=[{"role": "user", "content": f"""You are {ai_name}. The user asked: "{message}"
 You searched first ({action} {args}), then ran: {action2} {args2}
 Final result: success={result2['success']}, message="{result2['message']}", data={json.dumps(result2.get('data',''))[:600]}
@@ -1246,91 +1238,76 @@ Final result: success={result2['success']}, message="{result2['message']}", data
 Write 2-3 sentences confirming what happened. Be direct and clear."""}]
                     )
                     final_reply = sum2.content[0].text.strip()
-                    db.increment_usage(g.tenant_id, "janus_calls")
-                    db.add_chat_message(session_id, g.tenant_id, "assistant", final_reply, action2)
+                    db.increment_usage(tenant_id, "janus_calls")
+                    db.add_chat_message(session_id, tenant_id, "assistant", final_reply, action2)
                     db.touch_chat_session(session_id)
                     db.update_chat_session_title(session_id, message[:60])
-                    db.log_activity(g.tenant_id, "janus_action", g.user_email,
+                    db.log_activity(tenant_id, "janus_action", user_email,
                                     target=args2[0] if args2 else None,
-                                    detail=f"{action} -> {action2} via Janus chat")
-                    return jsonify({
-                        "success": True, "reply": final_reply,
-                        "action_taken": action2, "raw_data": result2.get("data"),
-                        "session_id": session_id
-                    })
+                                    detail=f"{action} -> {action2} via chat")
+                    return {"success": True, "reply": final_reply, "action_taken": action2,
+                            "raw_data": result2.get("data"), "session_id": session_id}
             else:
-                # Lookup was the full answer - chain_text is the conversational reply
-                db.increment_usage(g.tenant_id, "janus_calls")
-                db.add_chat_message(session_id, g.tenant_id, "assistant", chain_text, action)
+                db.increment_usage(tenant_id, "janus_calls")
+                db.add_chat_message(session_id, tenant_id, "assistant", chain_text, action)
                 db.touch_chat_session(session_id)
                 db.update_chat_session_title(session_id, message[:60])
-                return jsonify({
-                    "success": True, "reply": chain_text,
-                    "action_taken": action, "raw_data": result_data.get("data"),
-                    "session_id": session_id
-                })
+                return {"success": True, "reply": chain_text, "action_taken": action,
+                        "raw_data": result_data.get("data"), "session_id": session_id}
 
-        # Build extra context for password resets so the password is never lost
         password_note = ""
         if action == "reset_password" and len(args) >= 2:
             password_note = f"\nIMPORTANT: The new password that was set is: {args[1]} - you MUST include this in your reply so the admin can share it."
 
-        # Ask Claude to summarise the result in plain English
-        summary_prompt = f"""You are {ai_name}, an AD Helpdesk AI assistant. The user asked: "{message}"
+        summary_response = client.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=300,
+            messages=[{"role": "user", "content": f"""You are {ai_name}, an AD Helpdesk AI assistant. The user asked: "{message}"
 You ran this AD action: {action}
 Arguments used: {args}
 Agent result: success={result_data['success']}, message="{result_data['message']}", data={json.dumps(result_data['data'])[:1200]}
 {password_note}
-Write a short, friendly plain-English summary of what happened.
-- If it succeeded: confirm clearly. Include key details (e.g. new password, group name, OU).
-- If it failed because something wasn't found (user, group, OU): say so clearly, then suggest or offer to search.
-- If there was data returned (user list, group list, stats): summarise the key points concisely.
-- If this was a password reset: always state the new password clearly so the admin can share it.
-Keep it under 5 sentences. Be direct."""
-
-        summary_response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-            messages=[{"role": "user", "content": summary_prompt}]
+Write a short, friendly plain-English summary of what happened. Keep it under 5 sentences. Be direct."""}]
         )
         final_reply = summary_response.content[0].text.strip()
-
-        db.increment_usage(g.tenant_id, "janus_calls")
-        db.add_chat_message(session_id, g.tenant_id, "assistant", final_reply, action)
+        db.increment_usage(tenant_id, "janus_calls")
+        db.add_chat_message(session_id, tenant_id, "assistant", final_reply, action)
         db.touch_chat_session(session_id)
         db.update_chat_session_title(session_id, message[:60])
-        db.log_activity(g.tenant_id, "janus_action", g.user_email,
+        db.log_activity(tenant_id, "janus_action", user_email,
                         target=args[0] if args else None,
-                        detail=f"{action} via Janus chat - {('success' if result_data['success'] else 'failed')}")
-        # Fire reflection pass in background to extract organisational memory
+                        detail=f"{action} via chat - {('success' if result_data['success'] else 'failed')}")
         if result_data.get("success") and action not in LOOKUP_ACTIONS:
             import threading
             threading.Thread(
                 target=_run_reflection_pass,
-                args=(g.tenant_id, ai_name, message, action, args, True),
+                args=(tenant_id, ai_name, message, action, args, True),
                 daemon=True
             ).start()
-        return jsonify({
-            "success":      True,
-            "reply":        final_reply,
-            "action_taken": action,
-            "raw_data":     result_data.get("data"),
-            "session_id":   session_id
-        })
+        return {"success": True, "reply": final_reply, "action_taken": action,
+                "raw_data": result_data.get("data"), "session_id": session_id}
 
-    # Track usage for every Janus call
-    db.increment_usage(g.tenant_id, "janus_calls")
-
-    # No command — just a conversational reply
-    db.add_chat_message(session_id, g.tenant_id, "assistant", reply)
+    # Conversational — no AD action
+    db.increment_usage(tenant_id, "janus_calls")
+    db.add_chat_message(session_id, tenant_id, "assistant", reply)
     db.touch_chat_session(session_id)
     db.update_chat_session_title(session_id, message[:60])
-    return jsonify({
-        "success":      True,
-        "reply":        reply,
-        "action_taken": None,
-        "session_id":   session_id
-    })
+    return {"success": True, "reply": reply, "action_taken": None, "session_id": session_id}
+
+
+@app.route("/dashboard/chat", methods=["POST"])
+@require_dashboard_user
+def dashboard_chat():
+    """
+    AI chat interface — takes a plain English message, asks Claude what AD
+    command to run, queues it through the agent, and returns a natural language reply.
+    """
+    data       = request.get_json() or {}
+    message    = data.get("message", "").strip()
+    history    = data.get("history", [])
+    session_id = data.get("session_id")
+    result     = _run_chat(g.tenant_id, g.user_email, message, history, session_id)
+    status     = 200 if result.get("success") else 400
+    return jsonify(result), status
 
 
 @app.route("/dashboard/api/usage")
