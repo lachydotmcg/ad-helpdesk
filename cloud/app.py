@@ -886,11 +886,57 @@ def api_v1_action(action):
     if not ok:
         return jsonify({"success": False, "message": reason}), 403
 
-    if action_policy.is_write(action) or action_policy.is_destructive(action):
+    is_mutation = action_policy.is_write(action) or action_policy.is_destructive(action)
+
+    # ----- Destructive-action confirmation handshake --------------------
+    # Destructive actions require a two-step confirm: the first call returns a
+    # 6-digit token, the caller must echo it back to actually run the action.
+    # This prevents an accidental single-call destructive op (e.g. Claude Code
+    # misreading intent). Same token machinery the dashboard uses.
+    if action in DESTRUCTIVE_ACTIONS:
+        supplied = str(data.get("confirm_token", "")).strip()
+        if not supplied:
+            code = _issue_confirm_token(tenant_id, action, args)
+            return jsonify({
+                "success":               False,
+                "confirmation_required": True,
+                "confirm_token":         code,
+                "message": (
+                    f"'{action}' is a destructive action. Re-send the same request "
+                    f"with \"confirm_token\": \"{code}\" within 5 minutes to proceed."
+                ),
+            }), 409
+        entry = _consume_confirm_token(tenant_id, supplied)
+        if not entry or entry.get("action") != action:
+            return jsonify({
+                "success": False,
+                "message": "Invalid or expired confirm_token. Re-request the action to get a fresh code.",
+            }), 403
+
+    # ----- Monthly plan-quota enforcement (the real abuse guard) --------
+    # Mirrors the dashboard /api/command path: write/destructive actions count
+    # against the tenant's monthly ad_commands cap. Reads are uncapped.
+    if is_mutation:
+        plan   = db.get_tenant_plan(tenant_id)
+        limits = db.get_plan_limits(plan)
+        usage  = db.get_usage(tenant_id) or {}
+        used   = usage.get("ad_commands", 0)
+        cap    = limits.get("ad_commands")
+        if cap is not None and used >= cap:
+            return jsonify({
+                "success":       False,
+                "limit_reached": True,
+                "message": (
+                    f"Monthly AD action limit reached ({cap} on {limits['label']} plan). "
+                    f"Upgrade to Pro for {db.PLAN_LIMITS['pro']['ad_commands']} actions/month."
+                ),
+            }), 429
+
+        # Burst guard on top of the monthly cap.
         if not _rate_limit(f"api_writes:{tenant_id}", 30, 3600):
             return jsonify({"success": False, "message": "Rate limit: 30 write actions/hour."}), 429
-        username = data.get("username", "")
-        db.log_audit(tenant_id, "api-plugin", action, username, "queued")
+
+        db.log_audit(tenant_id, "api-plugin", action, data.get("username", ""), "queued")
         db.increment_usage(tenant_id, "ad_commands")
 
     command    = db.queue_command(tenant_id, action, args)
@@ -915,7 +961,7 @@ def api_v1_action(action):
         "success": result_data.get("success", False),
         "message": result_data.get("message", ""),
         "data":    result_data.get("data"),
-    }), status
+    })
 
 
 # ---------------------------------------------------------------------------
