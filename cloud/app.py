@@ -1010,6 +1010,158 @@ def billing():
                            )
 
 
+# ---------------------------------------------------------------------------
+# Stripe billing
+# ---------------------------------------------------------------------------
+# Required env vars:
+#   STRIPE_SECRET_KEY      — secret key from Stripe dashboard
+#   STRIPE_WEBHOOK_SECRET  — from `stripe listen --forward-to ...` or dashboard
+#   STRIPE_PRICE_PRO       — recurring Price ID for the Pro plan (e.g. price_xxx)
+#   STRIPE_PRICE_ENTERPRISE— recurring Price ID for the Enterprise plan
+# Optional:
+#   APP_BASE_URL           — public base URL, e.g. https://app.aidhelpdesk.com
+#                            used to build success/cancel redirect URLs
+
+def _stripe_client():
+    import stripe as _stripe
+    key = os.getenv("STRIPE_SECRET_KEY", "")
+    if not key:
+        raise RuntimeError("STRIPE_SECRET_KEY is not set")
+    _stripe.api_key = key
+    return _stripe
+
+
+def _app_base_url() -> str:
+    base = os.getenv("APP_BASE_URL", "").rstrip("/")
+    if not base:
+        # Fall back to the request's own origin when APP_BASE_URL is unset.
+        from flask import request as _req
+        base = _req.host_url.rstrip("/")
+    return base
+
+
+# plan slug → Stripe Price ID (set these in Railway env vars)
+_STRIPE_PRICES = {
+    "pro":        lambda: os.getenv("STRIPE_PRICE_PRO", ""),
+    "enterprise": lambda: os.getenv("STRIPE_PRICE_ENTERPRISE", ""),
+}
+
+# Inline price_data fallback when Price IDs aren't configured yet.
+# Currency is AUD; amounts are in cents.
+_INLINE_PRICE_DATA = {
+    "pro": {
+        "currency": "aud",
+        "unit_amount": 2900,
+        "recurring": {"interval": "month"},
+        "product_data": {"name": "AID Helpdesk Pro"},
+    },
+    "enterprise": {
+        "currency": "aud",
+        "unit_amount": 9900,
+        "recurring": {"interval": "month"},
+        "product_data": {"name": "AID Helpdesk Enterprise"},
+    },
+}
+
+
+@app.route("/billing/create-checkout-session", methods=["POST"])
+@require_dashboard_user
+def billing_create_checkout_session():
+    """Create a Stripe Checkout session and return its URL."""
+    data = request.get_json(silent=True) or {}
+    plan = data.get("plan", "pro").lower()
+    if plan not in ("pro", "enterprise"):
+        return jsonify({"success": False, "message": "plan must be pro or enterprise"}), 400
+
+    current_plan = db.get_tenant_plan(g.tenant_id)
+    if current_plan == plan:
+        return jsonify({"success": False, "message": f"You are already on the {plan} plan"}), 400
+
+    try:
+        stripe = _stripe_client()
+    except RuntimeError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
+
+    base = _app_base_url()
+    price_id = _STRIPE_PRICES[plan]()
+
+    line_item = (
+        {"price": price_id, "quantity": 1}
+        if price_id
+        else {"price_data": _INLINE_PRICE_DATA[plan], "quantity": 1}
+    )
+
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        line_items=[line_item],
+        customer_email=g.user_email,
+        metadata={"tenant_id": g.tenant_id, "plan": plan},
+        success_url=f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/billing?cancelled=1",
+    )
+    return jsonify({"success": True, "url": session.url})
+
+
+@app.route("/billing/success")
+@require_dashboard_user
+def billing_success():
+    """Redirect target after a completed Stripe checkout."""
+    from flask import redirect
+    return redirect("/billing?success=1")
+
+
+@app.route("/billing/webhook", methods=["POST"])
+def billing_webhook():
+    """
+    Stripe webhook receiver.  Automatically upgrades (or downgrades) the
+    tenant's plan when Stripe confirms payment or cancellation.
+
+    Configure in Stripe dashboard → Developers → Webhooks:
+      endpoint: https://<your-domain>/billing/webhook
+      events:   checkout.session.completed
+                customer.subscription.deleted
+    """
+    import stripe as _stripe
+    secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    payload = request.get_data()
+    sig     = request.headers.get("Stripe-Signature", "")
+
+    if secret:
+        try:
+            event = _stripe.Webhook.construct_event(payload, sig, secret)
+        except (_stripe.error.SignatureVerificationError, ValueError):
+            return jsonify({"error": "invalid signature"}), 400
+    else:
+        # Allow unsigned events only in local dev (no secret configured).
+        try:
+            event = json.loads(payload)
+        except Exception:
+            return jsonify({"error": "bad payload"}), 400
+
+    etype = event.get("type") if isinstance(event, dict) else event.type
+
+    if etype == "checkout.session.completed":
+        obj = (event["data"]["object"] if isinstance(event, dict)
+               else event.data.object)
+        meta      = obj.get("metadata", {}) if isinstance(obj, dict) else obj.metadata
+        tenant_id = meta.get("tenant_id") if isinstance(meta, dict) else getattr(meta, "tenant_id", None)
+        plan      = meta.get("plan")      if isinstance(meta, dict) else getattr(meta, "plan", None)
+        if tenant_id and plan in ("pro", "enterprise"):
+            db.set_tenant_plan(tenant_id, plan)
+
+    elif etype == "customer.subscription.deleted":
+        # When a subscription is cancelled, revert to free plan.
+        # The tenant_id is stored in the subscription metadata.
+        obj = (event["data"]["object"] if isinstance(event, dict)
+               else event.data.object)
+        meta      = obj.get("metadata", {}) if isinstance(obj, dict) else obj.metadata
+        tenant_id = meta.get("tenant_id") if isinstance(meta, dict) else getattr(meta, "tenant_id", None)
+        if tenant_id:
+            db.set_tenant_plan(tenant_id, "free")
+
+    return jsonify({"received": True})
+
+
 @app.route("/dashboard/api/onboarding")
 @require_dashboard_user
 def dashboard_onboarding():

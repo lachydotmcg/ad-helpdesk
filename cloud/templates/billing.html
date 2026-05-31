@@ -102,6 +102,8 @@
 </nav>
 
 <div class="page">
+  <div id="billing-banner" style="display:none;padding:14px 18px;border-radius:10px;margin-bottom:24px;font-size:14px;font-weight:600;"></div>
+
   <h1>Billing &amp; Plan</h1>
   <p class="subtitle">Managing billing for <strong>{{ tenant_name }}</strong></p>
 
@@ -185,10 +187,10 @@
       </div>
     </div>
     {% if tenant_plan == 'free' %}
-    <a class="btn btn-primary" href="#" id="checkout-btn" style="margin-right:10px;">Upgrade to Pro — A$29/month</a>
+    <button class="btn btn-primary" id="checkout-btn-pro" style="margin-right:10px;" onclick="startCheckout('pro')">Upgrade to Pro — A$29/month</button>
     <a class="btn btn-ghost" href="mailto:billing@aidhelpdesk.com">Contact us for Enterprise</a>
     {% else %}
-    <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com">Contact us for Enterprise — A$99/month</a>
+    <button class="btn btn-primary" id="checkout-btn-enterprise" onclick="startCheckout('enterprise')">Upgrade to Enterprise — A$99/month</button>
     {% endif %}
   </div>
   {% endif %}
@@ -200,7 +202,7 @@
       <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
         Subscribe to keep access after your trial ends. Cancel any time — no questions asked.
       </p>
-      <a class="btn btn-primary" href="#" id="checkout-btn">Subscribe — A$29/month</a>
+      <button class="btn btn-primary" id="checkout-btn" onclick="startCheckout('pro')">Subscribe — A$29/month</button>
       <p style="font-size:12px;color:var(--muted);margin-top:10px;">Secured by Stripe. Your card details never touch our servers.</p>
     {% else %}
       <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
@@ -233,7 +235,7 @@
 </div>
 
 <script>
-  // Calculate trial days remaining
+  // ── Trial countdown ────────────────────────────────────────────────────
   const trialStart = {{ settings.get('trial_started_at', 'null') | tojson }};
   if (trialStart) {
     const start    = new Date(trialStart);
@@ -251,6 +253,62 @@
     if (label && daysLeft === 0) label.style.color = 'var(--error)';
     if (bar && daysLeft <= 3)    bar.style.background = 'var(--error)';
     else if (bar && daysLeft <= 7) bar.style.background = 'var(--warn)';
+  }
+
+  // ── Success / cancel banners from redirect params ──────────────────────
+  (function () {
+    const params  = new URLSearchParams(window.location.search);
+    const banner  = document.getElementById('billing-banner');
+    if (!banner) return;
+    if (params.get('success') === '1') {
+      banner.textContent  = '🎉 Payment confirmed — your plan has been upgraded. Welcome!';
+      banner.style.background = 'rgba(74,222,128,0.12)';
+      banner.style.border     = '1px solid rgba(74,222,128,0.3)';
+      banner.style.color      = 'var(--success)';
+      banner.style.display    = 'block';
+    } else if (params.get('cancelled') === '1') {
+      banner.textContent  = 'Checkout cancelled — no charge was made.';
+      banner.style.background = 'rgba(248,113,113,0.1)';
+      banner.style.border     = '1px solid rgba(248,113,113,0.25)';
+      banner.style.color      = 'var(--error)';
+      banner.style.display    = 'block';
+    }
+    // Remove params from URL so a refresh doesn't repeat the banner.
+    if (params.has('success') || params.has('cancelled')) {
+      history.replaceState({}, '', window.location.pathname);
+    }
+  })();
+
+  // ── Stripe Checkout ────────────────────────────────────────────────────
+  async function startCheckout(plan) {
+    const btns = document.querySelectorAll('[id^="checkout-btn"]');
+    btns.forEach(b => { b.disabled = true; b.textContent = 'Redirecting to Stripe…'; });
+
+    try {
+      const res  = await fetch('/billing/create-checkout-session', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ plan }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Could not start checkout');
+      window.location.href = json.url;
+    } catch (err) {
+      btns.forEach(b => { b.disabled = false; });
+      // Restore button labels based on plan
+      document.getElementById('checkout-btn-pro')        && (document.getElementById('checkout-btn-pro').textContent        = 'Upgrade to Pro — A$29/month');
+      document.getElementById('checkout-btn-enterprise') && (document.getElementById('checkout-btn-enterprise').textContent = 'Upgrade to Enterprise — A$99/month');
+      document.getElementById('checkout-btn')            && (document.getElementById('checkout-btn').textContent            = 'Subscribe — A$29/month');
+
+      const banner = document.getElementById('billing-banner');
+      if (banner) {
+        banner.textContent  = `Error: ${err.message}`;
+        banner.style.background = 'rgba(248,113,113,0.1)';
+        banner.style.border     = '1px solid rgba(248,113,113,0.25)';
+        banner.style.color      = 'var(--error)';
+        banner.style.display    = 'block';
+      }
+    }
   }
 </script>
 </body>
