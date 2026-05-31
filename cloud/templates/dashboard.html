@@ -1449,7 +1449,7 @@
         <div class="panel-header">
           <span class="panel-title">Audit Log</span>
           <div style="display:flex;gap:8px;">
-            <a class="btn btn-ghost" href="/dashboard/api/audit/export" download="audit-log.csv" style="font-size:13px;">⬇ Export CSV</a>
+            <a class="btn btn-ghost" href="/dashboard/api/audit/export" download style="font-size:13px;">⬇ Export CSV</a>
             <button class="btn btn-ghost" onclick="loadAudit()">↺ Refresh</button>
           </div>
         </div>
@@ -2048,7 +2048,11 @@
     <p>Set a new temporary password for <strong id="reset-username-label"></strong>.</p>
     <div class="field">
       <label>New password</label>
-      <input type="text" id="reset-password-input" placeholder="TempPass123!" oninput="updatePwdStrength(this.value)"/>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="reset-password-input" placeholder="TempPass123!" style="flex:1;" oninput="updatePwdStrength(this.value)"/>
+        <button type="button" class="btn btn-ghost" style="font-size:12px;flex-shrink:0;white-space:nowrap;"
+                onclick="fillGeneratedPassword()">⚡ Generate</button>
+      </div>
       <div class="pwd-strength">
         <div class="pwd-bar" id="ps-1"></div>
         <div class="pwd-bar" id="ps-2"></div>
@@ -2111,6 +2115,34 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="closeModal('modal-invite-password')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset password success reveal modal -->
+<div class="modal-overlay" id="modal-reset-done">
+  <div class="modal">
+    <h2>Password reset ✓</h2>
+    <p>The temporary password for <strong id="reset-done-user"></strong> is shown below. Hand it to the user now — it isn't stored and won't be shown again.</p>
+    <div class="field" style="margin-top:16px;">
+      <label>Temporary password</label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="reset-done-box" class="search-input" readonly
+               style="font-family:'Courier New',monospace;font-size:13px;color:var(--accent2);flex:1;"/>
+        <button class="btn btn-ghost" style="font-size:12px;flex-shrink:0;"
+                onclick="navigator.clipboard.writeText(document.getElementById('reset-done-box').value).then(()=>toast('Copied!','success'))">Copy</button>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <button class="btn btn-ghost" style="font-size:12px;width:100%;" onclick="copyResetMessage()">
+        📋 Copy message for the user
+      </button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px;">
+      💡 The user will be prompted to set their own password at next sign-in.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal('modal-reset-done')">Done</button>
     </div>
   </div>
 </div>
@@ -2194,10 +2226,14 @@
   // Core: command execution + polling
   // =========================================================
 
-  // Destructive actions that the backend will challenge before executing
+  // Reference list of actions the backend challenges before executing.
+  // The server (/dashboard/api/exec) is the authoritative gate — execCommand()
+  // simply reacts to the `requires_confirmation` response — so this Set is for
+  // documentation/UI hints only. Keep it in sync with action_policy.DESTRUCTIVE
+  // (+ reset_password / set_password_never_expires) on the backend.
   const DESTRUCTIVE_ACTIONS = new Set([
-    'disable_account', 'remove_from_group', 'move_user',
-    'create_user', 'reset_password', 'set_password_never_expires'
+    'disable_account', 'remove_from_group', 'move_user', 'create_user',
+    'create_ou', 'bulk_move_users', 'reset_password', 'set_password_never_expires'
   ]);
 
   async function execCommand(action, args = [], target = '') {
@@ -2252,8 +2288,30 @@
     });
   }
 
+  // Shown when a queued command can't run because the agent isn't polling.
+  const AGENT_OFFLINE_MSG =
+    "Your Windows agent is offline, so this action can't run yet. " +
+    "Start the agent on your server (Settings → Agent Configuration), then try again.";
+
+  // Live check: confirms with the server whether the agent is currently offline.
+  // Used to fail fast instead of making the user wait out the full poll timeout.
+  // Returns true only when the server explicitly reports the agent as offline;
+  // any error talking to the status endpoint returns false so we keep polling.
+  async function agentConfirmedOffline() {
+    try {
+      const res  = await fetch('/dashboard/api/agent/status');
+      const json = await res.json();
+      if (json.success && json.data && json.data.online === false) {
+        setAgentStatus(false);
+        return true;
+      }
+    } catch (_) { /* status endpoint unreachable — don't block on it */ }
+    return false;
+  }
+
   async function pollResult(commandId, timeoutMs = 30000) {
     const deadline = Date.now() + timeoutMs;
+    let agentChecked = false;
     while (Date.now() < deadline) {
       await sleep(600);
       const res  = await fetch(`/dashboard/api/result/${commandId}`);
@@ -2262,8 +2320,14 @@
         if (!json.data.success) throw new Error(json.data.message || 'Command failed');
         return json.data.data;
       }
+      // Still pending after ~3s: verify the agent is actually online so we can
+      // fail fast with a helpful message rather than spinning the full timeout.
+      if (!agentChecked && Date.now() > deadline - timeoutMs + 3000) {
+        agentChecked = true;
+        if (await agentConfirmedOffline()) throw new Error(AGENT_OFFLINE_MSG);
+      }
     }
-    throw new Error('Timed out waiting for agent response. Is the agent running?');
+    throw new Error('Timed out waiting for the agent to respond — it may have stopped. Check that it is running on your server.');
   }
 
   async function run(action, args = [], target = '', useCache = false) {
@@ -2489,18 +2553,19 @@
       const ou     = _dn.match(/OU=([^,]+)/)?.[1]
                   || _dn.split(',').filter(p => p.startsWith('CN=')).slice(1)[0]?.split('=')[1]
                   || '-';
+      const nameH = escHtml(name), unameH = escHtml(uname), ouH = escHtml(ou), unameJ = jsArg(uname);
       let pill = '<span class="pill pill-green">Active</span>';
       if (!u.Enabled)           pill = '<span class="pill pill-gray">Disabled</span>';
       if (u.LockedOut)          pill = '<span class="pill pill-red">Locked</span>';
       if (u.PasswordExpired)    pill = '<span class="pill pill-yellow">Pwd Expired</span>';
       const actions = isAdmin ? `
         <td onclick="event.stopPropagation()"><div class="action-btns">
-          <button class="btn btn-success btn-sm" onclick="unlockUser('${uname}')" ${u.LockedOut ? '' : 'style="display:none"'}>Unlock</button>
-          <button class="btn btn-ghost btn-sm" onclick="openReset('${uname}')">Reset Pwd</button>
-          <button class="btn btn-danger btn-sm" onclick="toggleEnabled('${uname}', ${u.Enabled})">${u.Enabled ? 'Disable' : 'Enable'}</button>
+          <button class="btn btn-success btn-sm" onclick="unlockUser('${unameJ}')" ${u.LockedOut ? '' : 'style="display:none"'}>Unlock</button>
+          <button class="btn btn-ghost btn-sm" onclick="openReset('${unameJ}')">Reset Pwd</button>
+          <button class="btn btn-danger btn-sm" onclick="toggleEnabled('${unameJ}', ${u.Enabled})">${u.Enabled ? 'Disable' : 'Enable'}</button>
         </div></td>` : '';
-      html += `<tr style="cursor:pointer" onclick="openUserDetail('${uname}')"  title="Click to view ${name}'s details">
-        <td>${name}</td><td><code style="font-size:12px;color:var(--accent2)">${uname}</code></td><td>${ou}</td><td>${pill}</td>${actions}</tr>`;
+      html += `<tr style="cursor:pointer" onclick="openUserDetail('${unameJ}')"  title="Click to view ${nameH}'s details">
+        <td>${nameH}</td><td><code style="font-size:12px;color:var(--accent2)">${unameH}</code></td><td>${ouH}</td><td>${pill}</td>${actions}</tr>`;
     }
     html += '</tbody></table>';
     document.getElementById('users-table-wrap').innerHTML = html;
@@ -2544,10 +2609,11 @@
         const name    = u.DisplayName || u.Name || '-';
         const uname   = u.SamAccountName || '-';
         const logon   = u.LastLogonDate ? u.LastLogonDate.slice(0, 10) : 'Never';
+        const nameH = escHtml(name), unameH = escHtml(uname);
         const action  = isAdmin
-          ? `<td><button class="btn btn-success btn-sm" onclick="unlockUser('${uname}')">Unlock</button></td>`
+          ? `<td><button class="btn btn-success btn-sm" onclick="unlockUser('${jsArg(uname)}')">Unlock</button></td>`
           : '';
-        html += `<tr><td>${name}</td><td><code style="font-size:12px;color:var(--accent2)">${uname}</code></td><td style="font-size:12px;color:var(--muted)">${logon}</td>${action}</tr>`;
+        html += `<tr><td>${nameH}</td><td><code style="font-size:12px;color:var(--accent2)">${unameH}</code></td><td style="font-size:12px;color:var(--muted)">${escHtml(logon)}</td>${action}</tr>`;
       }
       html += '</tbody></table>';
       document.getElementById('locked-table-wrap').innerHTML = html;
@@ -2600,10 +2666,11 @@
         const uname   = u.SamAccountName || '-';
         const pwdSet  = u.PasswordLastSet ? u.PasswordLastSet.slice(0, 10) : 'Never';
         const logon   = u.LastLogonDate ? u.LastLogonDate.slice(0, 10) : 'Never';
+        const nameH = escHtml(name), unameH = escHtml(uname);
         const action  = isAdmin
-          ? `<td><button class="btn btn-ghost btn-sm" onclick="openReset('${uname}')">Reset Pwd</button></td>`
+          ? `<td><button class="btn btn-ghost btn-sm" onclick="openReset('${jsArg(uname)}')">Reset Pwd</button></td>`
           : '';
-        html += `<tr><td>${name}</td><td><code style="font-size:12px;color:var(--accent2)">${uname}</code></td><td style="font-size:12px;color:var(--muted)">${pwdSet}</td><td style="font-size:12px;color:var(--muted)">${logon}</td>${action}</tr>`;
+        html += `<tr><td>${nameH}</td><td><code style="font-size:12px;color:var(--accent2)">${unameH}</code></td><td style="font-size:12px;color:var(--muted)">${escHtml(pwdSet)}</td><td style="font-size:12px;color:var(--muted)">${escHtml(logon)}</td>${action}</tr>`;
       }
       html += '</tbody></table>';
       document.getElementById('expired-table-wrap').innerHTML = html;
@@ -2613,20 +2680,30 @@
     }
   }
 
-  const BULK_TEMP_PASSWORD = 'TempReset1!';
-
   async function bulkReset() {
     if (!_expiredUsers.length) return;
     const count = _expiredUsers.length;
-    if (!confirm(`Reset passwords for all ${count} expired account${count > 1 ? 's' : ''}?\n\nAll will be set to: ${BULK_TEMP_PASSWORD}\nUsers must change on next logon.`)) return;
+    // Generate a fresh batch password per run rather than shipping a fixed,
+    // product-wide default — a predictable constant is guessable by anyone who
+    // knows the tool, in the window before the user's forced change at logon.
+    const batchPassword = generateTempPassword();
+    if (!confirm(`Reset passwords for all ${count} expired account${count > 1 ? 's' : ''}?\n\nAll will be set to: ${batchPassword}\nUsers must change on next logon.`)) return;
     toast(`Resetting ${count} passwords...`, 'info');
     let ok = 0, fail = 0;
     for (const u of _expiredUsers) {
       const uname = u.SamAccountName || u.Name;
-      try { await run('reset_password', [uname, BULK_TEMP_PASSWORD], uname); ok++; }
+      try { await run('reset_password', [uname, batchPassword], uname); ok++; }
       catch { fail++; }
     }
-    toast(fail ? `${ok} reset, ${fail} failed.` : `✅ ${ok} passwords reset to ${BULK_TEMP_PASSWORD}`, fail ? 'error' : 'success');
+    if (fail) {
+      toast(`${ok} reset, ${fail} failed. Batch password: ${batchPassword}`, 'error');
+    } else {
+      // Reveal the batch password so the admin can copy it for distribution.
+      document.getElementById('reset-done-user').textContent =
+        `${ok} account${ok > 1 ? 's' : ''} (bulk reset)`;
+      document.getElementById('reset-done-box').value = batchPassword;
+      openModal('modal-reset-done');
+    }
     cacheInvalidate('list_users[]', 'get_stats[]');
     loadExpired(); loadStats();
   }
@@ -2654,6 +2731,48 @@
     openModal('modal-reset');
   }
 
+  // Generate a strong, unambiguous temporary password that satisfies typical AD
+  // complexity policy (upper, lower, digit, symbol, length >= 14). Ambiguous
+  // characters (0/O, 1/l/I) are excluded so the password is easy to read aloud
+  // or transcribe when handing it to a user over the phone.
+  function generateTempPassword(len = 14) {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // no I, O
+    const lower = 'abcdefghijkmnpqrstuvwxyz';   // no l, o
+    const digit = '23456789';                   // no 0, 1
+    const sym   = '!@#$%*?';
+    const all   = upper + lower + digit + sym;
+    const rand  = (n) => {
+      if (window.crypto && window.crypto.getRandomValues) {
+        const a = new Uint32Array(1); window.crypto.getRandomValues(a);
+        return a[0] % n;
+      }
+      return Math.floor(Math.random() * n);
+    };
+    const pick = (set) => set[rand(set.length)];
+    // Guarantee at least one of each character class, then fill the rest.
+    const chars = [pick(upper), pick(lower), pick(digit), pick(sym)];
+    while (chars.length < len) chars.push(pick(all));
+    // Fisher-Yates shuffle so the class-guaranteed chars aren't always leading.
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = rand(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join('');
+  }
+
+  function fillGeneratedPassword() {
+    const input = document.getElementById('reset-password-input');
+    input.value = generateTempPassword();
+    updatePwdStrength(input.value);
+  }
+
+  function copyResetMessage() {
+    const user     = document.getElementById('reset-done-user').textContent;
+    const password = document.getElementById('reset-done-box').value;
+    const message  = `Your account password has been reset.\n\nUsername: ${user}\nTemporary password: ${password}\n\nYou'll be asked to set a new password the next time you sign in.`;
+    navigator.clipboard.writeText(message).then(() => toast('Message copied to clipboard!', 'success'));
+  }
+
   function updatePwdStrength(pw) {
     let score = 0;
     if (pw.length >= 8)  score++;
@@ -2675,7 +2794,11 @@
     toast(`Resetting password for ${_resetTarget}...`, 'info');
     try {
       await run('reset_password', [_resetTarget, pw], _resetTarget);
-      toast(`Password reset for ${_resetTarget}.`, 'success');
+      // Reveal the temp password so the admin can hand it to the user — it's not
+      // stored anywhere and the input was cleared, so this is the last chance.
+      document.getElementById('reset-done-user').textContent = _resetTarget;
+      document.getElementById('reset-done-box').value        = pw;
+      openModal('modal-reset-done');
       cacheInvalidate('list_users[]');
       loadUsers(true);
     } catch (e) { toast(e.message, 'error'); }
@@ -2827,26 +2950,27 @@
       ];
       document.getElementById('ud-meta-grid').innerHTML = meta.map(([k, v]) => `
         <div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${k}</div>
-          <div style="font-size:13px;">${v}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${escHtml(k)}</div>
+          <div style="font-size:13px;">${escHtml(v)}</div>
         </div>`).join('');
 
       // Groups
       const groups = Array.isArray(data.MemberOf) ? data.MemberOf : (data.MemberOf ? [data.MemberOf] : []);
       const groupNames = groups.map(dn => dn.match(/CN=([^,]+)/)?.[1] || dn);
       document.getElementById('ud-groups').innerHTML = groupNames.length
-        ? groupNames.map(g => `<span class="pill pill-gray" style="font-size:11px;">${g}</span>`).join('')
+        ? groupNames.map(g => `<span class="pill pill-gray" style="font-size:11px;">${escHtml(g)}</span>`).join('')
         : '<span style="color:var(--muted);font-size:12px;">No group memberships</span>';
 
       // Action buttons
       const isAdmin = {{ 'true' if user_role == 'admin' else 'false' }};
       if (isAdmin) {
         const sam = data.SamAccountName || username;
-        let btns = `<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user-detail');openReset('${sam}')">🔑 Reset Password</button>`;
-        if (data.LockedOut)  btns += `<button class="btn btn-success btn-sm" onclick="closeModal('modal-user-detail');unlockUser('${sam}')">🔓 Unlock</button>`;
-        if (data.Enabled)    btns += `<button class="btn btn-danger btn-sm" onclick="closeModal('modal-user-detail');toggleEnabled('${sam}', true)">Disable</button>`;
-        else                 btns += `<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user-detail');toggleEnabled('${sam}', false)">Enable</button>`;
-        btns += `<button class="btn btn-ghost btn-sm" onclick="openMoveUser('${sam}')">📁 Move OU</button>`;
+        const samJ = jsArg(sam);
+        let btns = `<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user-detail');openReset('${samJ}')">🔑 Reset Password</button>`;
+        if (data.LockedOut)  btns += `<button class="btn btn-success btn-sm" onclick="closeModal('modal-user-detail');unlockUser('${samJ}')">🔓 Unlock</button>`;
+        if (data.Enabled)    btns += `<button class="btn btn-danger btn-sm" onclick="closeModal('modal-user-detail');toggleEnabled('${samJ}', true)">Disable</button>`;
+        else                 btns += `<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-user-detail');toggleEnabled('${samJ}', false)">Enable</button>`;
+        btns += `<button class="btn btn-ghost btn-sm" onclick="openMoveUser('${samJ}')">📁 Move OU</button>`;
         document.getElementById('ud-actions').innerHTML = btns;
       }
     } catch (e) {
@@ -2953,9 +3077,9 @@
           ? '<span class="pill pill-green">admin</span>'
           : '<span class="pill pill-gray">viewer</span>';
         const removeBtn = u.email !== me
-          ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:rgba(248,113,113,0.3);" onclick="removeUser('${u.id}','${u.email}')">Remove</button>`
+          ? `<button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:rgba(248,113,113,0.3);" onclick="removeUser('${jsArg(u.id)}','${jsArg(u.email)}')">Remove</button>`
           : `<span style="font-size:11px;color:var(--muted);">You</span>`;
-        html += `<tr><td>${u.email}</td><td>${role}</td><td>${ts}</td><td style="text-align:right;">${removeBtn}</td></tr>`;
+        html += `<tr><td>${escHtml(u.email)}</td><td>${role}</td><td>${escHtml(ts)}</td><td style="text-align:right;">${removeBtn}</td></tr>`;
       }
       html += '</tbody></table>';
       document.getElementById('team-table-wrap').innerHTML = html;
@@ -3302,9 +3426,9 @@
       const ticketNum = '#' + t.id.slice(0, 6).toUpperCase();
       html += `<tr class="ticket-row" onclick="openTicket('${t.id}')">
         <td style="font-size:11px;color:var(--muted);font-weight:600;font-family:monospace;">${ticketNum}</td>
-        <td>${t.title}${source}${hasJanus}${secBadge}</td>
-        <td style="font-size:12px;color:var(--muted)">${t.requester_name || t.requester_email || '-'}</td>
-        <td class="${priClass}">${t.priority}</td>
+        <td>${escHtml(t.title)}${source}${hasJanus}${secBadge}</td>
+        <td style="font-size:12px;color:var(--muted)">${escHtml(t.requester_name || t.requester_email || '-')}</td>
+        <td class="${priClass}">${escHtml(t.priority)}</td>
         <td>${statusDropdown}</td>
         <td style="font-size:12px;color:var(--muted)">${date}</td>
       </tr>`;
@@ -3545,22 +3669,22 @@
 
     // Sidebar
     document.getElementById('td-sidebar-requester').innerHTML =
-      `<div style="font-weight:600;">${t.requester_name || '-'}</div>` +
-      (t.requester_email ? `<div style="font-size:12px;color:var(--muted);">${t.requester_email}</div>` : '') +
-      (t.requester_email ? `<a href="mailto:${t.requester_email}?subject=Re: ${encodeURIComponent(t.title)}" style="font-size:12px;color:var(--accent2);text-decoration:none;margin-top:4px;display:inline-block;">✉ Reply by email</a>` : '');
+      `<div style="font-weight:600;">${escHtml(t.requester_name || '-')}</div>` +
+      (t.requester_email ? `<div style="font-size:12px;color:var(--muted);">${escHtml(t.requester_email)}</div>` : '') +
+      (t.requester_email ? `<a href="mailto:${encodeURIComponent(t.requester_email)}?subject=Re: ${encodeURIComponent(t.title)}" style="font-size:12px;color:var(--accent2);text-decoration:none;margin-top:4px;display:inline-block;">✉ Reply by email</a>` : '');
 
     document.getElementById('td-sidebar-details').innerHTML =
       `<div><span style="color:var(--muted);">Ticket</span> &nbsp;#${ticketId.slice(0,6).toUpperCase()}</div>` +
-      `<div><span style="color:var(--muted);">Created</span> &nbsp;${date}</div>` +
-      `<div><span style="color:var(--muted);">Source</span> &nbsp;${t.source}</div>` +
-      `<div><span style="color:var(--muted);">Priority</span> &nbsp;${t.priority}</div>` +
-      `<div><span style="color:var(--muted);">Status</span> &nbsp;${t.status}</div>`;
+      `<div><span style="color:var(--muted);">Created</span> &nbsp;${escHtml(date)}</div>` +
+      `<div><span style="color:var(--muted);">Source</span> &nbsp;${escHtml(t.source)}</div>` +
+      `<div><span style="color:var(--muted);">Priority</span> &nbsp;${escHtml(t.priority)}</div>` +
+      `<div><span style="color:var(--muted);">Status</span> &nbsp;${escHtml(t.status)}</div>`;
 
     // Assigned to — populate from cached team list (refreshed lazily)
     const assignSel = document.getElementById('td-assignee');
     const buildAssigneeSel = (members) => {
       assignSel.innerHTML = '<option value="">Unassigned</option>' +
-        members.map(u => `<option value="${u.email}" ${u.email === t.assigned_to ? 'selected' : ''}>${u.email}</option>`).join('');
+        members.map(u => `<option value="${escHtml(u.email)}" ${u.email === t.assigned_to ? 'selected' : ''}>${escHtml(u.email)}</option>`).join('');
     };
     if (_teamMembers.length) {
       buildAssigneeSel(_teamMembers);
@@ -3641,17 +3765,17 @@
       const rel  = relativeTime(a.created_at);
       const full = a.created_at ? a.created_at.slice(0, 16).replace('T', ' ') : '';
       if (a.type === 'status_change') {
-        div.innerHTML = `<span style="color:var(--muted);">⟳ ${a.content}</span> <span style="float:right;font-size:11px;" title="${full}">${rel}</span>`;
+        div.innerHTML = `<span style="color:var(--muted);">⟳ ${escHtml(a.content)}</span> <span style="float:right;font-size:11px;" title="${escHtml(full)}">${escHtml(rel)}</span>`;
       } else {
         const avIni = initials(null, a.user_email);
         div.innerHTML = `
           <div class="thread-header">
-            <div class="thread-avatar">${avIni}</div>
-            <span class="thread-sender">${a.user_email}</span>
-            <span class="thread-tag">${typeTag[a.type] || a.type}</span>
-            <span class="thread-time" title="${full}">${rel}</span>
+            <div class="thread-avatar">${escHtml(avIni)}</div>
+            <span class="thread-sender">${escHtml(a.user_email)}</span>
+            <span class="thread-tag">${escHtml(typeTag[a.type] || a.type)}</span>
+            <span class="thread-time" title="${escHtml(full)}">${escHtml(rel)}</span>
           </div>
-          <div style="white-space:pre-wrap;">${a.content}</div>`;
+          <div style="white-space:pre-wrap;">${escHtml(a.content)}</div>`;
       }
       actionsWrap.appendChild(div);
     }
@@ -3685,10 +3809,6 @@
       body: JSON.stringify({ content })
     });
     openTicket(_currentTicketId);
-  }
-
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   async function addTicketLabel() {
@@ -3736,15 +3856,24 @@
       // Step 2: Poll until agent completes (up to 30s)
       let resultData = null;
       const deadline = Date.now() + 30000;
+      let agentChecked = false;
       while (Date.now() < deadline) {
         await sleep(700);
         const pr   = await fetch(`/dashboard/api/result/${command_id}`);
         const pj   = await pr.json();
         if (!pj.pending) { resultData = pj.data; break; }
+        // Fail fast if the agent is offline rather than waiting out the timeout.
+        if (!agentChecked && Date.now() > deadline - 30000 + 3000) {
+          agentChecked = true;
+          if (await agentConfirmedOffline()) {
+            toast(AGENT_OFFLINE_MSG, 'error');
+            return;
+          }
+        }
       }
 
       if (!resultData) {
-        toast('Agent timed out — is it running?', 'error');
+        toast('Agent timed out — check that it is running on your server.', 'error');
         return;
       }
 
@@ -3908,8 +4037,8 @@
         <div class="activity-entry">
           <div class="activity-icon type-${entry.event_type}">${info.emoji}</div>
           <div class="activity-body">
-            <div><strong>${info.label}</strong> by ${entry.actor}${entry.target ? ` → <code style="font-size:11px;color:var(--accent2)">${entry.target}</code>` : ''}${secBadge}</div>
-            ${entry.detail ? `<div class="activity-detail">${entry.detail}</div>` : ''}
+            <div><strong>${escHtml(info.label)}</strong> by ${escHtml(entry.actor)}${entry.target ? ` → <code style="font-size:11px;color:var(--accent2)">${escHtml(entry.target)}</code>` : ''}${secBadge}</div>
+            ${entry.detail ? `<div class="activity-detail">${escHtml(entry.detail)}</div>` : ''}
           </div>
           <div class="activity-time">${ts}</div>
         </div>`;
@@ -4568,8 +4697,21 @@
     } catch(e) { wrap.innerHTML = '<div style="padding:20px;color:var(--error);">Error loading memory.</div>'; }
   }
 
+  // Canonical HTML escaper — use for ANY value derived from AD, a user, or an
+  // inbound email before inserting it into innerHTML (text or double-quoted
+  // attribute context). Handles & < > " and null/undefined.
   function escHtml(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Escape a value for safe use inside a SINGLE-quoted JS string that itself
+  // lives in a double-quoted HTML attribute, e.g. onclick="fn('${jsArg(x)}')".
+  // escHtml makes it HTML/attribute-safe; doubling backslashes and escaping the
+  // apostrophe survives HTML-decoding so the value can't break out of the JS
+  // string literal. Needed because an AD SamAccountName or display name can
+  // legitimately contain an apostrophe (e.g. O'Brien).
+  function jsArg(s) {
+    return escHtml(String(s==null?'':s)).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   }
 
   function openAddMemoryModal() {

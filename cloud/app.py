@@ -101,15 +101,18 @@ TIME_SAVED_MINUTES: dict[str, float] = {
 }
 
 
-# Actions that require an explicit confirmation challenge
-DESTRUCTIVE_ACTIONS = {
-    "disable_account",
-    "remove_from_group",
-    "move_user",
-    "create_user",
-    "reset_password",
-    "set_password_never_expires",
-}
+# Actions that require an explicit 6-digit confirmation challenge before the
+# server will queue them. This is the authoritative gate — both the dashboard
+# (/dashboard/api/exec) and the public API (/api/v1/actions/<action>) consult
+# it, and the frontend only reacts to the challenge the server returns.
+#
+# It is DERIVED from action_policy.DESTRUCTIVE rather than hand-maintained, so a
+# newly added destructive action can never silently skip confirmation again.
+# (A previous hand-kept copy had drifted: bulk_move_users and create_ou were
+# missing, meaning bulk OU moves could be queued with no confirmation at all.)
+# Two reversible-but-sensitive WRITE actions are deliberately gated as well.
+_EXTRA_CONFIRM_ACTIONS = frozenset({"reset_password", "set_password_never_expires"})
+DESTRUCTIVE_ACTIONS = action_policy.DESTRUCTIVE | _EXTRA_CONFIRM_ACTIONS
 
 _confirm_store: dict[str, dict] = {}   # token -> {action, args, tenant_id, expires, used}
 _CONFIRM_TTL = 300                     # 5 minutes
@@ -1084,6 +1087,8 @@ def dashboard_exec():
                 "create_user":              f"Create new user: {subject} {args[1] if len(args)>1 else ''}",
                 "reset_password":           f"Reset password for {subject}",
                 "set_password_never_expires": f"Set password-never-expires for {subject}",
+                "create_ou":                f"Create OU: {subject}",
+                "bulk_move_users":          "Bulk move users — review the rules carefully before confirming",
             }
             return jsonify({
                 "success":              False,
@@ -1319,6 +1324,28 @@ CRITICAL RULES:
         if action_policy.is_write(action) or action_policy.is_destructive(action):
             if not _rate_limit(f"janus_writes:{tenant_id}", 20, 3600):
                 return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
+
+        # Monthly plan-quota enforcement. The dashboard (/dashboard/api/exec) and
+        # the public API (/api/v1/actions) both hard-block write/destructive
+        # actions once the tenant hits its ad_commands cap; without the same gate
+        # here the limit could be bypassed simply by routing the action through
+        # Janus chat. Reads stay uncapped.
+        if action_policy.is_write(action) or action_policy.is_destructive(action):
+            plan   = db.get_tenant_plan(tenant_id)
+            limits = db.get_plan_limits(plan)
+            usage  = db.get_usage(tenant_id) or {}
+            used   = usage.get("ad_commands", 0)
+            cap    = limits.get("ad_commands")
+            if cap is not None and used >= cap:
+                return {
+                    "success": True,
+                    "reply": (
+                        f"You've reached your monthly AD action limit "
+                        f"({cap} on the {limits['label']} plan). Upgrade to Pro for "
+                        f"{db.PLAN_LIMITS['pro']['ad_commands']} actions/month to continue."
+                    ),
+                    "action_taken": None,
+                }
 
         if action_policy.is_write(action) or action_policy.is_destructive(action):
             target = args[0] if args else ""
@@ -2344,19 +2371,42 @@ def dashboard_audit():
     return jsonify({"success": True, "data": log})
 
 
+def _csv_safe(value) -> str:
+    """
+    Neutralise CSV / formula injection.
+
+    The audit log is the product's compliance evidence trail and customers
+    open it in Excel / Google Sheets. A cell whose value begins with =, +, -,
+    @, tab or CR is interpreted as a formula on open — and the `target` field
+    can contain attacker-influenced data (e.g. a crafted username). Prefixing
+    such values with a single quote forces the cell to be treated as text
+    without altering the visible content. (OWASP CSV Injection mitigation.)
+    """
+    s = "" if value is None else str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
 @app.route("/dashboard/api/audit/export")
 @require_dashboard_user
 def dashboard_audit_export():
     """Download the full audit log as a CSV file."""
-    import csv, io
+    import csv, io, re, datetime as _dt
     from flask import Response
     log = db.get_audit_log(g.tenant_id, limit=10000)
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["created_at", "user_email", "action", "target", "status"])
+    fieldnames = ["created_at", "user_email", "action", "target", "status"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
     for row in log:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
-    filename = f"audit-log-{g.tenant_name.lower().replace(' ', '-')}.csv"
+        writer.writerow({k: _csv_safe(row.get(k, "")) for k in fieldnames})
+
+    # Dated, filesystem-safe filename so repeated exports don't overwrite and
+    # an unusual tenant name can't produce a broken/empty filename.
+    slug  = re.sub(r"[^a-z0-9]+", "-", (g.tenant_name or "").lower()).strip("-") or "tenant"
+    stamp = _dt.date.today().isoformat()
+    filename = f"audit-log-{slug}-{stamp}.csv"
     return Response(
         output.getvalue(),
         mimetype="text/csv",
