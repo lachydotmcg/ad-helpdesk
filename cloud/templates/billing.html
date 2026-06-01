@@ -187,10 +187,16 @@
       </div>
     </div>
     {% if tenant_plan == 'free' %}
-    <button class="btn btn-primary" id="checkout-btn-pro" style="margin-right:10px;" onclick="startCheckout('pro')">Upgrade to Pro — A$29/month</button>
-    <a class="btn btn-ghost" href="mailto:billing@aidhelpdesk.com">Contact us for Enterprise</a>
+      {% if billing_enabled and user_role == 'admin' %}
+      <button class="btn btn-primary" id="checkout-btn-pro" style="margin-right:10px;" onclick="startCheckout('pro')">Upgrade to Pro - A$29/month</button>
+      <button class="btn btn-ghost" id="checkout-btn-enterprise" onclick="startCheckout('enterprise')">Upgrade to Enterprise - A$99/month</button>
+      {% else %}
+      <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com">Contact us to upgrade</a>
+      {% endif %}
     {% else %}
-    <button class="btn btn-primary" id="checkout-btn-enterprise" onclick="startCheckout('enterprise')">Upgrade to Enterprise — A$99/month</button>
+      {% if billing_enabled and user_role == 'admin' %}
+      <button class="btn btn-primary" id="checkout-btn-enterprise" onclick="startCheckout('enterprise')">Upgrade to Enterprise - A$99/month</button>
+      {% endif %}
     {% endif %}
   </div>
   {% endif %}
@@ -198,17 +204,25 @@
   <!-- Payment -->
   <div class="card">
     <div class="card-title">Payment</div>
-    {% if stripe_key %}
+    {% if billing_enabled and user_role == 'admin' and tenant_plan == 'free' %}
       <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
-        Subscribe to keep access after your trial ends. Cancel any time — no questions asked.
+        Subscribe with Stripe when you are ready to move from Free to a paid plan.
       </p>
-      <button class="btn btn-primary" id="checkout-btn" onclick="startCheckout('pro')">Subscribe — A$29/month</button>
+      <button class="btn btn-primary" id="checkout-btn" onclick="startCheckout('pro')">Subscribe - A$29/month</button>
       <p style="font-size:12px;color:var(--muted);margin-top:10px;">Secured by Stripe. Your card details never touch our servers.</p>
+    {% elif billing_enabled and user_role == 'admin' %}
+      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
+        Stripe billing is enabled for this workspace. Plan changes should complete through Stripe Checkout.
+      </p>
+    {% elif billing_enabled %}
+      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
+        Ask a workspace admin to manage billing.
+      </p>
     {% else %}
       <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
-        Online payment is coming soon. In the meantime, reach out and we'll get you sorted.
+        Online payment is not configured yet. Set STRIPE_SECRET_KEY and Stripe Price IDs to enable checkout.
       </p>
-      <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com?subject=AID%20Helpdesk%20subscription%20%E2%80%94%20{{ tenant_name | urlencode }}">Contact us to subscribe</a>
+      <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com?subject=AID%20Helpdesk%20subscription%20-%20{{ tenant_name | urlencode }}">Contact us to subscribe</a>
     {% endif %}
   </div>
 
@@ -285,7 +299,7 @@
     btns.forEach(b => { b.disabled = true; b.textContent = 'Redirecting to Stripe…'; });
 
     try {
-      const res  = await fetch('/billing/create-checkout-session', {
+      const res  = await fetch('/create-checkout-session', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ plan }),
@@ -296,9 +310,9 @@
     } catch (err) {
       btns.forEach(b => { b.disabled = false; });
       // Restore button labels based on plan
-      document.getElementById('checkout-btn-pro')        && (document.getElementById('checkout-btn-pro').textContent        = 'Upgrade to Pro — A$29/month');
-      document.getElementById('checkout-btn-enterprise') && (document.getElementById('checkout-btn-enterprise').textContent = 'Upgrade to Enterprise — A$99/month');
-      document.getElementById('checkout-btn')            && (document.getElementById('checkout-btn').textContent            = 'Subscribe — A$29/month');
+      document.getElementById('checkout-btn-pro')        && (document.getElementById('checkout-btn-pro').textContent        = 'Upgrade to Pro - A$29/month');
+      document.getElementById('checkout-btn-enterprise') && (document.getElementById('checkout-btn-enterprise').textContent = 'Upgrade to Enterprise - A$99/month');
+      document.getElementById('checkout-btn')            && (document.getElementById('checkout-btn').textContent            = 'Subscribe - A$29/month');
 
       const banner = document.getElementById('billing-banner');
       if (banner) {

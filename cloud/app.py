@@ -988,7 +988,7 @@ def dashboard():
 @require_dashboard_user
 def billing():
     settings      = db.get_settings(g.tenant_id)
-    stripe_key    = os.getenv("STRIPE_PUBLIC_KEY", "")
+    billing_enabled = bool(os.getenv("STRIPE_SECRET_KEY", ""))
     plan          = db.get_tenant_plan(g.tenant_id)
     limits        = db.get_plan_limits(plan)
     usage         = db.get_usage(g.tenant_id) or {}
@@ -999,8 +999,9 @@ def billing():
     return render_template("billing.html",
                            tenant_name=g.tenant_name,
                            user_email=g.user_email,
+                           user_role=g.user_role,
                            settings=settings,
-                           stripe_key=stripe_key,
+                           billing_enabled=billing_enabled,
                            tenant_plan=plan,
                            plan_label=limits["label"],
                            usage_janus=used_janus,
@@ -1025,10 +1026,13 @@ def billing():
 #                            used to build success/cancel redirect URLs
 
 def _stripe_client():
-    import stripe as _stripe
     key = os.getenv("STRIPE_SECRET_KEY", "")
     if not key:
         raise RuntimeError("STRIPE_SECRET_KEY is not set")
+    try:
+        import stripe as _stripe
+    except ImportError as exc:
+        raise RuntimeError("Stripe Python SDK is not installed") from exc
     _stripe.api_key = key
     return _stripe
 
@@ -1043,37 +1047,30 @@ def _app_base_url() -> str:
 
 
 # plan slug → Stripe Price ID (set these in Railway env vars)
-_STRIPE_PRICES = {
-    "pro":        lambda: os.getenv("STRIPE_PRICE_PRO", ""),
-    "enterprise": lambda: os.getenv("STRIPE_PRICE_ENTERPRISE", ""),
-}
-
-# Inline price_data fallback when Price IDs aren't configured yet.
-# Currency is AUD; amounts are in cents.
-_INLINE_PRICE_DATA = {
-    "pro": {
-        "currency": "aud",
-        "unit_amount": 2900,
-        "recurring": {"interval": "month"},
-        "product_data": {"name": "AID Helpdesk Pro"},
-    },
-    "enterprise": {
-        "currency": "aud",
-        "unit_amount": 9900,
-        "recurring": {"interval": "month"},
-        "product_data": {"name": "AID Helpdesk Enterprise"},
-    },
+_CHECKOUT_PRICE_ENV = {
+    "pro": "STRIPE_PRICE_PRO",
+    "enterprise": "STRIPE_PRICE_ENTERPRISE",
 }
 
 
+@app.route("/create-checkout-session", methods=["POST"])
 @app.route("/billing/create-checkout-session", methods=["POST"])
 @require_dashboard_user
 def billing_create_checkout_session():
     """Create a Stripe Checkout session and return its URL."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Only tenant admins can manage billing."}), 403
+
     data = request.get_json(silent=True) or {}
-    plan = data.get("plan", "pro").lower()
-    if plan not in ("pro", "enterprise"):
-        return jsonify({"success": False, "message": "plan must be pro or enterprise"}), 400
+    plan = str(data.get("plan", "pro")).strip().lower()
+    if plan not in ("free", "pro", "enterprise"):
+        return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
+
+    if plan == "free":
+        return jsonify({
+            "success": False,
+            "message": "The Free plan does not require Stripe Checkout.",
+        }), 400
 
     current_plan = db.get_tenant_plan(g.tenant_id)
     if current_plan == plan:
@@ -1085,23 +1082,28 @@ def billing_create_checkout_session():
         return jsonify({"success": False, "message": str(e)}), 503
 
     base = _app_base_url()
-    price_id = _STRIPE_PRICES[plan]()
+    price_env = _CHECKOUT_PRICE_ENV[plan]
+    price_id = os.getenv(price_env, "")
+    if not price_id:
+        return jsonify({
+            "success": False,
+            "message": f"{price_env} is not configured.",
+        }), 503
 
-    line_item = (
-        {"price": price_id, "quantity": 1}
-        if price_id
-        else {"price_data": _INLINE_PRICE_DATA[plan], "quantity": 1}
-    )
+    metadata = {"tenant_id": g.tenant_id, "plan": plan}
 
     session = stripe.checkout.Session.create(
         mode="subscription",
-        line_items=[line_item],
+        line_items=[{"price": price_id, "quantity": 1}],
         customer_email=g.user_email,
-        metadata={"tenant_id": g.tenant_id, "plan": plan},
+        client_reference_id=g.tenant_id,
+        metadata=metadata,
+        subscription_data={"metadata": metadata},
+        allow_promotion_codes=True,
         success_url=f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base}/billing?cancelled=1",
     )
-    return jsonify({"success": True, "url": session.url})
+    return jsonify({"success": True, "url": session.url, "session_id": session.id})
 
 
 @app.route("/billing/success")
