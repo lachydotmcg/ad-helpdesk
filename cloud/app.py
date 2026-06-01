@@ -111,6 +111,8 @@ TIME_SAVED_MINUTES: dict[str, float] = {
 # (A previous hand-kept copy had drifted: bulk_move_users and create_ou were
 # missing, meaning bulk OU moves could be queued with no confirmation at all.)
 # Two reversible-but-sensitive WRITE actions are deliberately gated as well.
+# Result: {create_user, disable_account, move_user, remove_from_group, create_ou,
+#          bulk_move_users, reset_password, set_password_never_expires}
 _EXTRA_CONFIRM_ACTIONS = frozenset({"reset_password", "set_password_never_expires"})
 DESTRUCTIVE_ACTIONS = action_policy.DESTRUCTIVE | _EXTRA_CONFIRM_ACTIONS
 
