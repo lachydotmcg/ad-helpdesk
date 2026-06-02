@@ -33,7 +33,7 @@ was being output-encoded, which caused two distinct classes of bug:
    `<`, `>` or `"` corrupted the surrounding markup.
 
 An `escHtml()` helper already existed but was applied only in the newest code
-paths (Janus memory, ticket labels), and it was **defined twice** — once
+paths (the AI assistant memory, ticket labels), and it was **defined twice** — once
 without quote-escaping (line ~3810) and once with (~4700). The later definition
 won via hoisting, so the incomplete copy was dead code.
 
@@ -61,7 +61,7 @@ won via hoisting, so the incomplete copy was dead code.
   (`a')+alert(1)+('b`) is rendered inert. Behaviour for ordinary names
   (no special chars) is byte-for-byte unchanged.
 
-**Note (unchanged from prior runs):** CLAUDE.md is still stale — Janus
+**Note (unchanged from prior runs):** CLAUDE.md is still stale — the AI assistant
 persistent memory is fully built (db at v6, `agent_memory` table) and the
 "Uncommitted Changes" section no longer reflects reality. A CLAUDE.md refresh
 remains a good low-risk future task.
@@ -106,10 +106,10 @@ frozenset containing `bulk_move_users` + `create_ou` (plus the original six);
 behaviour for `reset_password`/`set_password_never_expires` is unchanged. No
 change to read/write fast-path actions.
 
-**Note:** CLAUDE.md is now stale in two places — the Janus persistent-memory /
+**Note:** CLAUDE.md is now stale in two places — the AI persistent-memory /
 persona feature is in fact fully built (db v6 `agent_memory` table, reflection
-write pass, context retrieval into the Janus prompt, CRUD endpoints, and a full
-Configure-Janus UI), and migrations are at v6 not v5. Worth a CLAUDE.md refresh
+write pass, context retrieval into the AI prompt, CRUD endpoints, and a full
+Configure-AI UI), and migrations are at v6 not v5. Worth a CLAUDE.md refresh
 on a future run.
 
 ---
@@ -131,7 +131,7 @@ unverified blind edits.
 
 **Confirmed context gathered before the stall:**
 - `cloud/action_policy.py` read in full — classification + `validate()` look
-  correct; `janus_auto` hard-blocks DESTRUCTIVE, `janus_chat` defers DESTRUCTIVE
+  correct; `ai_auto` hard-blocks DESTRUCTIVE, `ai_chat` defers DESTRUCTIVE
   to the frontend confirmation modal (relies on the queue endpoint enforcing the
   6-digit token server-side — worth re-verifying in `app.py` next run).
 - `git status`: `cloud/app.py` and `cloud/templates/dashboard.html` still carry
@@ -146,10 +146,10 @@ unverified blind edits.
    frontend modal is not the only gate (defense in depth for the security story).
 2. **Review the uncommitted `app.py` / `dashboard.html` diff** for correctness
    before it's committed (time-saved endpoint, custom-scripts CRUD, scheduled
-   reports thread, Janus slug resolution).
-3. **Janus persistent memory / persona** (`agent_memory` table) — the flagged
+   reports thread, AI custom-script slug resolution).
+3. **AI persistent memory / persona** (`agent_memory` table) — the flagged
    high-value next feature in `CLAUDE.md`; could be scaffolded behind the
-   existing Configure Janus page.
+   existing Configure AI page.
 4. **Rate-limiting / abuse protection** on public `/api/v1` endpoints.
 
 ---

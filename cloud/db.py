@@ -10,7 +10,7 @@ Tables:
   commands       -- queued AD operations
   results        -- completed operation results
   audit_log      -- every write operation with who did it
-  chat_sessions  -- Janus AI conversation sessions
+  chat_sessions  -- AI assistant conversation sessions
   chat_messages  -- individual messages in a session
   tickets        -- helpdesk tickets
   ticket_actions -- notes/actions on tickets
@@ -1035,13 +1035,14 @@ _SETTINGS_DEFAULTS = {
     "janus_enabled":      True,
     "janus_scan_emails":  True,
     "janus_auto_actions": [],
+    "ai_name":            "Assistant",
+    "ai_context":         "",
     "security_checks":    True,
     "email_domain":       "",
     "roles":              [],
     "custom_statuses":    [],
     "custom_priorities":  [],
     "ticket_labels":      [],
-    "janus_name":         "Janus",
     "slack_webhook_url":  "",
     "teams_webhook_url":  "",
 }
@@ -1062,13 +1063,20 @@ def get_settings(tenant_id: str) -> dict:
         return dict(_SETTINGS_DEFAULTS)
     try:
         saved = json.loads(row["settings"])
-        return {**_SETTINGS_DEFAULTS, **saved}
+        merged = {**_SETTINGS_DEFAULTS, **saved}
+        if "ai_context" not in saved and saved.get("janus_context"):
+            merged["ai_context"] = saved.get("janus_context")
+        return merged
     except Exception:
         return dict(_SETTINGS_DEFAULTS)
 
 
 def update_settings(tenant_id: str, settings: dict) -> None:
     """Upsert tenant settings."""
+    settings["ai_name"] = str(settings.get("ai_name") or "").strip() or _SETTINGS_DEFAULTS["ai_name"]
+    settings.pop("janus_name", None)
+    if "ai_context" in settings:
+        settings.pop("janus_context", None)
     now = datetime.utcnow().isoformat()
     uid = str(uuid.uuid4())
     conn = _get_conn()

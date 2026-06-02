@@ -40,6 +40,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
 
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+DEFAULT_AI_NAME = "Assistant"
 
 db.init_db()
 db.migrate_db()
@@ -169,6 +170,18 @@ def _normalize_domain(domain: str) -> str:
     return d
 
 
+def _get_ai_name(settings: dict | None = None) -> str:
+    """Return the configured AI display name with a generic default."""
+    settings = settings or {}
+    return str(settings.get("ai_name") or os.getenv("AI_NAME") or DEFAULT_AI_NAME).strip() or DEFAULT_AI_NAME
+
+
+def _get_ai_context(settings: dict | None = None) -> str:
+    """Return tenant-provided AI context, supporting the previous settings key."""
+    settings = settings or {}
+    return str(settings.get("ai_context") or settings.get("janus_context") or "").strip()
+
+
 # ---------------------------------------------------------------------------
 # Email helper
 # ---------------------------------------------------------------------------
@@ -189,6 +202,7 @@ def send_ticket_email(to_email, to_name, ticket_title,
                       tenant_settings=None):
     """Send email notification to ticket requester. Silently skips if SMTP not configured."""
     smtp = _resolve_smtp(tenant_settings)
+    ai_name = _get_ai_name(tenant_settings)
     smtp_host = smtp["host"]
     smtp_port = smtp["port"]
     smtp_user = smtp["user"]
@@ -213,7 +227,7 @@ Your request "{ticket_title}" has been resolved.{action_line}
 
 {message}
 
-- AID Helpdesk (powered by Janus AI)
+- AID Helpdesk (powered by {ai_name})
 """
         html = f"""<!DOCTYPE html>
 <html>
@@ -227,7 +241,7 @@ Your request "{ticket_title}" has been resolved.{action_line}
   {'<p><strong>Action taken:</strong> ' + action_taken + '</p>' if action_taken else ''}
   <p>{message}</p>
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
-  <p style="color:#64748b;font-size:12px;">Powered by Janus AI - AID Helpdesk</p>
+  <p style="color:#64748b;font-size:12px;">Powered by {ai_name} - AID Helpdesk</p>
 </body>
 </html>"""
 
@@ -587,7 +601,7 @@ def email_intake(api_key):
     db.log_activity(tenant_id, "ticket_created", from_email,
                     target=title, detail="via email intake")
 
-    # Janus analysis
+    # AI analysis
     result = _run_janus_analysis(
         tenant_id, tenant_name, ticket["id"],
         title, desc, from_name, from_email, limits
@@ -595,6 +609,8 @@ def email_intake(api_key):
 
     # Send auto-reply to requester acknowledging receipt
     if from_email:
+        tenant_settings = db.get_settings(tenant_id)
+        ai_name = _get_ai_name(tenant_settings)
         short_id = ticket["id"][:8].upper()
         auto_msg  = (
             f"Your request has been received and logged as ticket #{short_id}. "
@@ -606,7 +622,7 @@ def email_intake(api_key):
 
         if result.get("auto_resolved"):
             auto_msg = (
-                f"Great news! Your request (#{short_id}) has been resolved automatically by Janus AI. "
+                f"Great news! Your request (#{short_id}) has been resolved automatically by {ai_name}. "
                 f"If you still have issues, please reply or submit a new request."
             )
 
@@ -616,7 +632,7 @@ def email_intake(api_key):
             ticket_title = title,
             action_taken = None,
             message     = auto_msg,
-            tenant_settings = db.get_settings(tenant_id),
+            tenant_settings = tenant_settings,
         )
 
     return jsonify({"success": True, "ticket_id": ticket["id"]}), 201
@@ -977,11 +993,13 @@ def api_v1_action(action):
 @require_dashboard_user
 def dashboard():
     plan = db.get_tenant_plan(g.tenant_id)
+    settings = db.get_settings(g.tenant_id)
     return render_template("dashboard.html",
                            tenant_name=g.tenant_name,
                            user_email=g.user_email,
                            user_role=g.user_role,
-                           tenant_plan=plan)
+                           tenant_plan=plan,
+                           ai_name=_get_ai_name(settings))
 
 
 @app.route("/billing")
@@ -1008,6 +1026,7 @@ def billing():
                            usage_commands=used_commands,
                            limits_janus=lim_janus,
                            limits_commands=lim_commands,
+                           ai_name=_get_ai_name(settings),
                            janus_pct=min(100, int(used_janus / lim_janus * 100)) if lim_janus else 0,
                            commands_pct=min(100, int(used_commands / lim_commands * 100)) if lim_commands else 0,
                            )
@@ -1346,8 +1365,8 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
     custom_scripts  = db.list_custom_scripts(tenant_id)
     enabled_scripts = [s for s in custom_scripts if s.get("enabled")]
     tenant_settings = db.get_settings(tenant_id)
-    janus_context   = (tenant_settings.get("janus_context") or "").strip()
-    ai_name         = (tenant_settings.get("janus_name") or "").strip() or os.getenv("AI_NAME", "Janus")
+    ai_context      = _get_ai_context(tenant_settings)
+    ai_name         = _get_ai_name(tenant_settings)
 
     custom_scripts_block = ""
     if enabled_scripts:
@@ -1362,7 +1381,7 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
             )
         custom_scripts_block = "\n".join(lines)
 
-    tenant_context_block = f"\n\nADMIN-PROVIDED CONTEXT (read this for org-specific knowledge):\n{janus_context}" if janus_context else ""
+    tenant_context_block = f"\n\nADMIN-PROVIDED CONTEXT (read this for org-specific knowledge):\n{ai_context}" if ai_context else ""
 
     memories     = db.get_memories_for_context(tenant_id, limit=20)
     memory_block = ""
@@ -1471,21 +1490,21 @@ CRITICAL RULES:
             args       = [script["ps_content"]] + list(args[1:])
             intent_msg = intent_msg or f"Running custom script: {script['name']}"
 
-        policy_ok, policy_reason = action_policy.validate(action, source="janus_chat")
+        policy_ok, policy_reason = action_policy.validate(action, source="ai_chat")
         if not policy_ok:
             db.log_activity(tenant_id, "security_flag", user_email,
                             detail=f"Chat policy blocked '{action}': {policy_reason}")
             return {"success": True, "reply": f"I can't run that action: {policy_reason}", "action_taken": None}
 
         if action_policy.is_write(action) or action_policy.is_destructive(action):
-            if not _rate_limit(f"janus_writes:{tenant_id}", 20, 3600):
+            if not _rate_limit(f"ai_writes:{tenant_id}", 20, 3600):
                 return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
 
         # Monthly plan-quota enforcement. The dashboard (/dashboard/api/exec) and
         # the public API (/api/v1/actions) both hard-block write/destructive
         # actions once the tenant hits its ad_commands cap; without the same gate
         # here the limit could be bypassed simply by routing the action through
-        # Janus chat. Reads stay uncapped.
+        # AI chat. Reads stay uncapped.
         if action_policy.is_write(action) or action_policy.is_destructive(action):
             plan   = db.get_tenant_plan(tenant_id)
             limits = db.get_plan_limits(plan)
@@ -1669,7 +1688,7 @@ def dashboard_usage():
 @app.route("/dashboard/api/time-saved")
 @require_dashboard_user
 def dashboard_time_saved():
-    """Compute IT time saved by Janus actions for the current calendar month."""
+    """Compute IT time saved by AI-assisted actions for the current calendar month."""
     action_counts = db.get_action_counts_this_month(g.tenant_id)
     total_minutes = 0.0
     breakdown     = {}
@@ -1705,7 +1724,7 @@ def dashboard_time_saved():
 import re as _re_module
 
 def _slugify(text: str) -> str:
-    """Convert a display name to a safe slug for Janus to reference."""
+    """Convert a display name to a safe slug for the AI assistant to reference."""
     s = text.lower().strip()
     s = _re_module.sub(r"[^a-z0-9]+", "_", s)
     return s.strip("_")[:40]
@@ -1782,7 +1801,7 @@ def dashboard_delete_script(script_id):
 @app.route("/dashboard/api/settings", methods=["GET"])
 @require_dashboard_user
 def dashboard_get_settings():
-    """Return this tenant's Janus / automation settings."""
+    """Return this tenant's AI / automation settings."""
     settings = db.get_settings(g.tenant_id)
     # Never expose smtp_pass in API response — redact it
     safe = dict(settings)
@@ -1803,7 +1822,7 @@ def dashboard_update_settings():
                "security_checks", "email_domain", "roles",
                "custom_statuses", "custom_priorities", "ticket_labels",
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
-               "janus_context", "janus_name",
+               "ai_context", "ai_name",
                "report_enabled", "report_frequency", "report_day",
                "report_hour", "report_recipients", "last_report_sent",
                "slack_webhook_url", "teams_webhook_url"}
@@ -1812,6 +1831,8 @@ def dashboard_update_settings():
             # Never overwrite smtp_pass with an empty string (blank = "keep existing")
             if k == "smtp_pass" and v == "":
                 continue
+            if k == "ai_name":
+                v = str(v or "").strip() or DEFAULT_AI_NAME
             current[k] = v
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
@@ -1959,20 +1980,21 @@ def dashboard_activity():
 # ---------------------------------------------------------------------------
 # Tickets
 # ---------------------------------------------------------------------------
-# Shared Janus analysis helper
+# Shared AI analysis helper
 # ---------------------------------------------------------------------------
 
 def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
                         requester_name, requester_email, limits):
     """
-    Run Janus AI analysis on a ticket and update it in the DB.
+    Run AI analysis on a ticket and update it in the DB.
     Returns a dict with keys: parsed, auto_resolved (bool), error (str or None).
-    Silently skips if API key is missing, plan limit hit, or Janus disabled.
+    Silently skips if API key is missing, plan limit hit, or the AI assistant is disabled.
     """
     import anthropic as _anthropic
     api_key  = os.getenv("ANTHROPIC_API_KEY", "")
-    ai_name  = os.getenv("AI_NAME", "Janus")
     settings = db.get_settings(tenant_id)
+    ai_name  = _get_ai_name(settings)
+    ai_actor = ai_name
 
     janus_usage = db.get_usage(tenant_id) or {}
     janus_used  = janus_usage.get("janus_calls", 0)
@@ -2003,7 +2025,7 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
         if security_checks:
             if trusted_domain:
                 nd = _normalize_domain(trusted_domain)
-                # Python does the domain check — Janus just gets the binary verdict
+                # Python does the domain check; the AI only gets the binary verdict.
                 domain_verified = False
                 if requester_email and "@" in requester_email:
                     req_domain = requester_email.split("@")[-1].lower().strip()
@@ -2113,11 +2135,11 @@ RULES:
                          janus_action=parsed.get("action"),
                          janus_action_args=json.dumps(parsed.get("args", [])))
         db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
-                             f"[Threat {threat_score}/10 - {threat_title}] {analysis_text}", "janus")
+                             f"[Threat {threat_score}/10 - {threat_title}] {analysis_text}", ai_actor)
         db.increment_usage(tenant_id, "janus_calls")
 
         if security_flag:
-            db.log_activity(tenant_id, "security_flag", "janus",
+            db.log_activity(tenant_id, "security_flag", ai_actor,
                             target=requester_email or requester_name,
                             detail=f"Ticket #{ticket_id[:8]}: {security_flag}")
 
@@ -2132,13 +2154,13 @@ RULES:
         # of what the LLM said. This is code enforcing rules, not a prompt.
         policy_ok, policy_reason = action_policy.validate(
             janus_action or "",
-            source="janus_auto",
+            source="ai_auto",
             tenant_auto_actions=auto_actions,
         )
 
         if can_auto and janus_action and janus_args and perm_ok and policy_ok and limits.get("auto_actions", False):
             db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
-                                 f"⚡ Janus is automatically applying fix: {janus_action} {janus_args}...", "janus")
+                                 f"{ai_name} is automatically applying fix: {janus_action} {janus_args}...", ai_actor)
             command    = db.queue_command(tenant_id, janus_action, janus_args)
             result_data = None
             deadline   = time.time() + 25
@@ -2152,8 +2174,8 @@ RULES:
             if result_data and result_data["success"]:
                 db.update_ticket(ticket_id, tenant_id, status="resolved")
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
-                                     f"✅ Janus auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} - {result_data['message']}", "janus")
-                db.log_activity(tenant_id, "ticket_resolved", "janus", target=ticket_id,
+                                     f"{ai_name} auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} - {result_data['message']}", ai_actor)
+                db.log_activity(tenant_id, "ticket_resolved", ai_actor, target=ticket_id,
                                 detail=f"Auto-resolved via {janus_action}")
                 auto_resolved = True
                 if requester_email:
@@ -2162,28 +2184,28 @@ RULES:
                         to_name=requester_name or "",
                         ticket_title=title,
                         action_taken=f"{janus_action} on {janus_args[0] if janus_args else '?'}",
-                        message="Your account issue has been resolved automatically by Janus AI.",
+                        message=f"Your account issue has been resolved automatically by {ai_name}.",
                         tenant_settings=db.get_settings(tenant_id),
                     )
             elif result_data:
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
-                                     f"❌ Janus auto-apply failed: {result_data['message']}", "janus")
+                                     f"{ai_name} auto-apply failed: {result_data['message']}", ai_actor)
             else:
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
-                                     "⚠️ Janus auto-apply timed out - agent may be offline.", "janus")
+                                     f"{ai_name} auto-apply timed out - agent may be offline.", ai_actor)
 
         elif janus_action and not policy_ok:
             # Policy blocked the auto-action -- log it clearly in the audit trail
             db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
-                                 f"🛡️ Auto-action blocked by policy: {policy_reason}", "janus")
-            db.log_activity(tenant_id, "security_flag", "janus",
+                                 f"Auto-action blocked by policy: {policy_reason}", ai_actor)
+            db.log_activity(tenant_id, "security_flag", ai_actor,
                             target=ticket_id,
                             detail=f"Policy blocked '{janus_action}': {policy_reason}")
 
         return {"parsed": parsed, "auto_resolved": auto_resolved, "error": None}
 
     except Exception as e:
-        print(f"[janus] Analysis error for ticket {ticket_id}: {e}", flush=True)
+        print(f"[ai] Analysis error for ticket {ticket_id}: {e}", flush=True)
         return {"parsed": None, "auto_resolved": False, "error": str(e)}
 
 
@@ -2200,7 +2222,7 @@ def list_tickets():
 @app.route("/dashboard/api/tickets", methods=["POST"])
 @require_dashboard_user
 def create_ticket():
-    """Create a ticket and trigger Janus auto-analysis."""
+    """Create a ticket and trigger AI auto-analysis."""
     data             = request.get_json() or {}
     title            = data.get("title", "").strip()
     description      = data.get("description", "").strip()
@@ -2239,7 +2261,7 @@ def create_ticket():
         f":ticket: New ticket from {requester_name or g.user_email}: *{title}*\n{description[:200]}"
     )
 
-    # Janus auto-analysis via shared helper
+    # AI auto-analysis via shared helper
     result = _run_janus_analysis(
         g.tenant_id, g.tenant_name, ticket["id"],
         title, description, requester_name, requester_email, limits
@@ -2333,7 +2355,7 @@ def add_ticket_comment(ticket_id):
 @app.route("/dashboard/api/tickets/<ticket_id>/analyse", methods=["POST"])
 @require_dashboard_user
 def rerun_janus_analysis(ticket_id):
-    """Re-run Janus analysis on an existing ticket."""
+    """Re-run AI analysis on an existing ticket."""
     ticket = db.get_ticket(ticket_id, g.tenant_id)
     if not ticket:
         return jsonify({"success": False, "message": "Ticket not found."}), 404
@@ -2359,7 +2381,7 @@ def rerun_janus_analysis(ticket_id):
 @require_dashboard_user
 def apply_ticket_fix(ticket_id):
     """
-    Queue the Janus-suggested AD action for this ticket.
+    Queue the AI-suggested AD action for this ticket.
     Returns a command_id immediately — frontend polls /dashboard/api/result/<id>
     and calls /dashboard/api/tickets/<id>/apply-fix/complete when done.
     """
@@ -2367,7 +2389,7 @@ def apply_ticket_fix(ticket_id):
     if not ticket:
         return jsonify({"success": False, "message": "Ticket not found."}), 404
     if not ticket.get("janus_action"):
-        return jsonify({"success": False, "message": "No Janus suggestion available."}), 400
+        return jsonify({"success": False, "message": "No AI suggestion available."}), 400
 
     action  = ticket["janus_action"]
     args    = json.loads(ticket.get("janus_action_args") or "[]")
@@ -2481,12 +2503,12 @@ def chat_session_messages(session_id):
 @app.route("/dashboard/api/insights")
 @require_dashboard_user
 def dashboard_insights():
-    """Return a Janus AI health summary of recent AD stats + tickets."""
+    """Return an AI health summary of recent AD stats + tickets."""
     try:
         import anthropic
         api_key  = os.getenv("ANTHROPIC_API_KEY", "")
-        ai_name  = os.getenv("AI_NAME", "Janus")
         settings = db.get_settings(g.tenant_id)
+        ai_name  = _get_ai_name(settings)
         if not api_key or not settings.get("janus_enabled", True):
             return jsonify({"success": True, "data": {"message": None}})
 
@@ -2812,7 +2834,7 @@ def server_error(e):
 # ---------------------------------------------------------------------------
 
 def _build_report_html(tenant_name: str, stats: dict, locked: list, expired: list,
-                       audit: list, period_label: str) -> tuple[str, str]:
+                       audit: list, period_label: str, ai_name: str = DEFAULT_AI_NAME) -> tuple[str, str]:
     """Build (subject, html_body) for a scheduled report."""
     total   = stats.get("total", 0)
     n_lock  = stats.get("locked", 0)
@@ -2873,7 +2895,7 @@ def _build_report_html(tenant_name: str, stats: dict, locked: list, expired: lis
     {expired_rows}
   </table>
 
-  <h3 style="font-size:14px;margin:0 0 8px;">Recent Janus activity</h3>
+  <h3 style="font-size:14px;margin:0 0 8px;">Recent AI activity</h3>
   <table width="100%" cellpadding="6" style="border-collapse:collapse;margin-bottom:24px;font-size:12px;">
     <tr style="background:#f1f5f9;">
       <th align="left">Time</th><th align="left">Action</th>
@@ -2884,7 +2906,7 @@ def _build_report_html(tenant_name: str, stats: dict, locked: list, expired: lis
 
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
   <p style="color:#64748b;font-size:11px;">
-    Powered by Janus AI - AID Helpdesk | This report was sent automatically.
+    Powered by {ai_name} - AID Helpdesk | This report was sent automatically.
   </p>
 </body>
 </html>"""
@@ -2969,7 +2991,7 @@ def _run_scheduled_reports():
                 }
 
                 subject, html_body = _build_report_html(
-                    tenant.get("name", tid), stats, [], [], audit, period)
+                    tenant.get("name", tid), stats, [], [], audit, period, _get_ai_name(settings))
 
                 for recipient in recipients:
                     send_email(recipient, subject, subject, html_body, settings)

@@ -566,7 +566,7 @@
       margin-bottom: 6px;
     }
 
-    /* Janus threat score card */
+    /* AI threat score card */
     .janus-card-top { display: flex; align-items: center; gap: 12px; }
     .janus-score-badge {
       display: inline-flex; align-items: center; justify-content: center;
@@ -1053,7 +1053,7 @@
             <div style="font-size:22px;flex-shrink:0;line-height:1;">✅</div>
             <div style="flex:1;">
               <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:4px;">Agent connected!</div>
-              <div style="font-size:12px;color:var(--muted);">Your Windows agent is online and syncing. One more thing — set your trusted email domain so Janus can verify requesters.</div>
+              <div style="font-size:12px;color:var(--muted);">Your Windows agent is online and syncing. One more thing — set your trusted email domain so your AI can verify requesters.</div>
               <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;">
                 <input class="search-input" id="onboard-domain" placeholder="company.com" style="font-size:13px;max-width:220px;padding:7px 12px;"/>
                 <button class="btn btn-primary" style="font-size:13px;" onclick="onboardSaveDomain()">Save &amp; finish</button>
@@ -1086,7 +1086,7 @@
           <div class="stat-label">Pwd Expired</div>
           <div class="stat-value yellow" id="stat-expired">—</div>
         </div>
-        <div class="stat-card" id="time-saved-card" style="border-color:rgba(167,139,250,0.25);cursor:default;" title="Estimated IT time saved by Janus this month">
+        <div class="stat-card" id="time-saved-card" style="border-color:rgba(167,139,250,0.25);cursor:default;" title="Estimated IT time saved by AI automation this month">
           <div class="stat-label" style="color:var(--accent);">Time Saved</div>
           <div class="stat-value" id="stat-time-saved" style="color:var(--accent);">—</div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">this month</div>
@@ -1128,13 +1128,13 @@
         <button class="btn btn-ghost" style="font-size:12px;" onclick="showPage('audit')">📋 Audit Log</button>
       </div>
 
-      <!-- Janus AI insight card (manual trigger) -->
+      <!-- AI insight card (manual trigger) -->
       <div style="margin-bottom:16px;">
-        <button id="janus-insight-btn" class="btn btn-ghost" style="font-size:12px;" onclick="triggerInsight()">✨ Get Janus Insight</button>
+        <button id="janus-insight-btn" class="btn btn-ghost" style="font-size:12px;" onclick="triggerInsight()">✨ Get AI Insight</button>
         <div id="janus-insight-card" style="display:none;margin-top:10px;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.08));border:1px solid rgba(99,102,241,0.25);border-radius:12px;padding:14px 18px;align-items:flex-start;gap:12px;">
           <span style="font-size:20px;flex-shrink:0;">✨</span>
           <div style="flex:1;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent2);margin-bottom:4px;">Janus Insight</div>
+            <div id="ai-insight-title" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent2);margin-bottom:4px;">AI Insight</div>
             <div id="janus-insight-text" style="font-size:13px;color:var(--text);line-height:1.5;"></div>
           </div>
           <button class="btn btn-ghost" style="font-size:11px;flex-shrink:0;padding:4px 8px;" onclick="document.getElementById('janus-insight-card').style.display='none';document.getElementById('janus-insight-btn').style.display='inline-block';">✕</button>
@@ -1231,7 +1231,7 @@
             <textarea class="search-input" id="nt-description" rows="3" style="width:100%;resize:vertical;" placeholder="Describe the issue in detail. Include the username if known."></textarea>
           </div>
           <div style="grid-column:1/-1;display:flex;justify-content:flex-end;">
-            <button class="btn btn-primary" onclick="submitNewTicket()">Create &amp; analyse with Janus</button>
+            <button class="btn btn-primary" id="create-ticket-ai-btn" onclick="submitNewTicket()">Create &amp; analyse with AI</button>
           </div>
         </div>
       </div>
@@ -1317,7 +1317,7 @@
           <option value="high">High</option>
           <option value="urgent">Urgent</option>
         </select>
-        <button class="btn btn-ghost" style="font-size:12px;" onclick="rerunJanus()" title="Re-analyse with Janus">✨ Re-analyse</button>
+        <button class="btn btn-ghost" id="td-rerun-ai-btn" style="font-size:12px;" onclick="rerunAiAnalysis()" title="Re-analyse with AI">✨ Re-analyse</button>
         <button class="btn btn-ghost" id="td-expand-btn" style="font-size:16px;padding:6px 10px;line-height:1;" onclick="toggleTicketExpand()" title="Expand / shrink">⤡</button>
         <button class="btn btn-ghost" style="font-size:14px;padding:6px 10px;line-height:1;" onclick="minimiseTicket()" title="Minimise — keep ticket open while you work">─</button>
         <button class="btn btn-ghost" style="font-size:18px;padding:6px 10px;line-height:1;" onclick="closeTicketModal()" title="Close">×</button>
@@ -1339,7 +1339,7 @@
           <div id="td-description" style="white-space:pre-wrap;"></div>
         </div>
 
-        <!-- Janus analysis card -->
+        <!-- AI analysis card -->
         <div class="thread-entry janus_analysis" id="td-janus" style="display:none">
           <div class="thread-header">
             <div class="thread-avatar" style="background:var(--accent2);font-size:11px;">AI</div>
@@ -1352,7 +1352,7 @@
               <div class="janus-card-issue-type">Possible issue detected</div>
               <div class="janus-card-title" id="td-janus-title">Analysing...</div>
             </div>
-            <button class="janus-details-btn" id="td-janus-toggle" onclick="toggleJanusDetails()">Details</button>
+            <button class="janus-details-btn" id="td-janus-toggle" onclick="toggleAiDetails()">Details</button>
           </div>
           <div class="janus-details-body" id="td-janus-details" style="display:none">
             <div id="td-janus-text" style="white-space:pre-wrap;"></div>
@@ -1486,7 +1486,7 @@
               <option value="security_flag">Security</option>
               <option value="team_member_added">Team</option>
               <option value="settings_changed">Settings</option>
-              <option value="janus_action">Janus AI</option>
+              <option value="janus_action">AI assistant</option>
             </select>
             <button class="btn btn-ghost" onclick="loadActivity(true)">↺ Refresh</button>
           </div>
@@ -1512,7 +1512,7 @@
               <div class="settings-section-title">Requester Roles</div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
                 Define who can request AD actions on behalf of other users.
-                Janus uses these to detect impersonation and unauthorised requests.
+                The AI assistant uses these to detect impersonation and unauthorised requests.
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:0 4px;">
                 <span>Email pattern</span><span>Role name</span><span>Allowed actions</span><span></span>
@@ -1571,7 +1571,7 @@
                 {% endif %}
               </div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-                Forward emails to this webhook URL and they'll automatically become tickets — Janus will analyse them instantly.
+                Forward emails to this webhook URL and they'll automatically become tickets — your AI will analyse them instantly.
                 Works with Mailgun, SendGrid, Postmark, and Cloudflare Email Routing.
               </div>
               {% if tenant_plan in ['pro', 'enterprise'] %}
@@ -1588,13 +1588,13 @@
               <div style="font-size:12px;color:var(--muted);line-height:1.7;">
                 <strong style="color:var(--text);">Setup:</strong> In your email routing service, create an inbound route that POSTs parsed email JSON to this URL.
                 No authentication header needed — your API key is in the URL.
-                Incoming emails create tickets in your queue automatically with Janus analysis.
+                Incoming emails create tickets in your queue automatically with AI analysis.
                 An auto-reply is sent to the sender confirming receipt.
               </div>
               {% else %}
               <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px 16px;">
                 <div style="font-size:13px;color:var(--text);margin-bottom:10px;">
-                  Upgrade to <strong>Pro</strong> to let staff email tickets directly to your helpdesk — Janus reads every one.
+                  Upgrade to <strong>Pro</strong> to let staff email tickets directly to your helpdesk — your AI reads every one.
                 </div>
                 <a href="/billing" class="btn btn-primary" style="font-size:13px;">Upgrade to Pro →</a>
               </div>
@@ -1656,7 +1656,7 @@
             <div class="settings-section">
               <div class="settings-section-title">Email Notifications (SMTP)</div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">
-                Configure outbound email so Janus can notify requesters when their ticket is updated.
+                Configure outbound email so your AI can notify requesters when their ticket is updated.
                 Works with Gmail, Zoho, Outlook 365, or any SMTP provider.
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1703,7 +1703,7 @@
       </div>
     </div>
 
-    <!-- ===== CONFIGURE JANUS PAGE ===== -->
+    <!-- ===== CONFIGURE AI PAGE ===== -->
     <div class="page" id="page-janus-config">
       <div style="max-width:760px;">
 
@@ -1717,11 +1717,11 @@
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div>
                   <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">AI Name <span style="font-weight:400;">(what your team calls it)</span></label>
-                  <input id="jc-ai-name" type="text" class="search-input" placeholder="Janus" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
+                  <input id="jc-ai-name" type="text" class="search-input" placeholder="Assistant" style="font-size:13px;width:100%;" oninput="markAiSettingsDirty()">
                 </div>
                 <div>
                   <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Trusted Email Domain <span style="font-weight:400;">(for security checks)</span></label>
-                  <input id="jc-email-domain" type="text" class="search-input" placeholder="yourcompany.com" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
+                  <input id="jc-email-domain" type="text" class="search-input" placeholder="yourcompany.com" style="font-size:13px;width:100%;" oninput="markAiSettingsDirty()">
                 </div>
               </div>
             </div>
@@ -1730,7 +1730,7 @@
               <div class="settings-section-title">Core behaviour</div>
               <div class="toggle-row">
                 <label class="toggle-switch" for="jc-janus-enabled">
-                  <input type="checkbox" id="jc-janus-enabled" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-janus-enabled" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-janus-enabled">
@@ -1740,7 +1740,7 @@
               </div>
               <div class="toggle-row">
                 <label class="toggle-switch" for="jc-janus-scan">
-                  <input type="checkbox" id="jc-janus-scan" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-janus-scan" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-janus-scan">
@@ -1750,7 +1750,7 @@
               </div>
               <div class="toggle-row" style="border-bottom:none;margin-bottom:0;">
                 <label class="toggle-switch" for="jc-security-checks">
-                  <input type="checkbox" id="jc-security-checks" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-security-checks" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-security-checks">
@@ -1766,7 +1766,7 @@
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">AD actions your AI can apply automatically without admin approval. Requires high confidence.</div>
               <div class="toggle-row">
                 <label class="toggle-switch" for="jc-auto-unlock">
-                  <input type="checkbox" id="jc-auto-unlock" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-auto-unlock" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-auto-unlock">
@@ -1776,7 +1776,7 @@
               </div>
               <div class="toggle-row">
                 <label class="toggle-switch" for="jc-auto-reset">
-                  <input type="checkbox" id="jc-auto-reset" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-auto-reset" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-auto-reset">
@@ -1786,7 +1786,7 @@
               </div>
               <div class="toggle-row">
                 <label class="toggle-switch" for="jc-auto-enable">
-                  <input type="checkbox" id="jc-auto-enable" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-auto-enable" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-auto-enable">
@@ -1796,7 +1796,7 @@
               </div>
               <div class="toggle-row" style="border-bottom:none;margin-bottom:0;">
                 <label class="toggle-switch" for="jc-auto-disable">
-                  <input type="checkbox" id="jc-auto-disable" onchange="saveJanusSettings()"/>
+                  <input type="checkbox" id="jc-auto-disable" onchange="saveAiSettings()"/>
                   <span class="toggle-track"></span>
                 </label>
                 <label for="jc-auto-disable">
@@ -1818,9 +1818,9 @@
 
             <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
               <div class="settings-section-title">AI context <span style="font-weight:400;color:var(--muted);font-size:11px;">read before every response</span></div>
-              <textarea id="jc-context" rows="5" class="search-input" placeholder="e.g. We are a school. Student OUs are: Year7, Year8... Staff are in OU=Staff. Never reset passwords for Domain Admins without a manager approval email. Our MSP contact is helpdesk@itprovider.com." style="font-size:13px;width:100%;resize:vertical;line-height:1.5;" oninput="markJanusDirty()"></textarea>
+              <textarea id="jc-context" rows="5" class="search-input" placeholder="e.g. We are a school. Student OUs are: Year7, Year8... Staff are in OU=Staff. Never reset passwords for Domain Admins without a manager approval email. Our MSP contact is helpdesk@itprovider.com." style="font-size:13px;width:100%;resize:vertical;line-height:1.5;" oninput="markAiSettingsDirty()"></textarea>
               <div style="font-size:11px;color:var(--muted);margin-top:6px;">Describe your org structure, naming conventions, policies, or anything your AI should always know.</div>
-              <button id="jc-save-btn" class="btn btn-primary" style="margin-top:12px;display:none;" onclick="saveJanusSettings()">Save changes</button>
+              <button id="jc-save-btn" class="btn btn-primary" style="margin-top:12px;display:none;" onclick="saveAiSettings()">Save changes</button>
             </div>
           </div>
         </div>
@@ -1831,20 +1831,20 @@
           <div class="panel-body">
             <div class="settings-section">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
-                <input type="checkbox" id="jc-report-enabled" onchange="saveJanusSettings()">
+                <input type="checkbox" id="jc-report-enabled" onchange="saveAiSettings()">
                 <span style="font-size:13px;">Send scheduled domain reports via email</span>
               </label>
               <div id="report-options" style="display:none;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
                 <div>
                   <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Frequency</label>
-                  <select id="jc-report-freq" class="search-input" style="font-size:13px;width:100%;" onchange="saveJanusSettings();toggleReportDay()">
+                  <select id="jc-report-freq" class="search-input" style="font-size:13px;width:100%;" onchange="saveAiSettings();toggleReportDay()">
                     <option value="daily">Daily</option>
                     <option value="weekly" selected>Weekly</option>
                   </select>
                 </div>
                 <div id="report-day-wrap">
                   <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Day</label>
-                  <select id="jc-report-day" class="search-input" style="font-size:13px;width:100%;" onchange="saveJanusSettings()">
+                  <select id="jc-report-day" class="search-input" style="font-size:13px;width:100%;" onchange="saveAiSettings()">
                     <option value="0">Monday</option><option value="1">Tuesday</option>
                     <option value="2">Wednesday</option><option value="3">Thursday</option>
                     <option value="4">Friday</option><option value="5">Saturday</option>
@@ -1853,16 +1853,16 @@
                 </div>
                 <div>
                   <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Time (UTC)</label>
-                  <select id="jc-report-hour" class="search-input" style="font-size:13px;width:100%;" onchange="saveJanusSettings()">
+                  <select id="jc-report-hour" class="search-input" style="font-size:13px;width:100%;" onchange="saveAiSettings()">
                     ${Array.from({length:24},(_,i)=>`<option value="${i}">${String(i).padStart(2,'0')}:00</option>`).join('')}
                   </select>
                 </div>
               </div>
               <div>
                 <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Recipients <span style="font-weight:400;">(comma-separated)</span></label>
-                <input id="jc-report-recipients" type="text" class="search-input" placeholder="admin@yourco.com, manager@yourco.com" style="font-size:13px;width:100%;" oninput="markJanusDirty()">
+                <input id="jc-report-recipients" type="text" class="search-input" placeholder="admin@yourco.com, manager@yourco.com" style="font-size:13px;width:100%;" oninput="markAiSettingsDirty()">
               </div>
-              <div style="font-size:11px;color:var(--muted);margin-top:8px;">Reports include: domain stats, locked accounts, expired passwords, recent Janus activity. Requires SMTP to be configured in Settings.</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:8px;">Reports include: domain stats, locked accounts, expired passwords, and recent AI activity. Requires SMTP to be configured in Settings.</div>
             </div>
           </div>
         </div>
@@ -1891,7 +1891,7 @@
               <div class="settings-section-title">Slack</div>
               <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Incoming webhook URL <span style="font-weight:400;">(new tickets and resolutions will be posted here)</span></label>
               <div style="display:flex;gap:8px;">
-                <input id="jc-slack-webhook" type="text" class="search-input" placeholder="https://hooks.slack.com/services/..." style="font-size:13px;flex:1;" oninput="markJanusDirty()">
+                <input id="jc-slack-webhook" type="text" class="search-input" placeholder="https://hooks.slack.com/services/..." style="font-size:13px;flex:1;" oninput="markAiSettingsDirty()">
                 <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;flex-shrink:0;" onclick="testWebhook('slack')">Test</button>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px;">In Slack: Apps &rarr; Incoming Webhooks &rarr; Add to Slack &rarr; copy the webhook URL.</div>
@@ -1900,12 +1900,12 @@
               <div class="settings-section-title">Microsoft Teams</div>
               <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Incoming webhook URL</label>
               <div style="display:flex;gap:8px;">
-                <input id="jc-teams-webhook" type="text" class="search-input" placeholder="https://outlook.office.com/webhook/..." style="font-size:13px;flex:1;" oninput="markJanusDirty()">
+                <input id="jc-teams-webhook" type="text" class="search-input" placeholder="https://outlook.office.com/webhook/..." style="font-size:13px;flex:1;" oninput="markAiSettingsDirty()">
                 <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;flex-shrink:0;" onclick="testWebhook('teams')">Test</button>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px;">In Teams: channel &rarr; Connectors &rarr; Incoming Webhook &rarr; copy the webhook URL.</div>
             </div>
-            <button id="jc-integrations-save-btn" class="btn btn-primary" style="margin-top:14px;" onclick="saveJanusSettings()">Save integrations</button>
+            <button id="jc-integrations-save-btn" class="btn btn-primary" style="margin-top:14px;" onclick="saveAiSettings()">Save integrations</button>
           </div>
         </div>
 
@@ -1968,11 +1968,11 @@
       <input id="script-name" type="text" class="search-input" placeholder="My Custom Script" style="width:100%;font-size:13px;">
     </div>
     <div class="field" style="margin-bottom:12px;">
-      <label>Description <span style="color:var(--muted);font-size:11px;">(Janus reads this to know when to use it)</span></label>
+      <label>Description <span style="color:var(--muted);font-size:11px;">(the AI reads this to know when to use it)</span></label>
       <input id="script-desc" type="text" class="search-input" placeholder="What does this script do?" style="width:100%;font-size:13px;">
     </div>
     <div class="field" style="margin-bottom:12px;">
-      <label>Arguments <span style="color:var(--muted);font-size:11px;">(optional — how Janus should call it)</span></label>
+      <label>Arguments <span style="color:var(--muted);font-size:11px;">(optional — how the AI should call it)</span></label>
       <input id="script-args" type="text" class="search-input" placeholder='e.g. args: [username] -- the user to deprovision' style="width:100%;font-size:13px;">
     </div>
     <div class="field" style="margin-bottom:12px;">
@@ -1984,8 +1984,8 @@
       </select>
     </div>
     <div class="field" style="margin-bottom:0;">
-      <label>PowerShell script <span style="color:var(--muted);font-size:11px;">Use $ARGS[0], $ARGS[1] for Janus-provided arguments</span></label>
-      <textarea id="script-content" rows="10" class="search-input" placeholder="Import-Module ActiveDirectory&#10;# Your PowerShell here&#10;# $ARGS[0] = first argument Janus passes" style="font-family:monospace;font-size:12px;width:100%;resize:vertical;line-height:1.5;"></textarea>
+      <label>PowerShell script <span style="color:var(--muted);font-size:11px;">Use $ARGS[0], $ARGS[1] for AI-provided arguments</span></label>
+      <textarea id="script-content" rows="10" class="search-input" placeholder="Import-Module ActiveDirectory&#10;# Your PowerShell here&#10;# $ARGS[0] = first argument the AI passes" style="font-family:monospace;font-size:12px;width:100%;resize:vertical;line-height:1.5;"></textarea>
     </div>
     <div class="modal-footer" style="margin-top:16px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-script')">Cancel</button>
@@ -2008,7 +2008,7 @@
       <div style="font-size:13px;color:var(--muted);">Navigate to</div><div></div>
       <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">U</kbd> All Users</div>
       <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">T</kbd> Tickets</div>
-      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">J</kbd> Janus AI Chat</div>
+      <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">J</kbd> AI Chat</div>
       <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">A</kbd> Audit Log</div>
       <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">S</kbd> Settings</div>
       <div style="font-size:13px;display:flex;align-items:center;gap:8px;"><kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;">M</kbd> Team Members</div>
@@ -2212,6 +2212,12 @@
 
   const _cache = {};
   const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+  const DEFAULT_AI_NAME = {{ (ai_name or 'Assistant')|tojson }};
+  let _aiName = DEFAULT_AI_NAME || 'Assistant';
+
+  function getAiName() {
+    return (_aiName || DEFAULT_AI_NAME || 'Assistant').trim() || 'Assistant';
+  }
 
   function cacheSet(key, data) { _cache[key] = { data, ts: Date.now() }; }
   function cacheGet(key) {
@@ -2515,22 +2521,23 @@
         document.getElementById('janus-insight-text').textContent = msg;
         document.getElementById('janus-insight-card').style.display = 'flex';
       }
-    } catch { /* silently skip if Janus not configured */ }
+    } catch { /* silently skip if the AI assistant is not configured */ }
   }
 
   async function triggerInsight() {
     const btn  = document.getElementById('janus-insight-btn');
     const card = document.getElementById('janus-insight-card');
-    btn.textContent = '✨ Asking Janus...';
+    const name = getAiName();
+    btn.textContent = `✨ Asking ${name}...`;
     btn.disabled = true;
     await loadInsights();
-    btn.textContent = '✨ Get Janus Insight';
+    btn.textContent = `✨ Get ${name} Insight`;
     btn.disabled = false;
     // Only hide the button if a result actually appeared
     if (card.style.display !== 'none') {
       btn.style.display = 'none';
     } else {
-      toast('Janus insight unavailable — Janus needs an active agent connection.', 'info');
+      toast(`${name} insight unavailable — ${name} needs an active agent connection.`, 'info');
     }
   }
 
@@ -3159,7 +3166,7 @@
 
       const steps = [
         { key: 'agent_connected',   done: d.agent_connected,   label: 'Connect the Windows agent',  tip: 'Copy your API key and run agent.py on your server' },
-        { key: 'email_domain_set',  done: d.email_domain_set,  label: 'Set your email domain',       tip: 'Lets Janus verify who is making requests' },
+        { key: 'email_domain_set',  done: d.email_domain_set,  label: 'Set your email domain',       tip: 'Lets your AI verify who is making requests' },
         { key: 'first_ticket',      done: d.first_ticket,      label: 'Create your first ticket',    tip: 'Email in or use the Tickets page' },
         { key: 'team_member_added', done: d.team_member_added, label: 'Invite a team member',        tip: 'Settings → Team tab' },
       ];
@@ -3416,7 +3423,7 @@
       const priClass = `priority-${t.priority}`;
       const date = t.created_at ? t.created_at.slice(0, 10) : '-';
       const source = t.source === 'email' ? ' 📧' : '';
-      const hasJanus = t.janus_analysis ? ' ✨' : '';
+      const hasAiAnalysis = t.janus_analysis ? ' ✨' : '';
       let hasSecFlag = false;
       if (t.janus_analysis) {
         try { const jd = JSON.parse(t.janus_analysis); hasSecFlag = (jd.score >= 6) || (jd.text || '').includes('Security flag'); }
@@ -3426,7 +3433,7 @@
       const ticketNum = '#' + t.id.slice(0, 6).toUpperCase();
       html += `<tr class="ticket-row" onclick="openTicket('${t.id}')">
         <td style="font-size:11px;color:var(--muted);font-weight:600;font-family:monospace;">${ticketNum}</td>
-        <td>${escHtml(t.title)}${source}${hasJanus}${secBadge}</td>
+        <td>${escHtml(t.title)}${source}${hasAiAnalysis}${secBadge}</td>
         <td style="font-size:12px;color:var(--muted)">${escHtml(t.requester_name || t.requester_email || '-')}</td>
         <td class="${priClass}">${escHtml(t.priority)}</td>
         <td>${statusDropdown}</td>
@@ -3575,7 +3582,7 @@
       : src.slice(0, 2).toUpperCase();
   }
 
-  function parseJanusAnalysis(raw) {
+  function parseAiAnalysis(raw) {
     if (!raw) return null;
     try { const d = JSON.parse(raw); if (d && d.v === 2) return d; } catch {}
     return { v: 1, score: null, title: 'Analysis', text: raw };
@@ -3589,7 +3596,7 @@
     return 'jscore-low';
   }
 
-  function toggleJanusDetails() {
+  function toggleAiDetails() {
     const details = document.getElementById('td-janus-details');
     const btn     = document.getElementById('td-janus-toggle');
     if (!details) return;
@@ -3612,9 +3619,9 @@
     _ticketExpanded  = true; // reset to full-screen for next open
   }
 
-  async function rerunJanus() {
+  async function rerunAiAnalysis() {
     if (!_currentTicketId) return;
-    toast('Re-running Janus analysis…', 'info');
+    toast(`Re-running ${getAiName()} analysis...`, 'info');
     const res  = await fetch(`/dashboard/api/tickets/${_currentTicketId}/analyse`, { method: 'POST' });
     const json = await res.json();
     if (json.success) { toast('Analysis updated.', 'success'); openTicket(_currentTicketId); }
@@ -3707,10 +3714,10 @@
       available.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
     addLabelSel.parentElement.style.display = ''; // always show wrap
 
-    // Janus box
+    // AI analysis box
     const janusBox = document.getElementById('td-janus');
     if (t.janus_analysis) {
-      const jd           = parseJanusAnalysis(t.janus_analysis);
+      const jd           = parseAiAnalysis(t.janus_analysis);
       const analysisText = jd ? jd.text : t.janus_analysis;
       const threatScore  = jd ? (jd.score || 0) : 0;
       const threatTitle  = jd ? (jd.title || 'Analysis') : 'Analysis';
@@ -3757,7 +3764,7 @@
     const actionsWrap = document.getElementById('td-actions');
     actionsWrap.innerHTML = '';
     const typeClass = { comment: 'comment', ad_action: 'ad_action', status_change: 'status_change', janus_analysis: 'janus_analysis' };
-    const typeTag   = { comment: 'comment', ad_action: 'AD action', status_change: 'status', janus_analysis: '✨ Janus' };
+    const typeTag   = { comment: 'comment', ad_action: 'AD action', status_change: 'status', janus_analysis: `✨ ${getAiName()}` };
 
     for (const a of (t.actions || [])) {
       const div = document.createElement('div');
@@ -3924,7 +3931,8 @@
 
     if (!title || !description) { toast('Title and description are required.', 'error'); return; }
 
-    toast('Creating ticket and asking Janus to analyse...', 'info');
+    const aiName = getAiName();
+    toast(`Creating ticket and asking ${aiName} to analyse...`, 'info');
     document.getElementById('new-ticket-panel').style.display = 'none';
 
     const res  = await fetch('/dashboard/api/tickets', {
@@ -3937,16 +3945,16 @@
     if (json.success) {
       let msg;
       if (json.data.auto_resolved) {
-        msg = '✅ Ticket created and auto-resolved by Janus!';
+        msg = `✅ Ticket created and auto-resolved by ${aiName}!`;
       } else if (json.data.janus_error) {
-        console.warn('[Janus] Analysis error:', json.data.janus_error);
-        msg = '🎫 Ticket created — Janus could not analyse it. Check Railway logs.';
+        console.warn('[AI analysis] Analysis error:', json.data.janus_error);
+        msg = `🎫 Ticket created — ${aiName} could not analyse it. Check Railway logs.`;
         toast(msg, 'error');
         msg = null;
       } else if (json.data.janus) {
-        msg = '🎫 Ticket created — Janus has analysed it.';
+        msg = `🎫 Ticket created — ${aiName} has analysed it.`;
       } else {
-        msg = '🎫 Ticket created. (Janus analysis skipped — API key or limit.)';
+        msg = '🎫 Ticket created. (AI analysis skipped — API key or limit.)';
       }
       if (msg) toast(msg, 'success');
       ['nt-title','nt-description','nt-name','nt-email'].forEach(id => document.getElementById(id).value = '');
@@ -3970,7 +3978,7 @@
     locked:   'Locked Accounts',
     expired:  'Expired Passwords',
     tickets:  'Tickets',
-    chat:     'Janus AI',
+    chat:     'AI Assistant',
     audit:    'Audit Log',
     activity: 'Activity Feed',
     team:     'Team',
@@ -3982,7 +3990,8 @@
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     // Update browser tab title
-    document.title = (_pageTitles[name] ? _pageTitles[name] + ' - ' : '') + 'AID Helpdesk';
+    const pageTitle = name === 'chat' ? getAiName() : _pageTitles[name];
+    document.title = (pageTitle ? pageTitle + ' - ' : '') + 'AID Helpdesk';
     // Activate the nav item — either from an explicit el arg, or from the event target
     const navEl = el || (typeof event !== 'undefined' && event && event.currentTarget) || null;
     if (navEl && navEl.classList && navEl.classList.contains('nav-item')) navEl.classList.add('active');
@@ -4013,7 +4022,7 @@
     ticket_created:   { emoji: '🎫', label: 'Ticket created' },
     ticket_resolved:  { emoji: '✅', label: 'Ticket resolved' },
     ad_action:        { emoji: '⚡', label: 'AD action' },
-    janus_action:     { emoji: '✨', label: 'Janus action' },
+    janus_action:     { emoji: '✨', label: 'AI action' },
     security_flag:    { emoji: '🚨', label: 'Security flag' },
     settings_changed: { emoji: '⚙️', label: 'Settings changed' },
     fix_failed:       { emoji: '❌', label: 'Fix failed' },
@@ -4030,6 +4039,7 @@
     let html = '';
     for (const entry of feed) {
       const info    = ACTIVITY_ICONS[entry.event_type] || { emoji: '•', label: entry.event_type };
+      if (entry.event_type === 'janus_action') info.label = `${getAiName()} action`;
       const ts      = entry.created_at ? entry.created_at.slice(0, 16).replace('T', ' ') : '';
       const isSec   = entry.event_type === 'security_flag';
       const secBadge = isSec ? '<span class="security-pill">⚠ Security</span>' : '';
@@ -4067,7 +4077,7 @@
       const json = await res.json();
       _activityFeed = json.data || [];
       if (!_activityFeed.length) {
-        wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No activity yet. Actions and Janus events will appear here.</div>';
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div>No activity yet. Actions and AI events will appear here.</div>';
         return;
       }
       filterActivity();
@@ -4162,7 +4172,7 @@
   function renderRoles() {
     const list = document.getElementById('roles-list');
     if (!_settingsRoles.length) {
-      list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 4px;">No roles configured. Janus will not perform permission checks.</div>';
+      list.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 4px;">No roles configured. The AI assistant will not perform permission checks.</div>';
       return;
     }
     list.innerHTML = _settingsRoles.map((r, i) => `
@@ -4377,7 +4387,7 @@
     const msgs = document.getElementById('chat-messages');
     msgs.innerHTML = `<div class="chat-empty" id="chat-empty">
       <div class="chat-empty-icon">✨</div>
-      <h3>Hi, I'm Janus</h3>
+      <h3>Hi, I'm ${getAiName()}</h3>
       <p>I'm your AI assistant for Active Directory. Ask me anything: look up users, unlock accounts, reset passwords, manage groups, all in plain English.</p>
       <div class="chat-suggestions">
         <span class="chat-suggestion" onclick="sendSuggestion(this)">Who's locked out right now?</span>
@@ -4398,7 +4408,7 @@
     div.className = 'chat-bubble assistant thinking';
     div.innerHTML = `
       <span class="thinking-dots"><span></span><span></span><span></span></span>
-      <span class="thinking-label">Janus is thinking...</span>`;
+      <span class="thinking-label">${getAiName()} is thinking...</span>`;
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
     return div;
@@ -4494,7 +4504,8 @@
   // =========================================================
 
   function updateAiNameElements(name) {
-    if (!name) return;
+    _aiName = (name || '').trim() || DEFAULT_AI_NAME || 'Assistant';
+    name = getAiName();
     const ids = {
       'nav-ai-label':       name,
       'nav-ai-config-label': 'Configure ' + name,
@@ -4502,6 +4513,7 @@
       'chat-greeting-name': name,
       'usage-ai-label':     name,
       'ticket-ai-sender':   name,
+      'ai-insight-title':   name + ' Insight',
     };
     Object.entries(ids).forEach(([id, text]) => {
       const el = document.getElementById(id);
@@ -4510,6 +4522,14 @@
     // Also update the chat placeholder to mention the AI by name
     const inp = document.getElementById('chat-input');
     if (inp) inp.placeholder = `Ask ${name} to unlock an account, reset a password, look up a user…`;
+    const insightBtn = document.getElementById('janus-insight-btn');
+    if (insightBtn && !insightBtn.disabled) insightBtn.textContent = `✨ Get ${name} Insight`;
+    const createTicketBtn = document.getElementById('create-ticket-ai-btn');
+    if (createTicketBtn) createTicketBtn.textContent = `Create & analyse with ${name}`;
+    const rerunBtn = document.getElementById('td-rerun-ai-btn');
+    if (rerunBtn) rerunBtn.title = `Re-analyse with ${name}`;
+    const timeSaved = document.getElementById('time-saved-card');
+    if (timeSaved) timeSaved.title = `Estimated IT time saved by ${name} this month`;
   }
 
   // Fetch settings once at page load to wire up the AI name everywhere
@@ -4517,7 +4537,7 @@
     .then(r => r.json())
     .then(j => {
       if (j.success) {
-        const name = (j.data.janus_name || '').trim() || 'Janus';
+        const name = (j.data.ai_name || '').trim() || DEFAULT_AI_NAME || 'Assistant';
         updateAiNameElements(name);
       }
     })
@@ -4553,7 +4573,7 @@
         }
       }).catch(() => {});
 
-    // 4. Load usage bar (non-blocking). Janus insight is on-demand to save tokens.
+    // 4. Load usage bar (non-blocking). AI insight is on-demand to save tokens.
     loadUsageBar();
 
     // 5. Auto-refresh stats every 2 minutes (uses cache so no extra AD hit)
@@ -4610,13 +4630,13 @@
   });
 
   // =========================================================
-  // Configure Janus page
+  // Configure AI page
   // =========================================================
 
-  let _janusDirty = false;
+  let _aiSettingsDirty = false;
 
-  function markJanusDirty() {
-    _janusDirty = true;
+  function markAiSettingsDirty() {
+    _aiSettingsDirty = true;
     document.getElementById('jc-save-btn').style.display = 'inline-block';
   }
 
@@ -4625,7 +4645,7 @@
     document.getElementById('report-day-wrap').style.display = freq === 'weekly' ? '' : 'none';
   }
 
-  async function loadJanusConfig() {
+  async function loadAiConfig() {
     try {
       const res  = await fetch('/dashboard/api/settings');
       const body = await res.json();
@@ -4634,9 +4654,9 @@
       document.getElementById('jc-janus-enabled').checked   = !!s.janus_enabled;
       document.getElementById('jc-janus-scan').checked      = !!s.janus_scan_emails;
       document.getElementById('jc-security-checks').checked = !!s.security_checks;
-      document.getElementById('jc-ai-name').value           = s.janus_name || '';
+      document.getElementById('jc-ai-name').value           = s.ai_name || '';
       document.getElementById('jc-email-domain').value      = s.email_domain || '';
-      document.getElementById('jc-context').value           = s.janus_context || '';
+      document.getElementById('jc-context').value           = s.ai_context || '';
       document.getElementById('jc-slack-webhook').value     = s.slack_webhook_url || '';
       document.getElementById('jc-teams-webhook').value     = s.teams_webhook_url || '';
       const aa = s.janus_auto_actions || [];
@@ -4652,9 +4672,9 @@
       const reOpts = document.getElementById('report-options');
       if (reOpts) reOpts.style.display = s.report_enabled ? 'grid' : 'none';
       toggleReportDay();
-      _janusDirty = false;
+      _aiSettingsDirty = false;
       document.getElementById('jc-save-btn').style.display = 'none';
-    } catch(e) { console.warn('Janus config load failed:', e); }
+    } catch(e) { console.warn('AI config load failed:', e); }
     loadScriptsList();
     loadMemoryList();
   }
@@ -4776,7 +4796,7 @@
     } catch(e) { toast('Test failed.', 'error'); }
   }
 
-  async function saveJanusSettings() {
+  async function saveAiSettings() {
     // Toggle report options visibility on checkbox change
     const reEnabled = document.getElementById('jc-report-enabled').checked;
     const reOpts    = document.getElementById('report-options');
@@ -4793,9 +4813,9 @@
       janus_scan_emails:  document.getElementById('jc-janus-scan').checked,
       security_checks:    document.getElementById('jc-security-checks').checked,
       janus_auto_actions: _aa,
-      janus_name:         document.getElementById('jc-ai-name').value.trim(),
+      ai_name:            document.getElementById('jc-ai-name').value.trim(),
       email_domain:       document.getElementById('jc-email-domain').value.trim(),
-      janus_context:      document.getElementById('jc-context').value,
+      ai_context:         document.getElementById('jc-context').value,
       report_enabled:     reEnabled,
       report_frequency:   document.getElementById('jc-report-freq').value,
       report_day:         parseInt(document.getElementById('jc-report-day').value),
@@ -4812,8 +4832,8 @@
       const body = await res.json();
       if (body.success) {
         toast('AI settings saved.', 'success');
-        updateAiNameElements(document.getElementById('jc-ai-name').value.trim() || 'Janus');
-        _janusDirty = false;
+        updateAiNameElements(document.getElementById('jc-ai-name').value.trim() || DEFAULT_AI_NAME || 'Assistant');
+        _aiSettingsDirty = false;
         document.getElementById('jc-save-btn').style.display = 'none';
       } else {
         toast(body.message || 'Save failed.', 'error');
@@ -4836,7 +4856,7 @@
         wrap.innerHTML = `<div style="padding:28px;text-align:center;color:var(--muted);">
           <div style="font-size:28px;margin-bottom:8px;">🔧</div>
           <div style="font-weight:600;margin-bottom:4px;">No custom scripts yet</div>
-          <div style="font-size:12px;">Upload a PowerShell script and give it a plain-English name — Janus will be able to run it on demand.</div>
+          <div style="font-size:12px;">Upload a PowerShell script and give it a plain-English name — your AI will be able to run it on demand.</div>
         </div>`;
         return;
       }
@@ -4916,7 +4936,7 @@
   }
 
   async function deleteScript(id, name) {
-    if (!confirm(`Delete script "${name}"? Janus will no longer be able to run it.`)) return;
+    if (!confirm(`Delete script "${name}"? ${getAiName()} will no longer be able to run it.`)) return;
     try {
       const res  = await fetch(`/dashboard/api/scripts/${id}`, {method:'DELETE'});
       const body = await res.json();
@@ -4925,11 +4945,11 @@
     } catch(e) { toast('Delete failed.', 'error'); }
   }
 
-  // Load Janus config page when navigated to
+  // Load AI config page when navigated to
   const _origShowPage = showPage;
   showPage = function(p) {
     _origShowPage(p);
-    if (p === 'janus-config') loadJanusConfig();
+    if (p === 'janus-config') loadAiConfig();
   };
 
   // =========================================================

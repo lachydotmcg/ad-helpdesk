@@ -528,7 +528,7 @@
     .tag-pend   { background: rgba(251,191,36,0.12); color: var(--amber); }
 
     /* AI chat bubble inside dashboard */
-    .janus-chat {
+    .ai-chat {
       position: absolute;
       bottom: 24px;
       right: 24px;
@@ -541,7 +541,7 @@
       font-size: 0.78rem;
       line-height: 1.5;
     }
-    .janus-header {
+    .ai-header {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -551,20 +551,20 @@
       font-weight: 600;
       color: var(--cta);
     }
-    .janus-icon {
+    .ai-icon {
       width: 18px; height: 18px;
       background: linear-gradient(135deg, #22C55E, #16A34A);
       border-radius: 5px;
       display: flex; align-items: center; justify-content: center;
     }
-    .janus-text { color: var(--muted); }
-    .janus-text strong { color: var(--text); }
-    .janus-actions {
+    .ai-text { color: var(--muted); }
+    .ai-text strong { color: var(--text); }
+    .ai-actions {
       display: flex;
       gap: 6px;
       margin-top: 10px;
     }
-    .janus-action-btn {
+    .ai-action-btn {
       padding: 4px 10px;
       border-radius: 5px;
       font-size: 0.7rem;
@@ -572,12 +572,12 @@
       border: 1px solid;
       cursor: pointer;
     }
-    .janus-action-btn.confirm {
+    .ai-action-btn.confirm {
       background: rgba(34,197,94,0.15);
       border-color: rgba(34,197,94,0.4);
       color: var(--cta);
     }
-    .janus-action-btn.dismiss {
+    .ai-action-btn.dismiss {
       background: transparent;
       border-color: var(--border);
       color: var(--muted);
@@ -630,7 +630,7 @@
       .table-header, .table-row { grid-template-columns: 1fr 1fr; }
       .table-header > *:nth-child(n+3),
       .table-row > *:nth-child(n+3) { display: none; }
-      .janus-chat { display: none; }
+      .ai-chat { display: none; }
     }
 
     .feature-card {
@@ -919,7 +919,7 @@
             </div>
             <div class="nav-item" style="margin-top:8px;">
               <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2a6 6 0 100 12A6 6 0 008 2z"/><path d="M8 6v2l1.5 1.5"/></svg>
-              Janus AI
+              AI Assistant
             </div>
             <div class="nav-item">
               <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2l1.5 4.5H14l-3.8 2.7 1.5 4.5L8 11l-3.7 2.7 1.5-4.5L2 6.5h4.5z"/></svg>
@@ -952,7 +952,7 @@
               <div class="stat-card">
                 <div class="stat-label">Open Tickets</div>
                 <div class="stat-val amber" id="stat-tickets">0</div>
-                <div class="stat-trend">2 assigned to Janus</div>
+                <div class="stat-trend">2 assigned to AI</div>
               </div>
               <div class="stat-card">
                 <div class="stat-label">Time Saved</div>
@@ -975,7 +975,7 @@
                   sarah.jones
                 </div>
                 <span role="cell"><span class="tag tag-unlock">Unlock</span></span>
-                <span role="cell" style="color:var(--muted);font-size:0.72rem">Janus AI</span>
+                <span role="cell" style="color:var(--muted);font-size:0.72rem">AI Assistant</span>
                 <span role="cell"><span class="tag tag-done">Done</span></span>
               </div>
               <div class="table-row" role="row">
@@ -993,7 +993,7 @@
                   liu.kai
                 </div>
                 <span role="cell"><span class="tag tag-move">Move OU</span></span>
-                <span role="cell" style="color:var(--muted);font-size:0.72rem">Janus AI</span>
+                <span role="cell" style="color:var(--muted);font-size:0.72rem">AI Assistant</span>
                 <span role="cell"><span class="tag tag-pend">Pending</span></span>
               </div>
             </div>
@@ -1001,24 +1001,24 @@
         </div>
       </div>
 
-      <!-- Janus AI bubble -->
-      <div class="janus-chat" role="complementary" aria-label="Janus AI assistant">
-        <div class="janus-header">
-          <div class="janus-icon" aria-hidden="true">
+      <!-- AI assistant bubble -->
+      <div class="ai-chat" role="complementary" aria-label="AI assistant">
+        <div class="ai-header">
+          <div class="ai-icon" aria-hidden="true">
             <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <circle cx="6" cy="6" r="4" stroke="#020617" stroke-width="1.5"/>
               <path d="M4 6l1.5 1.5L8 4" stroke="#020617" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </div>
-          Janus AI
+          AI Assistant
         </div>
-        <p class="janus-text">
+        <p class="ai-text">
           <strong>3 Year 8 students</strong> in the wrong OU. Want me to bulk-move them to
           <strong>Students\Year8</strong>?
         </p>
-        <div class="janus-actions">
-          <button class="janus-action-btn confirm" onclick="this.textContent='✓ Moved'" aria-label="Confirm bulk move">Confirm</button>
-          <button class="janus-action-btn dismiss" aria-label="Dismiss suggestion">Dismiss</button>
+        <div class="ai-actions">
+          <button class="ai-action-btn confirm" onclick="this.textContent='✓ Moved'" aria-label="Confirm bulk move">Confirm</button>
+          <button class="ai-action-btn dismiss" aria-label="Dismiss suggestion">Dismiss</button>
         </div>
       </div>
     </div>
@@ -1072,14 +1072,14 @@
     </article>
 
     <!-- Card 2 -->
-    <article class="feature-card" aria-label="Janus AI feature">
+    <article class="feature-card" aria-label="AI assistant feature">
       <div class="feat-icon-wrap" style="background:rgba(56,189,248,0.12)">
         <svg viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/>
           <path d="M9 9h.01M15 9h.01M9 15s1 2 3 2 3-2 3-2"/>
         </svg>
       </div>
-      <h3 class="feat-title">Janus AI assistant</h3>
+      <h3 class="feat-title">AI assistant</h3>
       <p class="feat-desc">Natural-language requests — "unlock Sarah's account" or "move all Year 9 students" — resolved automatically with your approval.</p>
     </article>
 
@@ -1105,7 +1105,7 @@
         </svg>
       </div>
       <h3 class="feat-title">Integrated ticket system</h3>
-      <p class="feat-desc">Staff emails become tickets automatically. Janus resolves common ones without touching the dashboard — then tells you what it did.</p>
+      <p class="feat-desc">Staff emails become tickets automatically. The AI assistant resolves common ones without touching the dashboard — then tells you what it did.</p>
     </article>
 
     <!-- Card 5 -->
@@ -1128,7 +1128,7 @@
         </svg>
       </div>
       <h3 class="feat-title">Custom PowerShell scripts</h3>
-      <p class="feat-desc">Upload your own .ps1 scripts. Give them a slug and description. Janus calls them by name — your automation, your way.</p>
+      <p class="feat-desc">Upload your own .ps1 scripts. Give them a slug and description. The AI assistant calls them by name — your automation, your way.</p>
     </article>
   </div>
 </section>

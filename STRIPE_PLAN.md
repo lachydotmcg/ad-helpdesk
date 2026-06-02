@@ -63,13 +63,13 @@ Current feature gates:
   - Dashboard and inbound ticket creation check `limits["tickets"]`.
   - Team member creation checks `limits["team_members"]`.
   - `/api/v1/actions/<action>` uses `action_policy` plus `ad_commands` quota.
-  - Janus auto-resolve uses `limits["auto_actions"]` and `action_policy`.
+  - AI auto-resolve uses `limits["auto_actions"]` and `action_policy`.
 - Gates to fix:
   - `/dashboard/api/exec` uses a stale local `write_actions` set and misses newer
     billable mutations like `run_custom_script`, `create_ou`, and
     `bulk_move_users`.
-  - `_run_chat` increments `janus_calls` after LLM work; it should preflight the
-    Janus quota before calling Anthropic.
+  - `_run_chat` increments `ai_calls` after LLM work; it should preflight the
+    AI quota before calling Anthropic.
   - `_run_chat` chained actions are queued without rerunning the full policy,
     confirmation, and quota path.
   - `/dashboard/api/tickets/<id>/apply-fix` queues ticket fixes without policy,
@@ -81,7 +81,7 @@ Current feature gates:
   - `_run_scheduled_reports` sends reports without checking the tenant plan at
     send time.
   - `/dashboard/api/insights` consumes an LLM call without checking or counting
-    Janus quota.
+    AI quota.
   - `/dashboard/api/memory/*` is live despite memory being described as future
     work; gate it deliberately or hide it until launch.
   - Legacy `/api/command` queues commands without action policy, destructive
@@ -383,17 +383,17 @@ Recommended launch matrix:
 
 | Feature | Free | Pro | Enterprise |
 |---|---:|---:|---:|
-| Janus calls per month | 10 | 500 | 2000 |
+| AI calls per month | 10 | 500 | 2000 |
 | AD write/destructive actions per month | 5 | 200 | 1000 |
 | Read-only AD lookups | unlimited | unlimited | unlimited |
 | Tickets | 20 | unlimited | unlimited |
 | Team members | 1 | 5 | unlimited |
 | Email ticket intake | no | yes | yes |
-| Janus ticket auto-actions | no | yes | yes |
+| AI ticket auto-actions | no | yes | yes |
 | Scheduled reports | no | yes | yes |
 | Custom scripts | no | 10 scripts | unlimited |
 | Slack/Teams notifications | no | yes | yes |
-| Janus memory/persona | no | no for launch | later/Enterprise |
+| AI memory/persona | no | no for launch | later/Enterprise |
 | Support | community | email | priority/SLA |
 
 Changes needed in `PLAN_LIMITS`:
@@ -409,7 +409,7 @@ Changes needed in `PLAN_LIMITS`:
 Create small helper functions in `cloud/app.py` for consistency:
 
 - `tenant_limits(tenant_id)`
-- `check_janus_quota(tenant_id)`
+- `check_ai_quota(tenant_id)`
 - `check_ad_command_quota(tenant_id)`
 - `is_billable_ad_action(action)` using
   `action_policy.is_write(action) or action_policy.is_destructive(action)`
@@ -428,9 +428,9 @@ Then route the following through those helpers:
 - `/dashboard/api/exec`
 - `/api/v1/actions/<action>`
 - `/dashboard/api/tickets/<id>/apply-fix`
-- Janus chat primary action path
-- Janus chat chained action path
-- Janus ticket auto-resolve path
+- AI chat primary action path
+- AI chat chained action path
+- AI ticket auto-resolve path
 - Legacy `/api/command`, if it remains enabled
 
 ### Gate Non-AD Features
@@ -445,14 +445,14 @@ Add or tighten these server-side gates:
 - `/dashboard/api/scripts/*`: require Pro+, enforce `custom_scripts_limit`, and
   block execution of disabled scripts.
 - `/dashboard/api/settings`: block enabling:
-  - `janus_auto_actions` when `limits["auto_actions"]` is false
+  - `ai_auto_actions` when `limits["auto_actions"]` is false
   - `report_enabled` when `limits["scheduled_reports"]` is false
   - Slack/Teams URLs when `limits["integrations"]` is false
 - `_run_scheduled_reports`: check `limits["scheduled_reports"]` immediately
   before sending.
 - `notify_integrations` and `/dashboard/api/integrations/test`: check
   `limits["integrations"]`.
-- `/dashboard/api/insights`: check and increment `janus_calls`, or expose only
+- `/dashboard/api/insights`: check and increment `ai_calls`, or expose only
   on paid plans with a separate limit.
 - `/dashboard/api/memory/*`: disable for launch or gate behind a deliberate plan
   feature flag.
@@ -472,7 +472,7 @@ Option B, stricter SaaS trial:
 
 - Add a `trial` plan or `trial_ends_at` billing state.
 - New tenants get Pro-level features until trial end.
-- After trial end, either downgrade to Free limits or block write/Janus features
+- After trial end, either downgrade to Free limits or block write/AI features
   until subscription.
 
 Recommended for launch: Option A unless there is time to implement trial expiry
@@ -521,7 +521,7 @@ Then verify:
 10. `invoice.payment_failed` marks billing status without immediately breaking
     access during the grace/current period.
 11. Duplicate webhook event IDs do not double-process.
-12. `/dashboard/api/exec`, `/api/v1/actions`, ticket apply-fix, Janus chat, and
+12. `/dashboard/api/exec`, `/api/v1/actions`, ticket apply-fix, AI chat, and
     legacy command paths all enforce the same quota and policy rules.
 
 Production:

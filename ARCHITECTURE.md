@@ -97,7 +97,7 @@ Migrations are version-gated in `migrate_db()` (currently v5). Schema version is
    Returns: {"response": "...", "actions": [{"action": "unlock_account", "args": ["tom.brady"]}]}
         │
         ▼
-3. action_policy.validate("unlock_account", source="janus", tenant_auto_actions=[...])
+3. action_policy.validate("unlock_account", source="ai_auto", tenant_auto_actions=[...])
    WRITE tier: passes if tenant has unlock_account in auto_actions list
         │
         ▼

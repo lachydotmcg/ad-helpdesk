@@ -160,7 +160,7 @@ Destructive actions like `disable_account` always require a human-confirmed 6-di
 ## Roadmap
 
 - [x] v0.1-v0.4: WinRM bridge, local dashboard, cloud agent, multi-tenant backend
-- [x] v0.5-v0.9: Hosted SaaS, Janus AI, ticketing, threat scores, email intake, search chaining
+- [x] v0.5-v0.9: Hosted SaaS, AI assistant, ticketing, threat scores, email intake, search chaining
 - [x] v1.0: Windows Service installer (.exe), scheduled reports, custom PS scripts, bulk AD ops
 - [ ] v1.1: Named AI persona, AI memory / organisational learning, Slack/Teams integration
 

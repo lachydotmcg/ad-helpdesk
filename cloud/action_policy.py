@@ -1,11 +1,11 @@
 """
-action_policy.py -- Hard enforcement boundaries for all Janus / AD actions.
+action_policy.py -- Hard enforcement boundaries for all AI / AD actions.
 
 This is the authoritative permission layer. The LLM output is treated as a
 *request*, not a command. Python code here independently validates every action
 before it is queued, regardless of what the AI said in its response.
 
-Janus cannot bypass these rules by rephrasing, chaining, or any other means.
+The AI assistant cannot bypass these rules by rephrasing, chaining, or any other means.
 If an action is not in ALL_ACTIONS it will never be queued. If it is classified
 as DESTRUCTIVE it will never be auto-resolved -- a human must always approve it.
 
@@ -13,9 +13,9 @@ Classification
 --------------
 READ        Read-only AD queries. Zero side effects. Any source may use these.
 WRITE       Reversible mutations (unlock, enable, password reset, etc.).
-            Can be Janus auto-resolved when the tenant has that setting on.
+            Can be auto-resolved by the AI assistant when the tenant has that setting on.
 DESTRUCTIVE High-impact mutations that are hard to reverse or affect access
-            significantly. ALWAYS require human confirmation. Janus auto-resolve
+            significantly. ALWAYS require human confirmation. AI auto-resolve
             is blocked for these at the Python layer -- no prompt can override it.
 """
 
@@ -48,7 +48,7 @@ WRITE: frozenset[str] = frozenset({
     "run_custom_script",   # classification can be overridden per-script at queue time
 })
 
-# These can never be auto-resolved by Janus. A human must always confirm them.
+# These can never be auto-resolved by the AI assistant. A human must always confirm them.
 DESTRUCTIVE: frozenset[str] = frozenset({
     "disable_account",
     "remove_from_group",
@@ -108,8 +108,8 @@ def validate(
     source : str
         One of:
           "human"      -- Admin clicked something in the dashboard.
-          "janus_chat" -- Janus decided to run this from the AI chat.
-          "janus_auto" -- Janus is trying to auto-resolve a ticket.
+          "ai_chat" -- The AI assistant decided to run this from chat.
+          "ai_auto" -- The AI assistant is trying to auto-resolve a ticket.
     tenant_auto_actions : list[str] | None
         List of action names the tenant has enabled for auto-resolution.
 
@@ -123,12 +123,12 @@ def validate(
     if action not in ALL_ACTIONS:
         return False, (
             f"'{action}' is not a recognised action. "
-            f"Janus operates from a fixed list of {len(ALL_ACTIONS)} operations "
+            f"The AI assistant operates from a fixed list of {len(ALL_ACTIONS)} operations "
             f"and cannot execute arbitrary commands."
         )
 
-    # Janus auto-resolve hard wall: DESTRUCTIVE actions are always blocked
-    if source == "janus_auto":
+    # AI auto-resolve hard wall: DESTRUCTIVE actions are always blocked
+    if source in ("ai_auto", "janus_auto"):
         if action in DESTRUCTIVE:
             return False, (
                 f"'{action}' is classified as destructive and can never be "
@@ -140,7 +140,7 @@ def validate(
                 f"Auto-resolution of '{action}' is not enabled for this tenant."
             )
 
-    # Janus chat: DESTRUCTIVE actions go to human confirmation flow in the
+    # AI chat: DESTRUCTIVE actions go to human confirmation flow in the
     # frontend -- the chat endpoint still queues them, but the frontend shows
     # the confirmation modal. No extra block needed here; just log intent.
 

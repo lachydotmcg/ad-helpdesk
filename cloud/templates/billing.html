@@ -130,7 +130,7 @@
     <!-- Usage this month -->
     <div style="margin:20px 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Janus AI scans</div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">{{ ai_name }} scans</div>
         <div style="font-size:22px;font-weight:800;color:var(--accent2);">{{ usage_janus }}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px;">of {{ limits_janus }} this month</div>
         <div style="margin-top:8px;background:var(--bg);border-radius:99px;height:4px;overflow:hidden;">
@@ -149,14 +149,14 @@
 
     <div class="features">
       {% if tenant_plan == 'free' %}
-      <div class="feature"><span class="check">✓</span> {{ limits_janus }} Janus AI scans / month</div>
+      <div class="feature"><span class="check">✓</span> {{ limits_janus }} {{ ai_name }} scans / month</div>
       <div class="feature"><span class="check">✓</span> {{ limits_commands }} AD actions / month</div>
       <div class="feature"><span class="check">✓</span> Up to 20 tickets</div>
       <div class="feature"><span class="check">✓</span> 1 team member</div>
       <div class="feature"><span class="check">✓</span> Smart ticket system</div>
       <div class="feature"><span class="check">✓</span> Activity feed &amp; audit log</div>
       {% else %}
-      <div class="feature"><span class="check">✓</span> 500 Janus AI scans / month</div>
+      <div class="feature"><span class="check">✓</span> 500 {{ ai_name }} scans / month</div>
       <div class="feature"><span class="check">✓</span> 200 AD actions / month</div>
       <div class="feature"><span class="check">✓</span> Unlimited tickets</div>
       <div class="feature"><span class="check">✓</span> Up to 5 team members</div>
@@ -174,16 +174,16 @@
       {% if tenant_plan == 'free' %}
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;">Free — A$0</div>
-        <div style="font-size:13px;color:var(--muted);line-height:2;">10 Janus scans/mo<br>5 AD actions/mo<br>1 team member<br>20 tickets<br>No email intake<br>Community support</div>
+        <div style="font-size:13px;color:var(--muted);line-height:2;">10 AI scans/mo<br>5 AD actions/mo<br>1 team member<br>20 tickets<br>No email intake<br>Community support</div>
       </div>
       {% endif %}
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Pro — A$29/mo{% if tenant_plan == 'pro' %} <span class="badge badge-active" style="font-size:10px;">Current</span>{% endif %}</div>
-        <div style="font-size:13px;color:var(--text);line-height:2;">500 Janus scans/mo<br>200 AD actions/mo<br>5 team members<br>Unlimited tickets<br>📧 Email intake<br>Email support</div>
+        <div style="font-size:13px;color:var(--text);line-height:2;">500 AI scans/mo<br>200 AD actions/mo<br>5 team members<br>Unlimited tickets<br>📧 Email intake<br>Email support</div>
       </div>
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Enterprise — A$99/mo</div>
-        <div style="font-size:13px;color:var(--text);line-height:2;">2,000 Janus scans/mo<br>1,000 AD actions/mo<br>Unlimited team members<br>Unlimited tickets<br>📧 Email intake<br>📊 Scheduled reports<br>Priority support + SLA</div>
+        <div style="font-size:13px;color:var(--text);line-height:2;">2,000 AI scans/mo<br>1,000 AD actions/mo<br>Unlimited team members<br>Unlimited tickets<br>📧 Email intake<br>📊 Scheduled reports<br>Priority support + SLA</div>
       </div>
     </div>
     {% if tenant_plan == 'free' %}
