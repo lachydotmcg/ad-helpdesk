@@ -100,13 +100,13 @@ Staff submit tickets in plain English. Your AI reads the request, checks the req
 ### AI chat
 Talk to your AI directly in plain English to manage your AD. It chains lookups automatically; if it needs to find a group before adding a user, it does both in one step without asking you to repeat yourself.
 
-### Auto-actions (Pro+)
+### Auto-actions
 Unlock accounts, reset passwords, enable accounts, hands-free, without waiting for an admin to click approve. Every action is logged.
 
-### Email ticket intake (Pro+)
+### Email ticket intake
 Point a Mailgun, SendGrid, or Postmark webhook at your dashboard and tickets flow in from email. Your AI sends the resolution back to the requester automatically.
 
-### Scheduled reports (Pro+)
+### Scheduled reports
 Automated HTML email reports on a schedule you set: daily, weekly, or monthly.
 
 ### Full audit trail
@@ -124,25 +124,29 @@ Every AD action produces a structured, immutable log entry:
 2025-11-03 09:14:38 UTC  requester=admin@school.edu        action=disable_account  target=CN=Ex Teacher,OU=Staff,DC=lab,DC=local       approval=human-confirmed (token 482016)  executor=svc.helpdesk@lab.local
 ```
 
-Destructive actions like `disable_account` always require a human-confirmed 6-digit token; no exceptions, regardless of what the AI suggests.
+High-blast, hard-to-reverse actions (`disable_account`, bulk OU moves, OU creation) require a human-confirmed 6-digit token. Routine helpdesk operations (password resets, unlocks, group changes) are confirmed through the ticket or chat flow and run without an extra prompt.
 
 ---
 
-## Plans
+## Free while in early access
 
-| | Free | Pro | Enterprise |
-|---|---|---|---|
-| AI scans / month | 10 | 500 | 2,000 |
-| AD actions / month | 5 | 200 | 1,000 |
-| Tickets | Up to 20 | Unlimited | Unlimited |
-| Team members | 1 | Up to 5 | Unlimited |
-| Email ticket intake | — | ✓ | ✓ |
-| AI auto-actions | — | ✓ | ✓ |
-| Scheduled reports | — | ✓ | ✓ |
-| Support | Community | Email | Priority |
-| Price | A$0 | A$29/month | A$99/month |
+AID Helpdesk is **completely free** right now. I'm trialling it out and gathering feedback before introducing paid plans — so every feature is unlocked, no credit card required.
 
-**MSP licence:** Managing multiple client environments under one agreement? Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
+| | Free Trial |
+|---|---|
+| AI scans / month | 20 |
+| AD actions / month | 50 |
+| Tickets | Unlimited |
+| Team members | Unlimited |
+| Email ticket intake | ✓ |
+| AI auto-actions | ✓ |
+| Scheduled reports | ✓ |
+| Custom PowerShell scripts | ✓ (up to 3) |
+| Slack / Teams integration | ✓ |
+| Full audit trail | ✓ |
+| Price | **A$0** |
+
+> Paid plans with higher quotas are coming later. For now, sign up free and let me know what you think — feedback shapes where this goes next. Use the in-app **💬 Feedback** button or email [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
 
 ---
 
