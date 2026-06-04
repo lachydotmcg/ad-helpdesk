@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Terms of Service — AID Helpdesk</title>
+  <link rel="icon" type="image/png" href="/logo.png"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0e1a; --surface: #1a1830;
+      --accent: #6366f1; --accent2: #818cf8;
+      --text: #e2e8f0; --muted: #94a3b8;
+      --border: rgba(99,102,241,0.18);
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
+           min-height: 100vh; line-height: 1.7; }
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 48px; background: rgba(15,14,26,0.9);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .nav-logo img { width: 32px; height: 32px; }
+    .nav-logo span { font-weight: 700; }
+    .nav-logo em { color: var(--accent2); font-style: normal; }
+    nav a.back { font-size: 13px; color: var(--muted); text-decoration: none; }
+    nav a.back:hover { color: var(--accent2); }
+    .page { max-width: 720px; margin: 0 auto; padding: 56px 24px 80px; }
+    h1 { font-size: 2rem; font-weight: 800; margin-bottom: 8px; }
+    .updated { font-size: 13px; color: var(--muted); margin-bottom: 48px; }
+    h2 { font-size: 1.1rem; font-weight: 700; margin: 36px 0 12px; color: var(--accent2); }
+    p  { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
+    ul { font-size: 14px; color: var(--muted); margin: 8px 0 12px 20px; }
+    ul li { margin-bottom: 6px; }
+    a  { color: var(--accent2); }
+    footer { text-align: center; padding: 32px; font-size: 13px; color: var(--muted);
+             border-top: 1px solid var(--border); }
+    @media (max-width: 600px) { nav { padding: 12px 16px; } .page { padding: 40px 16px 60px; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a class="nav-logo" href="/">
+    <img src="/logo.png" alt="AID"/>
+    <span><em>AID</em> Helpdesk</span>
+  </a>
+  <a class="back" href="/">← Home</a>
+</nav>
+
+<div class="page">
+  <h1>Terms of Service</h1>
+  <p class="updated">Last updated: June 2026</p>
+
+  <p>
+    These Terms of Service ("Terms") govern your use of AID Helpdesk ("Service"), operated by
+    Lachlan McG ("we", "us"). By creating an account you agree to these Terms.
+  </p>
+
+  <h2>1. Service description</h2>
+  <p>
+    AID Helpdesk provides a cloud dashboard, AI assistant, and Windows agent that allow authorised
+    IT administrators to manage Windows Active Directory environments. The Service includes a ticket
+    system, AI-driven analysis, and direct AD command execution via an agent you install on your
+    Windows Server.
+  </p>
+
+  <h2>2. Eligibility</h2>
+  <p>
+    You must be at least 18 years old and authorised by your organisation to manage its Active Directory
+    environment. By using the Service you represent that you have the legal right and authority to
+    perform actions on the AD environment connected to your account.
+  </p>
+
+  <h2>3. Acceptable use</h2>
+  <p>You agree not to:</p>
+  <ul>
+    <li>Use the Service to perform actions on AD environments you are not authorised to manage.</li>
+    <li>Attempt to exceed plan quotas by scripted or automated means.</li>
+    <li>Use the Service to harass, harm, or discriminate against any person.</li>
+    <li>Reverse-engineer, decompile, or resell the Service or its components.</li>
+    <li>Submit content that is malicious, fraudulent, or violates applicable law.</li>
+  </ul>
+
+  <h2>4. Free trial</h2>
+  <p>
+    During the free trial period we provide access to all Service features at no charge. We reserve
+    the right to modify trial limits or introduce paid plans at any time, with reasonable notice.
+    Continued use after paid plans are introduced constitutes acceptance of the pricing in effect at
+    that time.
+  </p>
+
+  <h2>5. Your data and security</h2>
+  <p>
+    You are responsible for the security of the credentials used to connect your Active Directory to
+    the Service, including the AID Agent service account. You must ensure that service account
+    permissions are limited to the minimum required for the Service to operate.
+  </p>
+  <p>
+    We strongly recommend reviewing all AI-suggested actions before confirming them, and enabling
+    only the auto-action types that are appropriate for your environment.
+  </p>
+
+  <h2>6. AI-generated actions</h2>
+  <p>
+    The Service uses AI (Anthropic's Claude) to interpret requests and suggest or execute AD actions.
+    <strong>You retain full responsibility for all actions taken in your Active Directory</strong>,
+    whether suggested by AI or entered manually. We provide the system and tools; you are the
+    authorised administrator who confirms and approves actions.
+  </p>
+  <p>
+    AI responses may occasionally be inaccurate. Always verify destructive actions before confirming.
+  </p>
+
+  <h2>7. Availability</h2>
+  <p>
+    We aim for high availability but do not guarantee uninterrupted Service. Scheduled maintenance,
+    Railway infrastructure events, or upstream provider outages may cause temporary unavailability.
+    We are not liable for losses arising from Service interruptions.
+  </p>
+
+  <h2>8. Intellectual property</h2>
+  <p>
+    The Service, including its source code, design, and branding, is owned by Lachlan McG and
+    licensed under the <a href="https://github.com/lachydotmcg/ad-helpdesk/blob/main/LICENSE" target="_blank" rel="noopener">MIT + Commons Clause licence</a>.
+    Your data remains your property. We claim no ownership over your AD metadata, tickets, or audit logs.
+  </p>
+
+  <h2>9. Disclaimer of warranties</h2>
+  <p>
+    The Service is provided "as is" without warranty of any kind, express or implied, including
+    merchantability, fitness for a particular purpose, or non-infringement. We do not warrant that
+    the Service will be error-free or that AI-suggested AD actions will always be correct.
+  </p>
+
+  <h2>10. Limitation of liability</h2>
+  <p>
+    To the maximum extent permitted by law, we shall not be liable for any indirect, incidental,
+    special, or consequential damages arising from your use of the Service, including data loss or
+    unintended AD changes. Our total liability for any claim related to the Service shall not exceed
+    the fees you paid to us in the three months preceding the claim.
+  </p>
+
+  <h2>11. Termination</h2>
+  <p>
+    You may close your account at any time by contacting us. We may suspend or terminate accounts
+    that violate these Terms, with or without notice. On termination, your data is retained for
+    30 days and then deleted.
+  </p>
+
+  <h2>12. Changes to these Terms</h2>
+  <p>
+    We may update these Terms from time to time. Material changes will be communicated by email
+    to the admin address on your account at least 14 days before taking effect. Continued use
+    after changes take effect constitutes acceptance.
+  </p>
+
+  <h2>13. Governing law</h2>
+  <p>
+    These Terms are governed by the laws of Victoria, Australia. Any dispute shall be subject to
+    the exclusive jurisdiction of the courts of Victoria.
+  </p>
+
+  <h2>14. Contact</h2>
+  <p>
+    <a href="mailto:lachyswebdev@gmail.com">lachyswebdev@gmail.com</a>
+  </p>
+</div>
+
+<footer>
+  <a href="/">AID Helpdesk</a> &nbsp;·&nbsp;
+  <a href="/terms">Terms of Service</a> &nbsp;·&nbsp;
+  <a href="/privacy">Privacy Policy</a>
+</footer>
+</body>
+</html>

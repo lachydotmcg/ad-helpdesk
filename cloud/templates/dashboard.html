@@ -3853,8 +3853,18 @@
 
     try {
       // Step 1: Queue the fix — returns command_id immediately (202)
-      const res  = await fetch(`/dashboard/api/tickets/${_currentTicketId}/apply-fix`, { method: 'POST' });
-      const json = await res.json();
+      let res  = await fetch(`/dashboard/api/tickets/${_currentTicketId}/apply-fix`, { method: 'POST' });
+      let json = await res.json();
+      if (json.requires_confirmation) {
+        const confirmed = await showConfirmChallenge(json.action_label, json.confirm_token);
+        if (!confirmed) throw new Error('Action cancelled.');
+        res = await fetch(`/dashboard/api/tickets/${_currentTicketId}/apply-fix`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm_token: confirmed })
+        });
+        json = await res.json();
+      }
       if (!json.success) { toast('Failed to queue fix: ' + json.message, 'error'); return; }
 
       const { command_id, action, args } = json;
@@ -4466,13 +4476,49 @@
         appendBubble('assistant', '⚠️ ' + (json.message || 'Something went wrong.'));
       } else {
         if (json.session_id) _chatSessionId = json.session_id;
-        appendBubble('assistant', json.reply, json.action_taken);
-        _chatHistory.push({ role: 'assistant', content: json.reply });
+        if (json.requires_confirmation && json.pending_action) {
+          const confirmed = await showConfirmChallenge(json.action_label, json.confirm_token);
+          if (!confirmed) {
+            appendBubble('assistant', 'Action cancelled.');
+            _chatHistory.push({ role: 'assistant', content: 'Action cancelled.' });
+          } else {
+            const { action, args } = json.pending_action;
+            const execRes = await fetch('/dashboard/api/exec', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action, args, confirm_token: confirmed })
+            });
+            const execJson = await execRes.json();
+            if (!execJson.success) {
+              appendBubble('assistant', 'Error: ' + (execJson.message || 'Failed to queue command'));
+              _chatHistory.push({ role: 'assistant', content: execJson.message || 'Failed to queue command' });
+            } else {
+              appendBubble('assistant', 'Action confirmed and queued. Waiting for the agent...', action);
+              let resultData = null;
+              const deadline = Date.now() + 30000;
+              while (Date.now() < deadline) {
+                await sleep(700);
+                const pr = await fetch(`/dashboard/api/result/${execJson.command_id}`);
+                const pj = await pr.json();
+                if (!pj.pending) { resultData = pj.data; break; }
+              }
+              const finalText = resultData
+                ? (resultData.success ? (resultData.message || 'Action completed.') : ('Action failed: ' + (resultData.message || 'Unknown error')))
+                : 'Agent timed out - check that it is running on your server.';
+              appendBubble('assistant', finalText, action);
+              _chatHistory.push({ role: 'assistant', content: finalText });
+              cacheInvalidate('list_users[]', 'get_stats[]', 'list_locked_accounts[]');
+            }
+          }
+        } else {
+          appendBubble('assistant', json.reply, json.action_taken);
+          _chatHistory.push({ role: 'assistant', content: json.reply });
 
-        // If a write action was taken, invalidate cache so panels refresh correctly
-        const writeActions = ['reset_password','unlock_account','enable_account','disable_account','create_user','move_user','add_to_group','remove_from_group'];
-        if (json.action_taken && writeActions.includes(json.action_taken)) {
-          cacheInvalidate('list_users[]', 'get_stats[]', 'list_locked_accounts[]');
+          // If a write action was taken, invalidate cache so panels refresh correctly
+          const writeActions = ['reset_password','unlock_account','enable_account','disable_account','create_user','move_user','add_to_group','remove_from_group','create_ou','bulk_move_users','run_custom_script','set_password_never_expires','force_password_change'];
+          if (json.action_taken && writeActions.includes(json.action_taken)) {
+            cacheInvalidate('list_users[]', 'get_stats[]', 'list_locked_accounts[]');
+          }
         }
       }
     } catch (e) {
@@ -5035,6 +5081,106 @@
     _miniTicket = null;
     document.getElementById('ticket-mini-bar').style.display = 'none';
     document.getElementById('ticket-modal-overlay').style.display = 'none';
+  }
+
+  // ── Feedback button ────────────────────────────────────────────────────
+  (function () {
+    const btn = document.createElement('button');
+    btn.id = 'feedback-fab';
+    btn.title = 'Share feedback';
+    btn.innerHTML = '💬 Feedback';
+    btn.style.cssText = [
+      'position:fixed','bottom:24px','right:24px','z-index:9000',
+      'padding:10px 18px','border-radius:999px','border:none','cursor:pointer',
+      'font-size:13px','font-weight:700','letter-spacing:0.02em',
+      'background:rgba(99,102,241,0.9)','color:#fff',
+      'box-shadow:0 4px 16px rgba(99,102,241,0.4)',
+      'backdrop-filter:blur(6px)',
+      'transition:transform 0.15s,box-shadow 0.15s',
+    ].join(';');
+    btn.addEventListener('mouseenter', () => { btn.style.transform = 'translateY(-2px)'; btn.style.boxShadow = '0 6px 20px rgba(99,102,241,0.55)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.transform = ''; btn.style.boxShadow = '0 4px 16px rgba(99,102,241,0.4)'; });
+    btn.addEventListener('click', openFeedback);
+    document.body.appendChild(btn);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'feedback-overlay';
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:9001;background:rgba(0,0,0,0.55);backdrop-filter:blur(3px);';
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeFeedback(); });
+
+    const modal = document.createElement('div');
+    modal.style.cssText = [
+      'position:absolute','top:50%','left:50%',
+      'transform:translate(-50%,-50%)',
+      'background:#1a1830','border:1px solid rgba(99,102,241,0.25)',
+      'border-radius:16px','padding:28px','width:min(480px,90vw)',
+      'box-shadow:0 16px 48px rgba(0,0,0,0.6)',
+    ].join(';');
+    modal.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div style="font-size:1rem;font-weight:700;">Share feedback</div>
+        <button onclick="closeFeedback()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;padding:2px 6px;">✕</button>
+      </div>
+      <div style="margin-bottom:14px;">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">How's it going?</div>
+        <div id="fb-stars" style="display:flex;gap:8px;margin-bottom:16px;">
+          ${[1,2,3,4,5].map(n=>`<button data-rating="${n}" onclick="setFbRating(${n})" style="background:none;border:1px solid rgba(99,102,241,0.25);border-radius:8px;width:42px;height:42px;font-size:18px;cursor:pointer;transition:background 0.15s;">⭐</button>`).join('')}
+        </div>
+        <textarea id="fb-text" rows="4" placeholder="What's working well? What's confusing? Anything you'd like to see?" style="width:100%;background:#0f0e1a;border:1px solid rgba(99,102,241,0.2);border-radius:8px;color:#e2e8f0;font-size:13px;padding:10px 12px;resize:vertical;outline:none;font-family:inherit;"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeFeedback()" style="padding:9px 18px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:none;color:#94a3b8;font-size:13px;cursor:pointer;">Cancel</button>
+        <button id="fb-submit" onclick="submitFeedback()" style="padding:9px 18px;border-radius:8px;border:none;background:#6366f1;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Send feedback</button>
+      </div>
+      <div id="fb-msg" style="margin-top:12px;font-size:13px;text-align:center;display:none;"></div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  })();
+
+  let _fbRating = null;
+  function openFeedback() { document.getElementById('feedback-overlay').style.display = 'block'; }
+  function closeFeedback() {
+    document.getElementById('feedback-overlay').style.display = 'none';
+    _fbRating = null;
+    const ta = document.getElementById('fb-text');
+    if (ta) ta.value = '';
+    const msg = document.getElementById('fb-msg');
+    if (msg) msg.style.display = 'none';
+    const stars = document.querySelectorAll('#fb-stars button');
+    stars.forEach(b => { b.style.background = ''; b.style.borderColor = 'rgba(99,102,241,0.25)'; });
+  }
+  function setFbRating(n) {
+    _fbRating = n;
+    document.querySelectorAll('#fb-stars button').forEach(b => {
+      const active = parseInt(b.dataset.rating) <= n;
+      b.style.background = active ? 'rgba(99,102,241,0.25)' : '';
+      b.style.borderColor = active ? 'rgba(99,102,241,0.6)' : 'rgba(99,102,241,0.25)';
+    });
+  }
+  async function submitFeedback() {
+    const ta  = document.getElementById('fb-text');
+    const msg = document.getElementById('fb-msg');
+    const btn = document.getElementById('fb-submit');
+    const text = (ta?.value || '').trim();
+    if (!text) { ta?.focus(); return; }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const res  = await fetch('/dashboard/api/feedback', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ message: text, rating: _fbRating, page: location.hash || 'dashboard' }),
+      });
+      const json = await res.json();
+      msg.textContent = json.success ? '✓ Thank you! Your feedback has been received.' : (json.message || 'Something went wrong.');
+      msg.style.color   = json.success ? '#4ade80' : '#f87171';
+      msg.style.display = 'block';
+      if (json.success) setTimeout(closeFeedback, 1800);
+    } catch {
+      msg.textContent = 'Network error — please try again.';
+      msg.style.color = '#f87171';
+      msg.style.display = 'block';
+    }
+    btn.disabled = false; btn.textContent = 'Send feedback';
   }
 </script>
 </body>

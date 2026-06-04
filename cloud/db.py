@@ -33,7 +33,15 @@ _USE_PG = bool(DATABASE_URL)
 
 if _USE_PG:
     import psycopg2
+    import psycopg2.errors
     import psycopg2.extras
+
+_STRIPE_EVENT_DUPLICATE_ERRORS = (sqlite3.IntegrityError,)
+if _USE_PG:
+    _STRIPE_EVENT_DUPLICATE_ERRORS = (
+        sqlite3.IntegrityError,
+        psycopg2.errors.UniqueViolation,
+    )
 
 
 def _get_conn():
@@ -229,6 +237,27 @@ _SCHEMA = [
         last_used   TEXT NOT NULL,
         FOREIGN KEY (tenant_id) REFERENCES tenants(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS billing_customers (
+        tenant_id          TEXT PRIMARY KEY,
+        stripe_customer_id TEXT NOT NULL UNIQUE,
+        created_at         TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS billing_subscriptions (
+        tenant_id              TEXT PRIMARY KEY,
+        stripe_subscription_id TEXT NOT NULL UNIQUE,
+        plan                   TEXT NOT NULL DEFAULT 'free',
+        status                 TEXT NOT NULL DEFAULT 'none',
+        current_period_end     TEXT,
+        updated_at             TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS stripe_events (
+        event_id     TEXT NOT NULL UNIQUE,
+        type         TEXT NOT NULL,
+        received_at  TEXT NOT NULL,
+        processed_at TEXT
+    )""",
 ]
 
 
@@ -310,6 +339,57 @@ def migrate_db():
             source      TEXT NOT NULL DEFAULT 'auto',
             created_at  TEXT NOT NULL,
             last_used   TEXT NOT NULL
+        )""")
+        # v7: launch-grade Stripe billing state and webhook idempotency.
+        cur.execute("""CREATE TABLE IF NOT EXISTS billing_customers (
+            tenant_id          TEXT PRIMARY KEY,
+            stripe_customer_id TEXT NOT NULL UNIQUE,
+            created_at         TEXT NOT NULL
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS billing_subscriptions (
+            tenant_id              TEXT PRIMARY KEY,
+            stripe_subscription_id TEXT NOT NULL UNIQUE,
+            plan                   TEXT NOT NULL DEFAULT 'free',
+            status                 TEXT NOT NULL DEFAULT 'none',
+            current_period_end     TEXT,
+            updated_at             TEXT NOT NULL
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS stripe_events (
+            event_id     TEXT NOT NULL UNIQUE,
+            type         TEXT NOT NULL,
+            received_at  TEXT NOT NULL,
+            processed_at TEXT
+        )""")
+        if _USE_PG:
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'stripe_events'
+            """)
+            event_cols = {r["column_name"] for r in cur.fetchall()}
+            if "event_id" not in event_cols:
+                cur.execute("ALTER TABLE stripe_events ADD COLUMN event_id TEXT")
+                event_cols.add("event_id")
+            if "id" in event_cols:
+                cur.execute("UPDATE stripe_events SET event_id = id WHERE event_id IS NULL")
+        else:
+            cur.execute("PRAGMA table_info(stripe_events)")
+            event_cols = [r["name"] for r in cur.fetchall()]
+            if "event_id" not in event_cols:
+                cur.execute("ALTER TABLE stripe_events ADD COLUMN event_id TEXT")
+                event_cols.append("event_id")
+            if "id" in event_cols:
+                cur.execute("UPDATE stripe_events SET event_id = id WHERE event_id IS NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS stripe_events_event_id_key ON stripe_events(event_id)")
+        # v8: feedback table for in-product feedback during trial
+        cur.execute("""CREATE TABLE IF NOT EXISTS feedback (
+            id          TEXT PRIMARY KEY,
+            tenant_id   TEXT NOT NULL,
+            user_email  TEXT NOT NULL,
+            message     TEXT NOT NULL,
+            rating      INTEGER,
+            page        TEXT,
+            created_at  TEXT NOT NULL
         )""")
         conn.commit()
     except Exception:
@@ -1115,6 +1195,25 @@ def log_activity(tenant_id: str, event_type: str, actor: str,
         conn.close()
 
 
+def create_feedback(tenant_id: str, user_email: str, message: str,
+                    rating: int | None = None, page: str | None = None) -> dict:
+    """Store a feedback submission."""
+    fb_id = str(uuid.uuid4())
+    now   = datetime.utcnow().isoformat()
+    conn  = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"INSERT INTO feedback (id, tenant_id, user_email, message, rating, page, created_at) "
+            f"VALUES ({_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH})",
+            (fb_id, tenant_id, user_email, message, rating, page, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"id": fb_id}
+
+
 def get_first_tenant_id() -> str | None:
     """Return the id of the first tenant created. Used by email webhook routing."""
     conn = _get_conn()
@@ -1128,45 +1227,231 @@ def get_first_tenant_id() -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Billing helpers
+# ---------------------------------------------------------------------------
+
+def get_billing_customer(tenant_id: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM billing_customers WHERE tenant_id = {_PH}",
+            (tenant_id,)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def get_tenant_id_by_stripe_customer(stripe_customer_id: str) -> str | None:
+    if not stripe_customer_id:
+        return None
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT tenant_id FROM billing_customers WHERE stripe_customer_id = {_PH}",
+            (stripe_customer_id,)
+        )
+        row = _row(cur.fetchone())
+        return row["tenant_id"] if row else None
+    finally:
+        conn.close()
+
+
+def upsert_billing_customer(tenant_id: str, stripe_customer_id: str) -> dict:
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""INSERT INTO billing_customers (tenant_id, stripe_customer_id, created_at)
+               VALUES ({_PH}, {_PH}, {_PH})
+               ON CONFLICT(tenant_id) DO UPDATE
+               SET stripe_customer_id = excluded.stripe_customer_id""",
+            (tenant_id, stripe_customer_id, now)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "tenant_id": tenant_id,
+        "stripe_customer_id": stripe_customer_id,
+        "created_at": now,
+    }
+
+
+def get_billing_subscription(tenant_id: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM billing_subscriptions WHERE tenant_id = {_PH}",
+            (tenant_id,)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def get_tenant_id_by_stripe_subscription(stripe_subscription_id: str) -> str | None:
+    if not stripe_subscription_id:
+        return None
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT tenant_id FROM billing_subscriptions WHERE stripe_subscription_id = {_PH}",
+            (stripe_subscription_id,)
+        )
+        row = _row(cur.fetchone())
+        return row["tenant_id"] if row else None
+    finally:
+        conn.close()
+
+
+def upsert_billing_subscription(tenant_id: str, stripe_subscription_id: str,
+                                plan: str, status: str,
+                                current_period_end: str | None = None) -> dict:
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""INSERT INTO billing_subscriptions
+               (tenant_id, stripe_subscription_id, plan, status, current_period_end, updated_at)
+               VALUES ({_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH})
+               ON CONFLICT(tenant_id) DO UPDATE
+               SET stripe_subscription_id = excluded.stripe_subscription_id,
+                   plan = excluded.plan,
+                   status = excluded.status,
+                   current_period_end = excluded.current_period_end,
+                   updated_at = excluded.updated_at""",
+            (tenant_id, stripe_subscription_id, plan, status, current_period_end, now)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "tenant_id": tenant_id,
+        "stripe_subscription_id": stripe_subscription_id,
+        "plan": plan,
+        "status": status,
+        "current_period_end": current_period_end,
+        "updated_at": now,
+    }
+
+
+def has_active_billing_subscription(tenant_id: str) -> bool:
+    sub = get_billing_subscription(tenant_id)
+    return bool(sub and sub.get("status") == "active")
+
+
+def record_stripe_event(event_id: str, event_type: str) -> bool:
+    """
+    Return True when this event should be processed.
+    Duplicate event IDs return False while the original delivery is either
+    processing or already processed.
+    """
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        try:
+            cur.execute(
+                f"INSERT INTO stripe_events (event_id, type, received_at) VALUES ({_PH}, {_PH}, {_PH})",
+                (event_id, event_type, now)
+            )
+            conn.commit()
+            return True
+        except _STRIPE_EVENT_DUPLICATE_ERRORS:
+            conn.rollback()
+            return False
+    finally:
+        conn.close()
+
+
+def release_unprocessed_stripe_event(event_id: str) -> None:
+    """
+    Allow Stripe to retry an event that failed before it was marked processed.
+    Already-processed rows are kept so completed webhooks remain idempotent.
+    """
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"DELETE FROM stripe_events WHERE event_id = {_PH} AND processed_at IS NULL",
+            (event_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_stripe_event_processed(event_id: str) -> None:
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE stripe_events SET processed_at = {_PH} WHERE event_id = {_PH}",
+            (now, event_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Plan limits
 # ---------------------------------------------------------------------------
 
 PLAN_LIMITS = {
+    # ── Free trial ─────────────────────────────────────────────────────────
+    # All features unlocked so testers get a fair picture of the product.
+    # Quotas are generous but finite — enough for real testing, not abuse.
     "free": {
-        "janus_calls":       10,
-        "ad_commands":       5,
-        "team_members":      1,
-        "tickets":           20,
-        "email_intake":      False,
-        "auto_actions":      False,
-        "scheduled_reports": False,
-        "label":             "Free",
-        "price":             "A$0",
-        "price_monthly":     0,
+        "janus_calls":          20,    # AI scans / month
+        "ad_commands":          50,    # AD actions + searches / month
+        "team_members":         None,  # unlimited during trial
+        "tickets":              None,  # unlimited during trial
+        "email_intake":         True,
+        "auto_actions":         True,
+        "scheduled_reports":    True,
+        "custom_scripts_limit": 3,
+        "integrations":         True,
+        "label":                "Free Trial",
+        "price":                "A$0",
+        "price_monthly":        0,
     },
+    # ── Paid tiers (code kept, not yet exposed in UI) ─────────────────────
     "pro": {
-        "janus_calls":       500,
-        "ad_commands":       200,
-        "team_members":      5,
-        "tickets":           None,
-        "email_intake":      True,
-        "auto_actions":      True,
-        "scheduled_reports": True,
-        "label":             "Pro",
-        "price":             "A$29/month",
-        "price_monthly":     29,
+        "janus_calls":          500,
+        "ad_commands":          200,
+        "team_members":         5,
+        "tickets":              None,
+        "email_intake":         True,
+        "auto_actions":         True,
+        "scheduled_reports":    True,
+        "custom_scripts_limit": 10,
+        "integrations":         True,
+        "label":                "Pro",
+        "price":                "A$29/month",
+        "price_monthly":        29,
     },
     "enterprise": {
-        "janus_calls":       2000,
-        "ad_commands":       1000,
-        "team_members":      None,
-        "tickets":           None,
-        "email_intake":      True,
-        "auto_actions":      True,
-        "scheduled_reports": True,
-        "label":             "Enterprise",
-        "price":             "A$99/month",
-        "price_monthly":     99,
+        "janus_calls":          2000,
+        "ad_commands":          1000,
+        "team_members":         None,
+        "tickets":              None,
+        "email_intake":         True,
+        "auto_actions":         True,
+        "scheduled_reports":    True,
+        "custom_scripts_limit": None,
+        "integrations":         True,
+        "label":                "Enterprise",
+        "price":                "A$99/month",
+        "price_monthly":        99,
     },
 }
 
@@ -1179,11 +1464,23 @@ def get_tenant_plan(tenant_id: str) -> str:
     conn = _get_conn()
     try:
         cur = _cur(conn)
-        cur.execute(f"SELECT plan FROM tenants WHERE id = {_PH}", (tenant_id,))
+        cur.execute(
+            f"""SELECT t.plan, bs.plan AS billing_plan, bs.status AS billing_status
+               FROM tenants t
+               LEFT JOIN billing_subscriptions bs ON bs.tenant_id = t.id
+               WHERE t.id = {_PH}""",
+            (tenant_id,)
+        )
         row = _row(cur.fetchone())
-        return (row or {}).get("plan", "free")
     finally:
         conn.close()
+    plan = (row or {}).get("plan", "free")
+    billing_plan = (row or {}).get("billing_plan")
+    if (row or {}).get("billing_status") == "active" and billing_plan in ("pro", "enterprise"):
+        return billing_plan
+    if plan in ("pro", "enterprise"):
+        return "free"
+    return plan
 
 
 def set_tenant_plan(tenant_id: str, plan: str) -> None:

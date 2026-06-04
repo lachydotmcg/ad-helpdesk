@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Policy — AID Helpdesk</title>
+  <link rel="icon" type="image/png" href="/logo.png"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0e1a; --surface: #1a1830;
+      --accent: #6366f1; --accent2: #818cf8;
+      --text: #e2e8f0; --muted: #94a3b8;
+      --border: rgba(99,102,241,0.18);
+    }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
+           min-height: 100vh; line-height: 1.7; }
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 48px; background: rgba(15,14,26,0.9);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .nav-logo img { width: 32px; height: 32px; }
+    .nav-logo span { font-weight: 700; }
+    .nav-logo em { color: var(--accent2); font-style: normal; }
+    nav a.back { font-size: 13px; color: var(--muted); text-decoration: none; }
+    nav a.back:hover { color: var(--accent2); }
+    .page { max-width: 720px; margin: 0 auto; padding: 56px 24px 80px; }
+    h1 { font-size: 2rem; font-weight: 800; margin-bottom: 8px; }
+    .updated { font-size: 13px; color: var(--muted); margin-bottom: 48px; }
+    h2 { font-size: 1.1rem; font-weight: 700; margin: 36px 0 12px; color: var(--accent2); }
+    p  { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
+    ul { font-size: 14px; color: var(--muted); margin: 8px 0 12px 20px; }
+    ul li { margin-bottom: 6px; }
+    a  { color: var(--accent2); }
+    footer { text-align: center; padding: 32px; font-size: 13px; color: var(--muted);
+             border-top: 1px solid var(--border); }
+    @media (max-width: 600px) { nav { padding: 12px 16px; } .page { padding: 40px 16px 60px; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a class="nav-logo" href="/">
+    <img src="/logo.png" alt="AID"/>
+    <span><em>AID</em> Helpdesk</span>
+  </a>
+  <a class="back" href="/">← Home</a>
+</nav>
+
+<div class="page">
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: June 2026</p>
+
+  <p>
+    AID Helpdesk ("we", "us") operates the AID Helpdesk service at
+    <a href="https://web-production-01ecc.up.railway.app">web-production-01ecc.up.railway.app</a>.
+    This policy explains what data we collect, why, and how we protect it.
+  </p>
+
+  <h2>1. What we collect</h2>
+  <ul>
+    <li><strong>Account data</strong> — company name, email address, and hashed password when you sign up.</li>
+    <li><strong>Active Directory metadata</strong> — usernames, display names, organisational units, group names, and account status returned by your Windows agent. We never store AD passwords.</li>
+    <li><strong>Ticket content</strong> — support request text submitted by your staff via the ticket form or email.</li>
+    <li><strong>Audit log</strong> — a record of every AD action taken (who requested it, what was done, when).</li>
+    <li><strong>Usage metrics</strong> — counts of AI scans and AD actions per month for quota tracking.</li>
+    <li><strong>Feedback</strong> — voluntary feedback you submit via the in-product feedback button.</li>
+    <li><strong>Technical logs</strong> — standard server access logs (IP address, request path, timestamp) for security and debugging.</li>
+  </ul>
+
+  <h2>2. What we do NOT collect</h2>
+  <ul>
+    <li>AD user passwords (never transmitted to our servers)</li>
+    <li>Payment card details (Stripe handles these; we only store subscription state)</li>
+    <li>Email content beyond what staff submit as support tickets</li>
+  </ul>
+
+  <h2>3. How we use your data</h2>
+  <ul>
+    <li>To operate the service — process tickets, execute AD commands via your Windows agent, generate reports.</li>
+    <li>To enforce plan quotas and prevent abuse.</li>
+    <li>To send transactional emails (password resets, ticket resolutions, scheduled reports) that you have configured.</li>
+    <li>To improve the product — aggregate, anonymised usage metrics only.</li>
+  </ul>
+
+  <h2>4. Data storage and security</h2>
+  <p>
+    Data is stored in a PostgreSQL database hosted on Railway (Frankfurt, EU / US region
+    depending on your deployment). Data in transit is encrypted via HTTPS/TLS.
+    Passwords are hashed with bcrypt. We apply the principle of least privilege — no
+    employee or contractor has routine access to your AD metadata.
+  </p>
+  <p>
+    Your Active Directory is never directly accessible from the internet. The AID Windows
+    Agent polls outbound over HTTPS; no inbound ports need to be opened on your network.
+  </p>
+
+  <h2>5. Data retention</h2>
+  <p>
+    Your data is retained for the lifetime of your account. If you close your account, data
+    is deleted within 30 days. You can export your audit log and ticket history at any time
+    from the dashboard.
+  </p>
+
+  <h2>6. Third parties</h2>
+  <ul>
+    <li><strong>Anthropic</strong> — AI responses are generated using the Claude API. Ticket text and AD metadata may be sent to Anthropic's API for processing. Anthropic's <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener">privacy policy</a> applies.</li>
+    <li><strong>Railway</strong> — our hosting provider. Data is stored on Railway's infrastructure.</li>
+    <li><strong>Stripe</strong> — payment processing (when paid plans are available). Card data goes directly to Stripe.</li>
+    <li><strong>Mailgun / SendGrid / Postmark</strong> — optional email delivery providers you may configure for email ticket intake.</li>
+  </ul>
+  <p>We do not sell your data to any third party.</p>
+
+  <h2>7. Your rights</h2>
+  <p>
+    You may request access to, correction of, or deletion of your data at any time by
+    emailing <a href="mailto:lachyswebdev@gmail.com">lachyswebdev@gmail.com</a>.
+    We will respond within 30 days.
+  </p>
+
+  <h2>8. Cookies</h2>
+  <p>
+    We use a single session cookie to keep you logged in to the dashboard. No third-party
+    tracking or advertising cookies are used.
+  </p>
+
+  <h2>9. Changes to this policy</h2>
+  <p>
+    We may update this policy from time to time. Material changes will be notified by
+    email to the admin address on your account.
+  </p>
+
+  <h2>10. Contact</h2>
+  <p>
+    Questions or concerns: <a href="mailto:lachyswebdev@gmail.com">lachyswebdev@gmail.com</a>
+  </p>
+</div>
+
+<footer>
+  <a href="/">AID Helpdesk</a> &nbsp;·&nbsp;
+  <a href="/terms">Terms of Service</a> &nbsp;·&nbsp;
+  <a href="/privacy">Privacy Policy</a>
+</footer>
+</body>
+</html>

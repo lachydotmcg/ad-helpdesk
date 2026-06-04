@@ -15,7 +15,6 @@
       --success: #4ade80; --warn: #fbbf24; --error: #f87171;
     }
     body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-
     nav {
       display: flex; align-items: center; justify-content: space-between;
       padding: 14px 48px; background: rgba(15,14,26,0.9);
@@ -28,62 +27,44 @@
     .nav-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
     .nav-right a { color: var(--muted); text-decoration: none; }
     .nav-right a:hover { color: var(--accent2); }
-
     .page { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
     h1 { font-size: 1.8rem; font-weight: 800; margin-bottom: 6px; }
     .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 40px; }
-
     .card {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 14px; padding: 28px; margin-bottom: 20px;
     }
     .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase;
                   letter-spacing: 0.06em; color: var(--muted); margin-bottom: 16px; }
-
-    .plan-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-    .plan-name { font-size: 1.2rem; font-weight: 700; }
-    .plan-price { font-size: 1.5rem; font-weight: 800; color: var(--accent2); }
-    .plan-price span { font-size: 14px; font-weight: 400; color: var(--muted); }
-
     .badge {
       display: inline-block; padding: 3px 10px; border-radius: 999px;
       font-size: 12px; font-weight: 700;
     }
-    .badge-trial { background: rgba(251,191,36,0.15); color: var(--warn); border: 1px solid rgba(251,191,36,0.3); }
-    .badge-active { background: rgba(74,222,128,0.12); color: var(--success); border: 1px solid rgba(74,222,128,0.25); }
-
-    .trial-bar-wrap { margin: 16px 0 8px; }
-    .trial-bar-bg { background: var(--surface2); border-radius: 99px; height: 6px; overflow: hidden; }
-    .trial-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 99px; transition: width 0.4s; }
-    .trial-label { font-size: 12px; color: var(--muted); margin-top: 6px; }
-
-    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
-    .feature { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-    .feature .check { color: var(--accent2); font-size: 14px; }
-
-    .btn {
-      display: inline-block; padding: 11px 24px; border-radius: 9px;
-      font-size: 14px; font-weight: 700; cursor: pointer;
-      text-decoration: none; border: none; transition: background 0.2s, transform 0.1s;
+    .badge-trial { background: rgba(74,222,128,0.12); color: var(--success); border: 1px solid rgba(74,222,128,0.25); }
+    .coming-soon-box {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 40px 24px;
+      border: 1px dashed rgba(99,102,241,0.3);
+      border-radius: 14px; background: rgba(99,102,241,0.04);
     }
-    .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { background: var(--accent2); }
-    .btn-ghost {
-      background: transparent; color: var(--muted);
-      border: 1px solid var(--border);
-    }
-    .btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
-
-    .faq-item { border-bottom: 1px solid var(--border); padding: 16px 0; }
-    .faq-item:last-child { border-bottom: none; }
-    .faq-q { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-    .faq-a { font-size: 13px; color: var(--muted); line-height: 1.6; }
-
+    .coming-soon-icon { font-size: 2.5rem; margin-bottom: 16px; }
+    .coming-soon-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+    .coming-soon-desc { font-size: 13px; color: var(--muted); line-height: 1.7; max-width: 420px; }
+    .feature-row { display: flex; align-items: center; gap: 8px; font-size: 13px;
+                   color: var(--muted); padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .feature-row:last-child { border-bottom: none; }
+    .feature-row .check { color: var(--success); font-size: 14px; }
+    .usage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+    .usage-box { background: var(--surface2); border-radius: 10px; padding: 14px 16px; }
+    .usage-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .usage-num { font-size: 22px; font-weight: 800; color: var(--accent2); }
+    .usage-cap { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .usage-bar { margin-top: 8px; background: var(--bg); border-radius: 99px; height: 4px; overflow: hidden; }
+    .usage-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; }
     @media (max-width: 600px) {
       nav { padding: 12px 16px; }
       .page { padding: 32px 16px; }
-      .features { grid-template-columns: 1fr; }
+      .usage-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -102,228 +83,63 @@
 </nav>
 
 <div class="page">
-  <div id="billing-banner" style="display:none;padding:14px 18px;border-radius:10px;margin-bottom:24px;font-size:14px;font-weight:600;"></div>
-
   <h1>Billing &amp; Plan</h1>
   <p class="subtitle">Managing billing for <strong>{{ tenant_name }}</strong></p>
 
   <!-- Current Plan -->
   <div class="card">
     <div class="card-title">Current Plan</div>
-    <div class="plan-row">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px;">
       <div>
-        <div class="plan-name">
-          {{ plan_label }} &nbsp;
-          {% if tenant_plan == 'free' %}
-            <span class="badge badge-trial">Free</span>
-          {% else %}
-            <span class="badge badge-active">Active</span>
-          {% endif %}
-        </div>
+        <span style="font-size:1.2rem;font-weight:700;">Free Trial</span>
+        &nbsp;<span class="badge badge-trial">Active</span>
       </div>
-      <div class="plan-price">
-        {% if tenant_plan == 'free' %}A$0 <span>/ month</span>
-        {% else %}A$29 <span>/ month</span>{% endif %}
-      </div>
+      <div style="font-size:1.4rem;font-weight:800;color:var(--success);">A$0</div>
     </div>
 
     <!-- Usage this month -->
-    <div style="margin:20px 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">{{ ai_name }} scans</div>
-        <div style="font-size:22px;font-weight:800;color:var(--accent2);">{{ usage_janus }}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;">of {{ limits_janus }} this month</div>
-        <div style="margin-top:8px;background:var(--bg);border-radius:99px;height:4px;overflow:hidden;">
-          <div style="height:100%;background:var(--accent);border-radius:99px;width:{{ janus_pct }}%;"></div>
-        </div>
+    <div class="usage-grid">
+      <div class="usage-box">
+        <div class="usage-label">{{ ai_name }} scans</div>
+        <div class="usage-num">{{ usage_janus }}</div>
+        <div class="usage-cap">of {{ limits_janus }} this month</div>
+        <div class="usage-bar"><div class="usage-bar-fill" style="width:{{ janus_pct }}%;"></div></div>
       </div>
-      <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">AD actions</div>
-        <div style="font-size:22px;font-weight:800;color:var(--accent2);">{{ usage_commands }}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;">of {{ limits_commands }} this month</div>
-        <div style="margin-top:8px;background:var(--bg);border-radius:99px;height:4px;overflow:hidden;">
-          <div style="height:100%;background:var(--accent);border-radius:99px;width:{{ commands_pct }}%;"></div>
-        </div>
+      <div class="usage-box">
+        <div class="usage-label">AD actions</div>
+        <div class="usage-num">{{ usage_commands }}</div>
+        <div class="usage-cap">of {{ limits_commands }} this month</div>
+        <div class="usage-bar"><div class="usage-bar-fill" style="width:{{ commands_pct }}%;"></div></div>
       </div>
-    </div>
-
-    <div class="features">
-      {% if tenant_plan == 'free' %}
-      <div class="feature"><span class="check">✓</span> {{ limits_janus }} {{ ai_name }} scans / month</div>
-      <div class="feature"><span class="check">✓</span> {{ limits_commands }} AD actions / month</div>
-      <div class="feature"><span class="check">✓</span> Up to 20 tickets</div>
-      <div class="feature"><span class="check">✓</span> 1 team member</div>
-      <div class="feature"><span class="check">✓</span> Smart ticket system</div>
-      <div class="feature"><span class="check">✓</span> Activity feed &amp; audit log</div>
-      {% else %}
-      <div class="feature"><span class="check">✓</span> 500 {{ ai_name }} scans / month</div>
-      <div class="feature"><span class="check">✓</span> 200 AD actions / month</div>
-      <div class="feature"><span class="check">✓</span> Unlimited tickets</div>
-      <div class="feature"><span class="check">✓</span> Up to 5 team members</div>
-      <div class="feature"><span class="check">✓</span> Security &amp; impersonation checks</div>
-      <div class="feature"><span class="check">✓</span> Activity feed &amp; audit log</div>
-      {% endif %}
     </div>
   </div>
 
-  <!-- Plan comparison -->
-  {% if tenant_plan in ['free', 'pro'] %}
-  <div class="card" style="border-color:rgba(99,102,241,0.4);background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(129,140,248,0.03));">
-    <div class="card-title">{% if tenant_plan == 'free' %}Upgrade to Pro or Enterprise{% else %}Upgrade to Enterprise{% endif %}</div>
-    <div style="display:grid;grid-template-columns:{% if tenant_plan == 'free' %}1fr 1fr 1fr{% else %}1fr 1fr{% endif %};gap:16px;margin-bottom:20px;">
-      {% if tenant_plan == 'free' %}
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:10px;">Free — A$0</div>
-        <div style="font-size:13px;color:var(--muted);line-height:2;">10 AI scans/mo<br>5 AD actions/mo<br>1 team member<br>20 tickets<br>No email intake<br>Community support</div>
-      </div>
-      {% endif %}
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Pro — A$29/mo{% if tenant_plan == 'pro' %} <span class="badge badge-active" style="font-size:10px;">Current</span>{% endif %}</div>
-        <div style="font-size:13px;color:var(--text);line-height:2;">500 AI scans/mo<br>200 AD actions/mo<br>5 team members<br>Unlimited tickets<br>📧 Email intake<br>Email support</div>
-      </div>
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:10px;">Enterprise — A$99/mo</div>
-        <div style="font-size:13px;color:var(--text);line-height:2;">2,000 AI scans/mo<br>1,000 AD actions/mo<br>Unlimited team members<br>Unlimited tickets<br>📧 Email intake<br>📊 Scheduled reports<br>Priority support + SLA</div>
-      </div>
-    </div>
-    {% if tenant_plan == 'free' %}
-      {% if billing_enabled and user_role == 'admin' %}
-      <button class="btn btn-primary" id="checkout-btn-pro" style="margin-right:10px;" onclick="startCheckout('pro')">Upgrade to Pro - A$29/month</button>
-      <button class="btn btn-ghost" id="checkout-btn-enterprise" onclick="startCheckout('enterprise')">Upgrade to Enterprise - A$99/month</button>
-      {% else %}
-      <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com">Contact us to upgrade</a>
-      {% endif %}
-    {% else %}
-      {% if billing_enabled and user_role == 'admin' %}
-      <button class="btn btn-primary" id="checkout-btn-enterprise" onclick="startCheckout('enterprise')">Upgrade to Enterprise - A$99/month</button>
-      {% endif %}
-    {% endif %}
-  </div>
-  {% endif %}
-
-  <!-- Payment -->
+  <!-- What's included -->
   <div class="card">
-    <div class="card-title">Payment</div>
-    {% if billing_enabled and user_role == 'admin' and tenant_plan == 'free' %}
-      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
-        Subscribe with Stripe when you are ready to move from Free to a paid plan.
-      </p>
-      <button class="btn btn-primary" id="checkout-btn" onclick="startCheckout('pro')">Subscribe - A$29/month</button>
-      <p style="font-size:12px;color:var(--muted);margin-top:10px;">Secured by Stripe. Your card details never touch our servers.</p>
-    {% elif billing_enabled and user_role == 'admin' %}
-      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
-        Stripe billing is enabled for this workspace. Plan changes should complete through Stripe Checkout.
-      </p>
-    {% elif billing_enabled %}
-      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
-        Ask a workspace admin to manage billing.
-      </p>
-    {% else %}
-      <p style="font-size:14px;color:var(--muted);margin-bottom:20px;">
-        Online payment is not configured yet. Set STRIPE_SECRET_KEY and Stripe Price IDs to enable checkout.
-      </p>
-      <a class="btn btn-primary" href="mailto:billing@aidhelpdesk.com?subject=AID%20Helpdesk%20subscription%20-%20{{ tenant_name | urlencode }}">Contact us to subscribe</a>
-    {% endif %}
+    <div class="card-title">What's included in your trial</div>
+    <div class="feature-row"><span class="check">✓</span> {{ limits_janus }} AI scans / month</div>
+    <div class="feature-row"><span class="check">✓</span> {{ limits_commands }} AD actions / month</div>
+    <div class="feature-row"><span class="check">✓</span> Unlimited tickets</div>
+    <div class="feature-row"><span class="check">✓</span> Unlimited team members</div>
+    <div class="feature-row"><span class="check">✓</span> AI assistant auto-actions</div>
+    <div class="feature-row"><span class="check">✓</span> Email ticket intake</div>
+    <div class="feature-row"><span class="check">✓</span> Scheduled reports</div>
+    <div class="feature-row"><span class="check">✓</span> Custom PowerShell scripts (up to 3)</div>
+    <div class="feature-row"><span class="check">✓</span> Full audit trail &amp; activity feed</div>
+    <div class="feature-row"><span class="check">✓</span> Slack / Teams integration</div>
   </div>
 
-  <!-- FAQ -->
-  <div class="card">
-    <div class="card-title">Billing FAQ</div>
-    <div class="faq-item">
-      <div class="faq-q">When does my trial end?</div>
-      <div class="faq-a">Your free trial lasts 14 days from when you created your account. You'll see the countdown above.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">Do I need a credit card for the trial?</div>
-      <div class="faq-a">No. Your trial is completely free with no card required. We'll only ask for payment details when you're ready to subscribe.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">Can I cancel any time?</div>
-      <div class="faq-a">Yes — cancel any time from this page. Your access continues until the end of the billing period.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">What happens to my data if I cancel?</div>
-      <div class="faq-a">Your data is retained for 30 days after cancellation. You can export your audit log and ticket history at any time.</div>
+  <!-- Paid plans coming soon -->
+  <div class="coming-soon-box">
+    <div class="coming-soon-icon">🚀</div>
+    <div class="coming-soon-title">Paid plans coming soon</div>
+    <div class="coming-soon-desc">
+      We're still in early access. Paid plans with higher quotas are on the way —
+      but for now, enjoy the full product free while we collect your feedback.<br/><br/>
+      Questions? Email <a href="mailto:lachyswebdev@gmail.com" style="color:var(--accent2);">lachyswebdev@gmail.com</a>
     </div>
   </div>
 </div>
 
-<script>
-  // ── Trial countdown ────────────────────────────────────────────────────
-  const trialStart = {{ settings.get('trial_started_at', 'null') | tojson }};
-  if (trialStart) {
-    const start    = new Date(trialStart);
-    const now      = new Date();
-    const elapsed  = Math.floor((now - start) / 86400000);
-    const daysLeft = Math.max(0, 14 - elapsed);
-    const pct      = Math.max(0, (daysLeft / 14) * 100);
-
-    const bar   = document.getElementById('trial-bar');
-    const label = document.getElementById('trial-label');
-    if (bar)   bar.style.width = pct + '%';
-    if (label) label.textContent = daysLeft > 0
-      ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining in your free trial`
-      : 'Your trial has ended — subscribe to continue using AID Helpdesk';
-    if (label && daysLeft === 0) label.style.color = 'var(--error)';
-    if (bar && daysLeft <= 3)    bar.style.background = 'var(--error)';
-    else if (bar && daysLeft <= 7) bar.style.background = 'var(--warn)';
-  }
-
-  // ── Success / cancel banners from redirect params ──────────────────────
-  (function () {
-    const params  = new URLSearchParams(window.location.search);
-    const banner  = document.getElementById('billing-banner');
-    if (!banner) return;
-    if (params.get('success') === '1') {
-      banner.textContent  = '🎉 Payment confirmed — your plan has been upgraded. Welcome!';
-      banner.style.background = 'rgba(74,222,128,0.12)';
-      banner.style.border     = '1px solid rgba(74,222,128,0.3)';
-      banner.style.color      = 'var(--success)';
-      banner.style.display    = 'block';
-    } else if (params.get('cancelled') === '1') {
-      banner.textContent  = 'Checkout cancelled — no charge was made.';
-      banner.style.background = 'rgba(248,113,113,0.1)';
-      banner.style.border     = '1px solid rgba(248,113,113,0.25)';
-      banner.style.color      = 'var(--error)';
-      banner.style.display    = 'block';
-    }
-    // Remove params from URL so a refresh doesn't repeat the banner.
-    if (params.has('success') || params.has('cancelled')) {
-      history.replaceState({}, '', window.location.pathname);
-    }
-  })();
-
-  // ── Stripe Checkout ────────────────────────────────────────────────────
-  async function startCheckout(plan) {
-    const btns = document.querySelectorAll('[id^="checkout-btn"]');
-    btns.forEach(b => { b.disabled = true; b.textContent = 'Redirecting to Stripe…'; });
-
-    try {
-      const res  = await fetch('/create-checkout-session', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ plan }),
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.message || 'Could not start checkout');
-      window.location.href = json.url;
-    } catch (err) {
-      btns.forEach(b => { b.disabled = false; });
-      // Restore button labels based on plan
-      document.getElementById('checkout-btn-pro')        && (document.getElementById('checkout-btn-pro').textContent        = 'Upgrade to Pro - A$29/month');
-      document.getElementById('checkout-btn-enterprise') && (document.getElementById('checkout-btn-enterprise').textContent = 'Upgrade to Enterprise - A$99/month');
-      document.getElementById('checkout-btn')            && (document.getElementById('checkout-btn').textContent            = 'Subscribe - A$29/month');
-
-      const banner = document.getElementById('billing-banner');
-      if (banner) {
-        banner.textContent  = `Error: ${err.message}`;
-        banner.style.background = 'rgba(248,113,113,0.1)';
-        banner.style.border     = '1px solid rgba(248,113,113,0.25)';
-        banner.style.color      = 'var(--error)';
-        banner.style.display    = 'block';
-      }
-    }
-  }
-</script>
 </body>
 </html>

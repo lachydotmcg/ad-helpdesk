@@ -39,6 +39,15 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
 
+# Session cookie security:
+# - HttpOnly:  JS cannot read the cookie (Flask default is True)
+# - SameSite:  Lax prevents cross-site POST from carrying the session
+#              → provides CSRF protection for all JSON dashboard endpoints
+# - Secure:    only send over HTTPS (disabled in dev so localhost works)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"]   = os.getenv("FLASK_ENV", "production") != "development"
+
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 DEFAULT_AI_NAME = "Assistant"
 
@@ -102,20 +111,27 @@ TIME_SAVED_MINUTES: dict[str, float] = {
 }
 
 
-# Actions that require an explicit 6-digit confirmation challenge before the
-# server will queue them. This is the authoritative gate — both the dashboard
-# (/dashboard/api/exec) and the public API (/api/v1/actions/<action>) consult
-# it, and the frontend only reacts to the challenge the server returns.
+# Actions that require an explicit 6-digit confirmation challenge.
 #
-# It is DERIVED from action_policy.DESTRUCTIVE rather than hand-maintained, so a
-# newly added destructive action can never silently skip confirmation again.
-# (A previous hand-kept copy had drifted: bulk_move_users and create_ou were
-# missing, meaning bulk OU moves could be queued with no confirmation at all.)
-# Two reversible-but-sensitive WRITE actions are deliberately gated as well.
-# Result: {create_user, disable_account, move_user, remove_from_group, create_ou,
-#          bulk_move_users, reset_password, set_password_never_expires}
-_EXTRA_CONFIRM_ACTIONS = frozenset({"reset_password", "set_password_never_expires"})
-DESTRUCTIVE_ACTIONS = action_policy.DESTRUCTIVE | _EXTRA_CONFIRM_ACTIONS
+# Philosophy: only gate actions that are HARD TO UNDO and HIGH BLAST RADIUS.
+# Routine helpdesk operations (password reset, unlock, group add/remove,
+# enable/disable, create user) should NOT require a code — the user confirmed
+# their identity via the ticket or chat session, and blocking those with a
+# 6-digit prompt defeats the purpose of an auto-resolution system.
+#
+# The gate is reserved for bulk / structural changes that can break many users
+# at once and are annoying to roll back: bulk_move_users and create_ou.
+# disable_account is kept because silently disabling an account for the wrong
+# user is a significant incident.
+#
+# All other action_policy.DESTRUCTIVE actions (remove_from_group, move_user,
+# create_user) are intentionally NOT gated — they are reviewed by the admin
+# in the chat/ticket flow, which is confirmation enough.
+DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
+    "disable_account",
+    "bulk_move_users",
+    "create_ou",
+})
 
 _confirm_store: dict[str, dict] = {}   # token -> {action, args, tenant_id, expires, used}
 _CONFIRM_TTL = 300                     # 5 minutes
@@ -180,6 +196,35 @@ def _get_ai_context(settings: dict | None = None) -> str:
     """Return tenant-provided AI context, supporting the previous settings key."""
     settings = settings or {}
     return str(settings.get("ai_context") or settings.get("janus_context") or "").strip()
+
+
+def _tenant_plan_limits(tenant_id: str) -> tuple[str, dict]:
+    """Return the effective plan and limits. Paid plans require active Stripe billing."""
+    plan = db.get_tenant_plan(tenant_id)
+    return plan, db.get_plan_limits(plan)
+
+
+def _paid_feature_block(tenant_id: str, feature_key: str, feature_label: str) -> str | None:
+    """Return an error message when a plan feature is unavailable."""
+    plan, limits = _tenant_plan_limits(tenant_id)
+    value = limits.get(feature_key)
+    if isinstance(value, bool):
+        allowed = value
+    elif feature_key.endswith("_limit"):
+        allowed = value is None or int(value or 0) > 0
+    else:
+        allowed = bool(value)
+    if allowed:
+        return None
+    return (
+        f"{feature_label} is not available on the {limits['label']} plan. "
+        "Upgrade to an active Pro or Enterprise subscription to use it."
+    )
+
+
+def _custom_scripts_limit(tenant_id: str) -> tuple[int | None, str, dict]:
+    plan, limits = _tenant_plan_limits(tenant_id)
+    return limits.get("custom_scripts_limit", 0), plan, limits
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +355,8 @@ def _send_webhook_notification(webhook_url: str, text: str, platform: str = "sla
 
 def notify_integrations(tenant_id: str, text: str) -> None:
     """Send a notification to all configured Slack/Teams webhooks for this tenant."""
+    if _paid_feature_block(tenant_id, "integrations", "Slack/Teams integrations"):
+        return
     settings = db.get_settings(tenant_id)
     slack_url = settings.get("slack_webhook_url", "")
     teams_url = settings.get("teams_webhook_url", "")
@@ -433,6 +480,16 @@ def robots():
                     mimetype="text/plain")
 
 
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
 @app.route("/favicon.ico")
 def favicon():
     return redirect(url_for("logo"), code=301)
@@ -490,17 +547,24 @@ def login():
 
     error = None
     if request.method == "POST":
-        email    = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        user     = db.verify_tenant_user(email, password)
-        if user:
-            session.permanent = True
-            session["tenant_id"]   = user["tenant_id"]
-            session["user_email"]  = user["email"]
-            session["user_role"]   = user["role"]
-            session["tenant_name"] = user["tenant_name"]
-            return redirect(url_for("dashboard"))
-        error = "Invalid email or password."
+        ip    = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+        email = request.form.get("email", "").strip().lower()
+        # Rate limit: 10 attempts per IP per 15 minutes, plus 5 per email per 15 minutes
+        if not _rate_limit(f"login_ip:{ip}", 10, 900):
+            error = "Too many login attempts. Please wait 15 minutes and try again."
+        elif email and not _rate_limit(f"login_email:{email}", 5, 900):
+            error = "Too many login attempts for this account. Please wait 15 minutes."
+        else:
+            password = request.form.get("password", "")
+            user     = db.verify_tenant_user(email, password)
+            if user:
+                session.permanent = True
+                session["tenant_id"]   = user["tenant_id"]
+                session["user_email"]  = user["email"]
+                session["user_role"]   = user["role"]
+                session["tenant_name"] = user["tenant_name"]
+                return redirect(url_for("dashboard"))
+            error = "Invalid email or password."
 
     return render_template("login.html", error=error)
 
@@ -838,7 +902,7 @@ def api_v1_status():
     return jsonify({
         "success": True,
         "tenant":  tenant.get("name", ""),
-        "plan":    tenant.get("plan", "free"),
+        "plan":    db.get_tenant_plan(tenant["id"]),
         "agent":   "online" if online else "offline",
     })
 
@@ -914,6 +978,11 @@ def api_v1_action(action):
     # 6-digit token, the caller must echo it back to actually run the action.
     # This prevents an accidental single-call destructive op (e.g. Claude Code
     # misreading intent). Same token machinery the dashboard uses.
+    if action == "run_custom_script":
+        block = _paid_feature_block(tenant_id, "custom_scripts_limit", "Custom scripts")
+        if block:
+            return jsonify({"success": False, "message": block}), 403
+
     if action in DESTRUCTIVE_ACTIONS:
         supplied = str(data.get("confirm_token", "")).strip()
         if not supplied:
@@ -1007,6 +1076,8 @@ def dashboard():
 def billing():
     settings      = db.get_settings(g.tenant_id)
     billing_enabled = bool(os.getenv("STRIPE_SECRET_KEY", ""))
+    billing_customer = db.get_billing_customer(g.tenant_id)
+    billing_sub  = db.get_billing_subscription(g.tenant_id) or {}
     plan          = db.get_tenant_plan(g.tenant_id)
     limits        = db.get_plan_limits(plan)
     usage         = db.get_usage(g.tenant_id) or {}
@@ -1020,8 +1091,13 @@ def billing():
                            user_role=g.user_role,
                            settings=settings,
                            billing_enabled=billing_enabled,
+                           billing_customer=billing_customer,
+                           billing_status=billing_sub.get("status", "none"),
+                           billing_current_period_end=billing_sub.get("current_period_end"),
+                           billing_portal_available=bool(billing_customer),
                            tenant_plan=plan,
                            plan_label=limits["label"],
+                           plan_price=limits["price"],
                            usage_janus=used_janus,
                            usage_commands=used_commands,
                            limits_janus=lim_janus,
@@ -1072,6 +1148,152 @@ _CHECKOUT_PRICE_ENV = {
 }
 
 
+def _stripe_get(obj, key: str, default=None):
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        return obj.get(key, default)
+    except Exception:
+        return getattr(obj, key, default)
+
+
+def _stripe_metadata(obj) -> dict:
+    meta = _stripe_get(obj, "metadata", {}) or {}
+    try:
+        return dict(meta)
+    except Exception:
+        return {}
+
+
+def _stripe_timestamp_to_iso(value) -> str | None:
+    if not value:
+        return None
+    try:
+        from datetime import datetime
+        return datetime.utcfromtimestamp(int(value)).isoformat()
+    except Exception:
+        return None
+
+
+def _configured_price_to_plan() -> dict:
+    return {
+        os.getenv(env): plan
+        for plan, env in _CHECKOUT_PRICE_ENV.items()
+        if os.getenv(env)
+    }
+
+
+def _plan_from_price_id(price_id: str | None) -> str | None:
+    if not price_id:
+        return None
+    return _configured_price_to_plan().get(price_id)
+
+
+def _subscription_items(subscription) -> list:
+    items = _stripe_get(subscription, "items", {}) or {}
+    data = _stripe_get(items, "data", []) or []
+    return list(data)
+
+
+def _subscription_price_id(subscription) -> str | None:
+    for item in _subscription_items(subscription):
+        price = _stripe_get(item, "price", {}) or {}
+        price_id = _stripe_get(price, "id")
+        if price_id:
+            return price_id
+    return None
+
+
+def _subscription_period_end(subscription) -> str | None:
+    period_end = _stripe_get(subscription, "current_period_end")
+    if not period_end:
+        for item in _subscription_items(subscription):
+            period_end = _stripe_get(item, "current_period_end")
+            if period_end:
+                break
+    return _stripe_timestamp_to_iso(period_end)
+
+
+def _resolve_subscription_tenant(subscription, tenant_hint: str | None = None) -> str | None:
+    if tenant_hint:
+        return tenant_hint
+    metadata = _stripe_metadata(subscription)
+    tenant_id = metadata.get("tenant_id")
+    if tenant_id:
+        return tenant_id
+    sub_id = _stripe_get(subscription, "id")
+    tenant_id = db.get_tenant_id_by_stripe_subscription(sub_id)
+    if tenant_id:
+        return tenant_id
+    customer_id = _stripe_get(subscription, "customer")
+    return db.get_tenant_id_by_stripe_customer(customer_id)
+
+
+def _sync_subscription_from_stripe(subscription, tenant_hint: str | None = None) -> dict | None:
+    """Persist a Stripe subscription and update the tenant plan from active status."""
+    sub_id = _stripe_get(subscription, "id")
+    if not sub_id:
+        return None
+
+    price_id = _subscription_price_id(subscription)
+    if not price_id:
+        try:
+            stripe = _stripe_client()
+            subscription = stripe.Subscription.retrieve(sub_id, expand=["items.data.price"])
+            price_id = _subscription_price_id(subscription)
+        except Exception as e:
+            print(f"[stripe] Could not retrieve subscription {sub_id}: {e}")
+
+    tenant_id = _resolve_subscription_tenant(subscription, tenant_hint)
+    if not tenant_id:
+        print(f"[stripe] Could not map subscription {sub_id} to a tenant")
+        return None
+
+    customer_id = _stripe_get(subscription, "customer")
+    if customer_id:
+        db.upsert_billing_customer(tenant_id, customer_id)
+
+    metadata = _stripe_metadata(subscription)
+    plan = _plan_from_price_id(price_id)
+    if plan is None:
+        metadata_plan = metadata.get("plan")
+        if metadata_plan in ("pro", "enterprise"):
+            plan = metadata_plan
+        else:
+            existing = db.get_billing_subscription(tenant_id) or {}
+            plan = existing.get("plan") or "free"
+
+    status = str(_stripe_get(subscription, "status", "none") or "none")
+    current_period_end = _subscription_period_end(subscription)
+    row = db.upsert_billing_subscription(
+        tenant_id=tenant_id,
+        stripe_subscription_id=sub_id,
+        plan=plan,
+        status=status,
+        current_period_end=current_period_end,
+    )
+
+    if status == "active" and plan in ("pro", "enterprise"):
+        db.set_tenant_plan(tenant_id, plan)
+    else:
+        db.set_tenant_plan(tenant_id, "free")
+    return row
+
+
+def _create_portal_url(tenant_id: str) -> str | None:
+    customer = db.get_billing_customer(tenant_id)
+    if not customer:
+        return None
+    stripe = _stripe_client()
+    portal = stripe.billing_portal.Session.create(
+        customer=customer["stripe_customer_id"],
+        return_url=f"{_app_base_url()}/billing",
+    )
+    return portal.url
+
+
 @app.route("/create-checkout-session", methods=["POST"])
 @app.route("/billing/create-checkout-session", methods=["POST"])
 @require_dashboard_user
@@ -1091,14 +1313,17 @@ def billing_create_checkout_session():
             "message": "The Free plan does not require Stripe Checkout.",
         }), 400
 
-    current_plan = db.get_tenant_plan(g.tenant_id)
-    if current_plan == plan:
-        return jsonify({"success": False, "message": f"You are already on the {plan} plan"}), 400
-
     try:
         stripe = _stripe_client()
     except RuntimeError as e:
         return jsonify({"success": False, "message": str(e)}), 503
+
+    active_sub = db.get_billing_subscription(g.tenant_id)
+    if active_sub and active_sub.get("status") == "active":
+        portal_url = _create_portal_url(g.tenant_id)
+        if portal_url:
+            return jsonify({"success": True, "url": portal_url, "portal": True})
+        return jsonify({"success": False, "message": "This tenant already has an active subscription."}), 409
 
     base = _app_base_url()
     price_env = _CHECKOUT_PRICE_ENV[plan]
@@ -1110,11 +1335,21 @@ def billing_create_checkout_session():
         }), 503
 
     metadata = {"tenant_id": g.tenant_id, "plan": plan}
+    billing_customer = db.get_billing_customer(g.tenant_id)
+    customer_id = billing_customer["stripe_customer_id"] if billing_customer else ""
+    if not customer_id:
+        customer = stripe.Customer.create(
+            email=g.user_email,
+            name=g.tenant_name or None,
+            metadata={"tenant_id": g.tenant_id},
+        )
+        customer_id = customer.id
+        db.upsert_billing_customer(g.tenant_id, customer_id)
 
     session = stripe.checkout.Session.create(
         mode="subscription",
         line_items=[{"price": price_id, "quantity": 1}],
-        customer_email=g.user_email,
+        customer=customer_id,
         client_reference_id=g.tenant_id,
         metadata=metadata,
         subscription_data={"metadata": metadata},
@@ -1125,6 +1360,21 @@ def billing_create_checkout_session():
     return jsonify({"success": True, "url": session.url, "session_id": session.id})
 
 
+@app.route("/billing/portal", methods=["GET"])
+@require_dashboard_user
+def billing_portal():
+    """Open Stripe Customer Portal for subscription management."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Only tenant admins can manage billing."}), 403
+    try:
+        portal_url = _create_portal_url(g.tenant_id)
+    except RuntimeError as e:
+        return jsonify({"success": False, "message": str(e)}), 503
+    if not portal_url:
+        return jsonify({"success": False, "message": "No Stripe customer exists for this tenant yet."}), 404
+    return redirect(portal_url)
+
+
 @app.route("/billing/success")
 @require_dashboard_user
 def billing_success():
@@ -1133,6 +1383,7 @@ def billing_success():
     return redirect("/billing?success=1")
 
 
+@app.route("/webhook/stripe", methods=["POST"])
 @app.route("/billing/webhook", methods=["POST"])
 def billing_webhook():
     """
@@ -1146,43 +1397,56 @@ def billing_webhook():
     """
     import stripe as _stripe
     secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    if not secret:
+        return jsonify({"error": "STRIPE_WEBHOOK_SECRET is not configured"}), 503
+
     payload = request.get_data()
     sig     = request.headers.get("Stripe-Signature", "")
 
-    if secret:
-        try:
-            event = _stripe.Webhook.construct_event(payload, sig, secret)
-        except (_stripe.error.SignatureVerificationError, ValueError):
-            return jsonify({"error": "invalid signature"}), 400
-    else:
-        # Allow unsigned events only in local dev (no secret configured).
-        try:
-            event = json.loads(payload)
-        except Exception:
-            return jsonify({"error": "bad payload"}), 400
+    try:
+        event = _stripe.Webhook.construct_event(payload, sig, secret)
+    except ValueError:
+        return jsonify({"error": "bad payload"}), 400
+    except _stripe.error.SignatureVerificationError:
+        return jsonify({"error": "invalid signature"}), 400
 
-    etype = event.get("type") if isinstance(event, dict) else event.type
+    event_id = _stripe_get(event, "id")
+    etype = _stripe_get(event, "type")
+    if not event_id or not etype:
+        return jsonify({"error": "invalid event"}), 400
 
-    if etype == "checkout.session.completed":
-        obj = (event["data"]["object"] if isinstance(event, dict)
-               else event.data.object)
-        meta      = obj.get("metadata", {}) if isinstance(obj, dict) else obj.metadata
-        tenant_id = meta.get("tenant_id") if isinstance(meta, dict) else getattr(meta, "tenant_id", None)
-        plan      = meta.get("plan")      if isinstance(meta, dict) else getattr(meta, "plan", None)
-        if tenant_id and plan in ("pro", "enterprise"):
-            db.set_tenant_plan(tenant_id, plan)
+    if not db.record_stripe_event(event_id, etype):
+        return jsonify({"received": True, "duplicate": True})
 
-    elif etype == "customer.subscription.deleted":
-        # When a subscription is cancelled, revert to free plan.
-        # The tenant_id is stored in the subscription metadata.
-        obj = (event["data"]["object"] if isinstance(event, dict)
-               else event.data.object)
-        meta      = obj.get("metadata", {}) if isinstance(obj, dict) else obj.metadata
-        tenant_id = meta.get("tenant_id") if isinstance(meta, dict) else getattr(meta, "tenant_id", None)
-        if tenant_id:
-            db.set_tenant_plan(tenant_id, "free")
+    try:
+        obj = event["data"]["object"]
 
-    return jsonify({"received": True})
+        if etype == "checkout.session.completed":
+            metadata = _stripe_metadata(obj)
+            tenant_id = metadata.get("tenant_id") or _stripe_get(obj, "client_reference_id")
+            customer_id = _stripe_get(obj, "customer")
+            subscription_id = _stripe_get(obj, "subscription")
+            if tenant_id and customer_id:
+                db.upsert_billing_customer(tenant_id, customer_id)
+            if subscription_id:
+                stripe = _stripe_client()
+                subscription = stripe.Subscription.retrieve(
+                    subscription_id,
+                    expand=["items.data.price"],
+                )
+                _sync_subscription_from_stripe(subscription, tenant_hint=tenant_id)
+
+        elif etype in ("customer.subscription.created",
+                       "customer.subscription.updated",
+                       "customer.subscription.deleted"):
+            _sync_subscription_from_stripe(obj)
+
+        db.mark_stripe_event_processed(event_id)
+        return jsonify({"received": True})
+    except Exception as e:
+        db.release_unprocessed_stripe_event(event_id)
+        print(f"[stripe] Webhook processing failed for {event_id} ({etype}): {e}")
+        return jsonify({"error": "webhook processing failed"}), 500
 
 
 @app.route("/dashboard/api/onboarding")
@@ -1250,6 +1514,15 @@ def dashboard_exec():
     # ── Destructive action confirmation ──────────────────────────────────────
     # High-risk actions require a short-lived 6-digit challenge code to be
     # confirmed by the admin before the command is queued.
+    ok, reason = action_policy.validate(action, source="human")
+    if not ok:
+        return jsonify({"success": False, "message": reason}), 403
+
+    if action == "run_custom_script":
+        block = _paid_feature_block(g.tenant_id, "custom_scripts_limit", "Custom scripts")
+        if block:
+            return jsonify({"success": False, "message": block}), 403
+
     if action in DESTRUCTIVE_ACTIONS:
         if not confirm_token:
             # Issue a challenge — return the code for the admin to confirm
@@ -1285,19 +1558,14 @@ def dashboard_exec():
         args   = pending["args"]
 
     # ── Plan limits for write actions ────────────────────────────────────────
-    write_actions = {
-        "reset_password", "unlock_account", "enable_account",
-        "disable_account", "add_to_group", "remove_from_group",
-        "create_user", "move_user", "force_password_change",
-        "set_password_never_expires"
-    }
-    if action in write_actions:
+    is_mutation = action_policy.is_write(action) or action_policy.is_destructive(action)
+    if is_mutation:
         plan   = db.get_tenant_plan(g.tenant_id)
         limits = db.get_plan_limits(plan)
         usage  = db.get_usage(g.tenant_id) or {}
         used   = usage.get("ad_commands", 0)
-        cap    = limits["ad_commands"]
-        if used >= cap:
+        cap    = limits.get("ad_commands")
+        if cap is not None and used >= cap:
             return jsonify({
                 "success": False,
                 "limit_reached": True,
@@ -1306,7 +1574,7 @@ def dashboard_exec():
 
     command = db.queue_command(g.tenant_id, action, args)
 
-    if action in write_actions:
+    if is_mutation:
         tgt = target or (args[0] if args else "")
         db.log_audit(g.tenant_id, g.user_email, action, tgt, "queued")
         db.log_activity(g.tenant_id, "ad_action", g.user_email, target=tgt,
@@ -1350,6 +1618,18 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
     if not message:
         return {"success": False, "message": "message is required."}
 
+    plan, limits = _tenant_plan_limits(tenant_id)
+    usage = db.get_usage(tenant_id) or {}
+    ai_cap = limits.get("janus_calls")
+    if ai_cap is not None and usage.get("janus_calls", 0) >= ai_cap:
+        return {
+            "success": False,
+            "message": (
+                f"Monthly AI usage limit reached ({ai_cap} on the {limits['label']} plan). "
+                "Upgrade to an active Pro or Enterprise subscription to continue."
+            ),
+        }
+
     # ---- session -------------------------------------------------------
     if session_id:
         chat_session = db.get_chat_session(session_id, tenant_id)
@@ -1362,7 +1642,8 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
     db.add_chat_message(session_id, tenant_id, "user", message)
 
     # ---- system prompt -------------------------------------------------
-    custom_scripts  = db.list_custom_scripts(tenant_id)
+    custom_scripts_cap, _, _ = _custom_scripts_limit(tenant_id)
+    custom_scripts  = db.list_custom_scripts(tenant_id) if custom_scripts_cap != 0 else []
     enabled_scripts = [s for s in custom_scripts if s.get("enabled")]
     tenant_settings = db.get_settings(tenant_id)
     ai_context      = _get_ai_context(tenant_settings)
@@ -1483,6 +1764,9 @@ CRITICAL RULES:
         intent_msg = command_data.get("message", f"Running {action}...")
 
         if action == "run_custom_script" and args:
+            block = _paid_feature_block(tenant_id, "custom_scripts_limit", "Custom scripts")
+            if block:
+                return {"success": True, "reply": block, "action_taken": None}
             slug   = args[0]
             script = db.get_custom_script_by_slug(tenant_id, slug)
             if not script:
@@ -1499,6 +1783,19 @@ CRITICAL RULES:
         if action_policy.is_write(action) or action_policy.is_destructive(action):
             if not _rate_limit(f"ai_writes:{tenant_id}", 20, 3600):
                 return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
+
+        if action in DESTRUCTIVE_ACTIONS:
+            code = _issue_confirm_token(tenant_id, action, args)
+            return {
+                "success": True,
+                "reply": f"{intent_msg}\n\nThis action requires confirmation before it is queued.",
+                "requires_confirmation": True,
+                "confirm_token": code,
+                "action_label": f"{action} {args}",
+                "pending_action": {"action": action, "args": args},
+                "action_taken": None,
+                "session_id": session_id,
+            }
 
         # Monthly plan-quota enforcement. The dashboard (/dashboard/api/exec) and
         # the public API (/api/v1/actions) both hard-block write/destructive
@@ -1574,7 +1871,45 @@ Output format for action: {{"action": "action_name", "args": ["arg1"], "message"
             if chained:
                 action2 = chained["action"]
                 args2   = chained["args"]
+                policy_ok2, policy_reason2 = action_policy.validate(action2, source="ai_chat")
+                if not policy_ok2:
+                    return {"success": True, "reply": f"I can't run that follow-up action: {policy_reason2}", "action_taken": action}
+                if action2 == "run_custom_script" and args2:
+                    block = _paid_feature_block(tenant_id, "custom_scripts_limit", "Custom scripts")
+                    if block:
+                        return {"success": True, "reply": block, "action_taken": action}
+                    slug2 = args2[0]
+                    script2 = db.get_custom_script_by_slug(tenant_id, slug2)
+                    if not script2:
+                        return {"success": True, "reply": f"Custom script '{slug2}' not found or is disabled.", "action_taken": action}
+                    args2 = [script2["ps_content"]] + list(args2[1:])
+                if action2 in DESTRUCTIVE_ACTIONS:
+                    code2 = _issue_confirm_token(tenant_id, action2, args2)
+                    return {
+                        "success": True,
+                        "reply": f"The follow-up action {action2} requires confirmation before it is queued.",
+                        "requires_confirmation": True,
+                        "confirm_token": code2,
+                        "action_label": f"{action2} {args2}",
+                        "pending_action": {"action": action2, "args": args2},
+                        "action_taken": action,
+                        "raw_data": result_data.get("data"),
+                        "session_id": session_id,
+                    }
                 if action_policy.is_write(action2) or action_policy.is_destructive(action2):
+                    plan2   = db.get_tenant_plan(tenant_id)
+                    limits2 = db.get_plan_limits(plan2)
+                    usage2  = db.get_usage(tenant_id) or {}
+                    cap2    = limits2.get("ad_commands")
+                    if cap2 is not None and usage2.get("ad_commands", 0) >= cap2:
+                        return {
+                            "success": True,
+                            "reply": (
+                                f"You've reached your monthly AD action limit "
+                                f"({cap2} on the {limits2['label']} plan)."
+                            ),
+                            "action_taken": action,
+                        }
                     db.log_audit(tenant_id, user_email, action2, args2[0] if args2 else "", "queued")
                     db.increment_usage(tenant_id, "ad_commands")
                 cmd2      = db.queue_command(tenant_id, action2, args2)
@@ -1669,6 +2004,62 @@ def dashboard_chat():
     return jsonify(result), status
 
 
+@app.route("/dashboard/api/feedback", methods=["POST"])
+@require_dashboard_user
+def dashboard_feedback():
+    """Store in-product feedback and optionally email it to the operator."""
+    data    = request.get_json() or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"success": False, "message": "message is required"}), 400
+    rating  = data.get("rating")      # int 1-5 or None
+    page    = (data.get("page") or "").strip()[:120] or None
+    if rating is not None:
+        try:
+            rating = int(rating)
+            if rating < 1 or rating > 5:
+                rating = None
+        except (TypeError, ValueError):
+            rating = None
+    db.create_feedback(g.tenant_id, g.user_email, message[:2000], rating, page)
+    db.log_activity(g.tenant_id, "feedback", g.user_email, detail=message[:200])
+    # Forward to operator email if SMTP is configured
+    _feedback_email(g.tenant_id, g.user_email, message, rating, page)
+    return jsonify({"success": True, "message": "Thank you for your feedback!"})
+
+
+def _feedback_email(tenant_id: str, user_email: str, message: str,
+                    rating: int | None, page: str | None) -> None:
+    """Best-effort email forward to FEEDBACK_EMAIL env var."""
+    recipient = os.getenv("FEEDBACK_EMAIL", "")
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not recipient or not smtp_host:
+        return
+    try:
+        smtp_user = os.getenv("SMTP_USER", "")
+        smtp_pass = os.getenv("SMTP_PASS", "")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        body = (
+            f"New feedback from AID Helpdesk\n\n"
+            f"Tenant:  {tenant_id}\n"
+            f"User:    {user_email}\n"
+            f"Page:    {page or '—'}\n"
+            f"Rating:  {rating or '—'}/5\n\n"
+            f"{message}"
+        )
+        msg = MIMEText(body, "plain")
+        msg["Subject"] = f"[AID Feedback] {user_email}"
+        msg["From"]    = smtp_user or "noreply@aidhelpdesk.com"
+        msg["To"]      = recipient
+        with smtplib.SMTP(smtp_host, smtp_port) as s:
+            s.starttls()
+            if smtp_user and smtp_pass:
+                s.login(smtp_user, smtp_pass)
+            s.send_message(msg)
+    except Exception:
+        pass  # non-critical; feedback is already stored in DB
+
+
 @app.route("/dashboard/api/usage")
 @require_dashboard_user
 def dashboard_usage():
@@ -1677,11 +2068,17 @@ def dashboard_usage():
     limits  = db.get_plan_limits(plan)
     usage   = db.get_usage(g.tenant_id) or {}
     history = db.get_usage_history(g.tenant_id)
+    billing = db.get_billing_subscription(g.tenant_id) or {}
     return jsonify({"success": True, "data": {
         "current": usage,
         "history": history,
         "plan":    plan,
         "limits":  limits,
+        "billing": {
+            "status": billing.get("status", "none"),
+            "current_period_end": billing.get("current_period_end"),
+            "portal_available": bool(db.get_billing_customer(g.tenant_id)),
+        },
     }})
 
 
@@ -1744,6 +2141,18 @@ def dashboard_list_scripts():
 def dashboard_create_script():
     if g.user_role != "admin":
         return jsonify({"success": False, "message": "Admin only."}), 403
+    cap, _, limits = _custom_scripts_limit(g.tenant_id)
+    if cap == 0:
+        return jsonify({
+            "success": False,
+            "message": "Custom scripts require an active Pro or Enterprise subscription.",
+        }), 403
+    if cap is not None and len(db.list_custom_scripts(g.tenant_id)) >= cap:
+        return jsonify({
+            "success": False,
+            "limit_reached": True,
+            "message": f"Custom script limit reached ({cap} on {limits['label']} plan).",
+        }), 429
     data           = request.get_json() or {}
     name           = (data.get("name") or "").strip()
     description    = (data.get("description") or "").strip()
@@ -1776,6 +2185,12 @@ def dashboard_get_script(script_id):
 def dashboard_update_script(script_id):
     if g.user_role != "admin":
         return jsonify({"success": False, "message": "Admin only."}), 403
+    cap, _, _ = _custom_scripts_limit(g.tenant_id)
+    if cap == 0:
+        return jsonify({
+            "success": False,
+            "message": "Custom scripts require an active Pro or Enterprise subscription.",
+        }), 403
     data    = request.get_json() or {}
     allowed = {"name", "description", "ps_content", "args_description", "classification", "enabled"}
     fields  = {k: v for k, v in data.items() if k in allowed}
@@ -1826,6 +2241,26 @@ def dashboard_update_settings():
                "report_enabled", "report_frequency", "report_day",
                "report_hour", "report_recipients", "last_report_sent",
                "slack_webhook_url", "teams_webhook_url"}
+    _, limits = _tenant_plan_limits(g.tenant_id)
+    if data.get("janus_auto_actions") and not limits.get("auto_actions"):
+        return jsonify({
+            "success": False,
+            "message": "AI auto-actions require an active Pro or Enterprise subscription.",
+        }), 403
+    if data.get("report_enabled") and not limits.get("scheduled_reports"):
+        return jsonify({
+            "success": False,
+            "message": "Scheduled reports require an active Pro or Enterprise subscription.",
+        }), 403
+    wants_integrations = (
+        ("slack_webhook_url" in data and str(data.get("slack_webhook_url") or "").strip()) or
+        ("teams_webhook_url" in data and str(data.get("teams_webhook_url") or "").strip())
+    )
+    if wants_integrations and not limits.get("integrations"):
+        return jsonify({
+            "success": False,
+            "message": "Slack/Teams integrations require an active Pro or Enterprise subscription.",
+        }), 403
     for k, v in data.items():
         if k in allowed:
             # Never overwrite smtp_pass with an empty string (blank = "keep existing")
@@ -1845,6 +2280,9 @@ def dashboard_test_webhook():
     """Send a test notification to a Slack or Teams webhook."""
     if g.user_role != "admin":
         return jsonify({"success": False, "message": "Admin only."}), 403
+    block = _paid_feature_block(g.tenant_id, "integrations", "Slack/Teams integrations")
+    if block:
+        return jsonify({"success": False, "message": block}), 403
     data     = request.get_json() or {}
     platform = data.get("platform", "slack")
     url      = data.get("webhook_url", "").strip()
@@ -2159,6 +2597,19 @@ RULES:
         )
 
         if can_auto and janus_action and janus_args and perm_ok and policy_ok and limits.get("auto_actions", False):
+            if action_policy.is_write(janus_action) or action_policy.is_destructive(janus_action):
+                usage = db.get_usage(tenant_id) or {}
+                cap = limits.get("ad_commands")
+                if cap is not None and usage.get("ad_commands", 0) >= cap:
+                    db.add_ticket_action(
+                        ticket_id, tenant_id, "janus_analysis",
+                        f"{ai_name} could not auto-apply {janus_action}: monthly AD action limit reached.",
+                        ai_actor
+                    )
+                    return {"parsed": parsed, "auto_resolved": False, "error": None}
+                db.log_audit(tenant_id, ai_actor, janus_action, janus_args[0] if janus_args else "", "queued")
+                db.increment_usage(tenant_id, "ad_commands")
+
             db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
                                  f"{ai_name} is automatically applying fix: {janus_action} {janus_args}...", ai_actor)
             command    = db.queue_command(tenant_id, janus_action, janus_args)
@@ -2391,8 +2842,47 @@ def apply_ticket_fix(ticket_id):
     if not ticket.get("janus_action"):
         return jsonify({"success": False, "message": "No AI suggestion available."}), 400
 
+    data = request.get_json(silent=True) or {}
     action  = ticket["janus_action"]
     args    = json.loads(ticket.get("janus_action_args") or "[]")
+    policy_ok, policy_reason = action_policy.validate(action, source="human")
+    if not policy_ok:
+        return jsonify({"success": False, "message": policy_reason}), 403
+
+    if action == "run_custom_script":
+        block = _paid_feature_block(g.tenant_id, "custom_scripts_limit", "Custom scripts")
+        if block:
+            return jsonify({"success": False, "message": block}), 403
+
+    if action in DESTRUCTIVE_ACTIONS:
+        confirm_token = str(data.get("confirm_token", "")).strip()
+        if not confirm_token:
+            code = _issue_confirm_token(g.tenant_id, action, args)
+            return jsonify({
+                "success": False,
+                "requires_confirmation": True,
+                "confirm_token": code,
+                "action_label": f"Apply ticket fix: {action} {args}",
+                "message": "This ticket fix requires confirmation.",
+            }), 202
+        pending = _consume_confirm_token(g.tenant_id, confirm_token)
+        if not pending or pending.get("action") != action:
+            return jsonify({"success": False, "message": "Invalid or expired confirmation code."}), 403
+        args = pending["args"]
+
+    if action_policy.is_write(action) or action_policy.is_destructive(action):
+        plan, limits = _tenant_plan_limits(g.tenant_id)
+        usage = db.get_usage(g.tenant_id) or {}
+        cap = limits.get("ad_commands")
+        if cap is not None and usage.get("ad_commands", 0) >= cap:
+            return jsonify({
+                "success": False,
+                "limit_reached": True,
+                "message": f"Monthly AD action limit reached ({cap} on {limits['label']} plan).",
+            }), 429
+        db.log_audit(g.tenant_id, g.user_email, action, args[0] if args else "", "queued")
+        db.increment_usage(g.tenant_id, "ad_commands")
+
     command = db.queue_command(g.tenant_id, action, args)
 
     db.add_ticket_action(ticket_id, g.tenant_id, "ad_action",
@@ -2511,6 +3001,11 @@ def dashboard_insights():
         ai_name  = _get_ai_name(settings)
         if not api_key or not settings.get("janus_enabled", True):
             return jsonify({"success": True, "data": {"message": None}})
+        plan, limits = _tenant_plan_limits(g.tenant_id)
+        usage = db.get_usage(g.tenant_id) or {}
+        cap = limits.get("janus_calls")
+        if cap is not None and usage.get("janus_calls", 0) >= cap:
+            return jsonify({"success": True, "data": {"message": None}})
 
         # Collect context: recent tickets + activity
         tickets     = db.list_tickets(g.tenant_id, limit=20)
@@ -2536,6 +3031,7 @@ def dashboard_insights():
             messages=[{"role": "user", "content": prompt}]
         )
         message = response.content[0].text.strip()
+        db.increment_usage(g.tenant_id, "janus_calls")
         return jsonify({"success": True, "data": {"message": message}})
     except Exception as e:
         return jsonify({"success": True, "data": {"message": None}})
@@ -2801,6 +3297,42 @@ def queue_command():
     args   = data.get("args", [])
     if not action:
         return jsonify({"success": False, "message": "action is required."}), 400
+    if action not in action_policy.ALL_ACTIONS:
+        return jsonify({"success": False, "message": f"'{action}' is not a recognised action."}), 400
+    ok, reason = action_policy.validate(action, source="human")
+    if not ok:
+        return jsonify({"success": False, "message": reason}), 403
+    if action == "run_custom_script":
+        block = _paid_feature_block(g.tenant["id"], "custom_scripts_limit", "Custom scripts")
+        if block:
+            return jsonify({"success": False, "message": block}), 403
+    if action in DESTRUCTIVE_ACTIONS:
+        supplied = str(data.get("confirm_token", "")).strip()
+        if not supplied:
+            code = _issue_confirm_token(g.tenant["id"], action, args)
+            return jsonify({
+                "success": False,
+                "confirmation_required": True,
+                "confirm_token": code,
+                "message": f"'{action}' requires confirmation.",
+            }), 409
+        entry = _consume_confirm_token(g.tenant["id"], supplied)
+        if not entry or entry.get("action") != action:
+            return jsonify({"success": False, "message": "Invalid or expired confirm_token."}), 403
+        args = entry["args"]
+    is_mutation = action_policy.is_write(action) or action_policy.is_destructive(action)
+    if is_mutation:
+        plan, limits = _tenant_plan_limits(g.tenant["id"])
+        usage = db.get_usage(g.tenant["id"]) or {}
+        cap = limits.get("ad_commands")
+        if cap is not None and usage.get("ad_commands", 0) >= cap:
+            return jsonify({
+                "success": False,
+                "limit_reached": True,
+                "message": f"Monthly AD action limit reached ({cap} on {limits['label']} plan).",
+            }), 429
+        db.log_audit(g.tenant["id"], "legacy-api", action, args[0] if args else "", "queued")
+        db.increment_usage(g.tenant["id"], "ad_commands")
     command = db.queue_command(g.tenant["id"], action, args)
     return jsonify({"success": True, "message": "Command queued.", "data": command}), 202
 
@@ -2965,6 +3497,9 @@ def _run_scheduled_reports():
             try:
                 tid      = tenant["id"]
                 settings = db.get_settings(tid)
+                _, limits = _tenant_plan_limits(tid)
+                if not limits.get("scheduled_reports"):
+                    continue
                 if not _should_send_report(settings):
                     continue
 
