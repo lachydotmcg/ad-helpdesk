@@ -3226,6 +3226,21 @@ def admin_set_tenant_plan(tenant_id):
     return jsonify({"success": True, "message": f"Plan set to '{plan}'"})
 
 
+@app.route("/admin/flush-queue", methods=["POST"])
+@require_admin
+def admin_flush_queue():
+    """
+    Cancel all pending commands for a tenant (or all tenants if no tenant_id given).
+    Useful for clearing a clogged queue after connectivity issues.
+    Body (optional): { "tenant_id": "..." }
+    """
+    data      = request.get_json() or {}
+    tenant_id = data.get("tenant_id", "").strip() or None
+    count     = db.flush_pending_commands(tenant_id)
+    scope     = f"tenant {tenant_id}" if tenant_id else "all tenants"
+    return jsonify({"success": True, "message": f"Cancelled {count} pending command(s) for {scope}."})
+
+
 @app.route("/admin/set-plan", methods=["POST"])
 @require_admin
 def admin_set_plan():

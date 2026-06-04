@@ -1195,6 +1195,29 @@ def log_activity(tenant_id: str, event_type: str, actor: str,
         conn.close()
 
 
+def flush_pending_commands(tenant_id: str | None = None) -> int:
+    """Cancel all pending/running commands. Returns the number of rows affected."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        if tenant_id:
+            cur.execute(
+                f"UPDATE commands SET status = 'cancelled' "
+                f"WHERE status IN ('pending', 'running') AND tenant_id = {_PH}",
+                (tenant_id,)
+            )
+        else:
+            cur.execute(
+                "UPDATE commands SET status = 'cancelled' "
+                "WHERE status IN ('pending', 'running')"
+            )
+        count = cur.rowcount
+        conn.commit()
+        return count
+    finally:
+        conn.close()
+
+
 def create_feedback(tenant_id: str, user_email: str, message: str,
                     rating: int | None = None, page: str | None = None) -> dict:
     """Store a feedback submission."""
