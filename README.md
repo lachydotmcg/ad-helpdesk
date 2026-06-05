@@ -30,6 +30,29 @@ No scripting. No clicking through MMC consoles. Just describe the problem and it
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="AID Helpdesk dashboard — live AD user list, stats, and one-click actions" width="900"/>
+</p>
+<p align="center"><em>Dashboard — live AD user list, domain stats, and one-click actions</em></p>
+
+<br/>
+
+<p align="center">
+  <img src="docs/screenshots/assistant.png" alt="AI assistant — manage Active Directory in plain English" width="900"/>
+</p>
+<p align="center"><em>Assistant — manage Active Directory in plain English</em></p>
+
+<br/>
+
+<p align="center">
+  <img src="docs/screenshots/ticket.png" alt="Ticket triage — AI scores threat and auto-resolves routine requests" width="900"/>
+</p>
+<p align="center"><em>Tickets — the AI triages each request, scores threat, and auto-resolves routine ones</em></p>
+
+---
+
 ## How it works
 
 ```
