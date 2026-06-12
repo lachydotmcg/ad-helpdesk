@@ -616,6 +616,34 @@ def queue_command(tenant_id: str, action: str, args: list) -> dict:
     return {"id": cmd_id, "action": action, "args": args}
 
 
+def get_command(command_id: str, tenant_id: str) -> dict | None:
+    """Return a queued/running/completed command for this tenant."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM commands WHERE id = {_PH} AND tenant_id = {_PH}",
+            (command_id, tenant_id)
+        )
+        row = _row(cur.fetchone())
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        args = json.loads(row.get("args") or "[]")
+    except Exception:
+        args = []
+    return {
+        "id":         row["id"],
+        "tenant_id":  row["tenant_id"],
+        "action":     row["action"],
+        "args":       args,
+        "status":     row["status"],
+        "created_at": row["created_at"],
+    }
+
+
 def get_pending_command(tenant_id: str) -> dict | None:
     """Return the oldest pending command for this tenant and mark it as running."""
     conn = _get_conn()
@@ -1056,8 +1084,16 @@ def get_ticket_actions(ticket_id: str, tenant_id: str) -> list:
 # Usage tracking
 # ---------------------------------------------------------------------------
 
-def increment_usage(tenant_id: str, metric: str = "janus_calls") -> None:
+def increment_usage(tenant_id: str, metric: str = "janus_calls", amount: int = 1) -> None:
     """Increment a usage counter for the current month."""
+    if metric not in {"janus_calls", "ad_commands"}:
+        raise ValueError(f"Unknown usage metric: {metric}")
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        amount = 1
+    if amount <= 0:
+        return
     month = datetime.utcnow().strftime("%Y-%m")
     now   = datetime.utcnow().isoformat()
     uid   = str(uuid.uuid4())
@@ -1070,9 +1106,9 @@ def increment_usage(tenant_id: str, metric: str = "janus_calls") -> None:
             (uid, tenant_id, month, now)
         )
         cur.execute(
-            f"UPDATE usage SET {metric} = {metric} + 1, updated_at = {_PH} "
+            f"UPDATE usage SET {metric} = {metric} + {_PH}, updated_at = {_PH} "
             f"WHERE tenant_id = {_PH} AND month = {_PH}",
-            (now, tenant_id, month)
+            (amount, now, tenant_id, month)
         )
         conn.commit()
     finally:
@@ -1091,7 +1127,7 @@ def get_usage(tenant_id: str, month: str = None) -> dict | None:
         row = _row(cur.fetchone())
     finally:
         conn.close()
-    return row or {"tenant_id": tenant_id, "month": month, "janus_calls": 0}
+    return row or {"tenant_id": tenant_id, "month": month, "janus_calls": 0, "ad_commands": 0}
 
 
 def get_usage_history(tenant_id: str, months: int = 6) -> list:
@@ -1435,7 +1471,7 @@ PLAN_LIMITS = {
     # Quotas are generous but finite — enough for real testing, not abuse.
     "free": {
         "janus_calls":          20,    # AI scans / month
-        "ad_commands":          50,    # AD actions + searches / month
+        "ad_commands":          50,    # AD action units / month; bulk moves scale by rule/user blocks
         "team_members":         None,  # unlimited during trial
         "tickets":              None,  # unlimited during trial
         "email_intake":         True,

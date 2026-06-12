@@ -546,12 +546,16 @@ Get-ADUser -Filter * -SearchBase '{ou_esc}' -SearchScope Subtree `
     return r
 
 
-def bulk_move_users(source_ou: str, rules_json: str, create_missing_ous: str = "true") -> dict:
+def bulk_move_users(source_ou: str, rules_json: str, create_missing_ous: str = "true",
+                    max_users: str = "") -> dict:
     """Move users in source_ou to target OUs based on SamAccountName pattern rules.
 
     rules_json : JSON array of {"pattern": "*08", "target_ou": "Y12"} objects.
                  Pattern uses PowerShell -like wildcards (* = any chars).
     create_missing_ous : "true" (default) auto-creates target OUs that don't exist.
+    max_users : optional internal quota guard from the cloud. If supplied, the
+                script counts matched users before moving anything and blocks
+                the whole batch if it would exceed this number.
 
     Returns counts moved per rule and any per-user errors.
     """
@@ -567,6 +571,11 @@ def bulk_move_users(source_ou: str, rules_json: str, create_missing_ous: str = "
     source_path = _make_ou_path(source_ou)
     src = _ps_escape(source_path)
     do_create   = str(create_missing_ous).lower() in ("true", "1", "yes")
+    max_users_raw = str(max_users).strip()
+    try:
+        max_users_int = int(max_users_raw) if max_users_raw else -1
+    except ValueError:
+        max_users_int = -1
 
     # Build PowerShell rules array
     ps_rule_lines = []
@@ -599,9 +608,20 @@ $rules = @(
 {ps_rules_str}
 )
 
+$maxUsers = {max_users_int}
 $users   = Get-ADUser -Filter * -SearchBase '{src}' -SearchScope Subtree
 $moved   = @{{}}
 $errList = @()
+
+if ($maxUsers -ge 0) {{
+    $planned = 0
+    foreach ($rule in $rules) {{
+        $planned += @($users | Where-Object {{ $_.SamAccountName -like $rule.Pattern }}).Count
+    }}
+    if ($planned -gt $maxUsers) {{
+        throw "Bulk move blocked by monthly quota: $planned matched user(s), but this tenant has quota for $maxUsers user(s) in this batch."
+    }}
+}}
 
 foreach ($rule in $rules) {{
 {create_ou_block}

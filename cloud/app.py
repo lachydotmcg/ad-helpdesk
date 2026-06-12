@@ -227,6 +227,160 @@ def _custom_scripts_limit(tenant_id: str) -> tuple[int | None, str, dict]:
     return limits.get("custom_scripts_limit", 0), plan, limits
 
 
+AI_CHAT_BURST_LIMIT_PER_HOUR = 60
+BULK_MOVE_USERS_PER_AD_UNIT = 25
+BULK_MOVE_RULES_PER_AD_UNIT = 10
+
+
+def _is_ad_mutation(action: str) -> bool:
+    return action_policy.is_write(action) or action_policy.is_destructive(action)
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _bulk_move_total(result_data) -> int | None:
+    """Extract the actual moved user count returned by bulk_move_users."""
+    if not isinstance(result_data, dict):
+        return None
+    if "total" not in result_data:
+        return None
+    total = _safe_int(result_data.get("total"), default=-1)
+    return total if total >= 0 else None
+
+
+def _bulk_move_rule_count(args: list | None) -> int:
+    if not args or len(args) < 2:
+        return 0
+    rules_raw = args[1]
+    if isinstance(rules_raw, list):
+        return len(rules_raw)
+    if not isinstance(rules_raw, str) or not rules_raw.strip():
+        return 0
+    try:
+        rules = json.loads(rules_raw)
+    except (TypeError, ValueError):
+        return 0
+    return len(rules) if isinstance(rules, list) else 0
+
+
+def _bulk_move_rule_units(args: list | None) -> int:
+    rule_count = _bulk_move_rule_count(args)
+    if rule_count <= 0:
+        return 1
+    return max(1, (rule_count + BULK_MOVE_RULES_PER_AD_UNIT - 1) // BULK_MOVE_RULES_PER_AD_UNIT)
+
+
+def _ad_usage_units(action: str, args: list | None = None, result_data=None) -> int:
+    """
+    Return monthly AD quota units for this action.
+
+    Bulk moves are not charged per user, but they are not a one-action loophole
+    either: a batch costs at least one unit, then scales by moved users and very
+    large rule sets.
+    """
+    if not _is_ad_mutation(action):
+        return 0
+    if action == "bulk_move_users":
+        rule_units = _bulk_move_rule_units(args)
+        total = _bulk_move_total(result_data)
+        if total is None:
+            return rule_units
+        user_units = max(1, (total + BULK_MOVE_USERS_PER_AD_UNIT - 1) // BULK_MOVE_USERS_PER_AD_UNIT)
+        return max(rule_units, user_units)
+    return 1
+
+
+def _usage_units_label(units: int) -> str:
+    return "1 AD action" if units == 1 else f"{units} AD actions"
+
+
+def _ad_usage_limit_block(tenant_id: str, action: str, args: list | None = None,
+                          result_data=None) -> dict | None:
+    units = _ad_usage_units(action, args, result_data)
+    if units <= 0:
+        return None
+    plan, limits = _tenant_plan_limits(tenant_id)
+    usage = db.get_usage(tenant_id) or {}
+    used = _safe_int(usage.get("ad_commands"), 0)
+    cap = limits.get("ad_commands")
+    if cap is not None and used + units > int(cap):
+        return {
+            "limit_reached": True,
+            "units": units,
+            "used": used,
+            "cap": int(cap),
+            "label": limits["label"],
+            "message": (
+                f"Monthly AD action limit would be exceeded "
+                f"({used}/{cap} used; this needs {_usage_units_label(units)})."
+            ),
+        }
+    return None
+
+
+def _charge_ad_usage(tenant_id: str, action: str, args: list | None = None,
+                     result_data=None, already_charged_units: int = 0) -> int:
+    units = _ad_usage_units(action, args, result_data)
+    delta = max(0, units - max(0, _safe_int(already_charged_units, 0)))
+    if delta:
+        db.increment_usage(tenant_id, "ad_commands", amount=delta)
+    return delta
+
+
+def _queue_args_with_ad_budget(tenant_id: str, action: str, args: list | None) -> list:
+    """
+    Add internal runtime guards to commands before they reach the agent.
+
+    bulk_move_users accepts a hidden fourth argument: max users that may be
+    moved under the tenant's remaining AD quota. The agent checks this before
+    it mutates anything.
+    """
+    out = list(args or [])
+    if action != "bulk_move_users":
+        return out
+
+    _, limits = _tenant_plan_limits(tenant_id)
+    cap = limits.get("ad_commands")
+    if cap is None:
+        return out
+
+    usage = db.get_usage(tenant_id) or {}
+    used = _safe_int(usage.get("ad_commands"), 0)
+    remaining_units = max(0, int(cap) - used)
+    max_users = remaining_units * BULK_MOVE_USERS_PER_AD_UNIT
+
+    while len(out) < 3:
+        out.append("true" if len(out) == 2 else "")
+    if len(out) >= 4:
+        out[3] = str(max_users)
+    else:
+        out.append(str(max_users))
+    return out
+
+
+def _reconcile_bulk_ad_usage(tenant_id: str, command: dict | None,
+                             success: bool, result_data) -> int:
+    """
+    Bulk moves are charged once before queueing using rule count. Once the
+    agent reports how many users moved, charge any extra 25-user blocks.
+    """
+    if not success or not command or command.get("action") != "bulk_move_users":
+        return 0
+    reserved_units = _ad_usage_units(command["action"], command.get("args") or [])
+    return _charge_ad_usage(
+        tenant_id,
+        command["action"],
+        command.get("args") or [],
+        result_data=result_data,
+        already_charged_units=reserved_units,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Email helper
 # ---------------------------------------------------------------------------
@@ -971,7 +1125,7 @@ def api_v1_action(action):
     if not ok:
         return jsonify({"success": False, "message": reason}), 403
 
-    is_mutation = action_policy.is_write(action) or action_policy.is_destructive(action)
+    is_mutation = _is_ad_mutation(action)
 
     # ----- Destructive-action confirmation handshake --------------------
     # Destructive actions require a two-step confirm: the first call returns a
@@ -1002,24 +1156,20 @@ def api_v1_action(action):
                 "success": False,
                 "message": "Invalid or expired confirm_token. Re-request the action to get a fresh code.",
             }), 403
+        args = entry["args"]
 
     # ----- Monthly plan-quota enforcement (the real abuse guard) --------
     # Mirrors the dashboard /api/command path: write/destructive actions count
     # against the tenant's monthly ad_commands cap. Reads are uncapped.
+    queue_args = _queue_args_with_ad_budget(tenant_id, action, args)
+
     if is_mutation:
-        plan   = db.get_tenant_plan(tenant_id)
-        limits = db.get_plan_limits(plan)
-        usage  = db.get_usage(tenant_id) or {}
-        used   = usage.get("ad_commands", 0)
-        cap    = limits.get("ad_commands")
-        if cap is not None and used >= cap:
+        limit_block = _ad_usage_limit_block(tenant_id, action, args)
+        if limit_block:
             return jsonify({
                 "success":       False,
                 "limit_reached": True,
-                "message": (
-                    f"Monthly AD action limit reached ({cap} on {limits['label']} plan). "
-                    f"Upgrade to Pro for {db.PLAN_LIMITS['pro']['ad_commands']} actions/month."
-                ),
+                "message":       limit_block["message"],
             }), 429
 
         # Burst guard on top of the monthly cap.
@@ -1027,9 +1177,9 @@ def api_v1_action(action):
             return jsonify({"success": False, "message": "Rate limit: 30 write actions/hour."}), 429
 
         db.log_audit(tenant_id, "api-plugin", action, data.get("username", ""), "queued")
-        db.increment_usage(tenant_id, "ad_commands")
+        _charge_ad_usage(tenant_id, action, args)
 
-    command    = db.queue_command(tenant_id, action, args)
+    command    = db.queue_command(tenant_id, action, queue_args)
     command_id = command["id"]
 
     result_data = None
@@ -1558,28 +1708,25 @@ def dashboard_exec():
         args   = pending["args"]
 
     # ── Plan limits for write actions ────────────────────────────────────────
-    is_mutation = action_policy.is_write(action) or action_policy.is_destructive(action)
+    is_mutation = _is_ad_mutation(action)
+    queue_args = _queue_args_with_ad_budget(g.tenant_id, action, args)
     if is_mutation:
-        plan   = db.get_tenant_plan(g.tenant_id)
-        limits = db.get_plan_limits(plan)
-        usage  = db.get_usage(g.tenant_id) or {}
-        used   = usage.get("ad_commands", 0)
-        cap    = limits.get("ad_commands")
-        if cap is not None and used >= cap:
+        limit_block = _ad_usage_limit_block(g.tenant_id, action, args)
+        if limit_block:
             return jsonify({
                 "success": False,
                 "limit_reached": True,
-                "message": f"Monthly AD action limit reached ({cap} on {limits['label']} plan). Upgrade to Pro for {db.PLAN_LIMITS['pro']['ad_commands']} actions/month.",
+                "message": limit_block["message"],
             }), 429
 
-    command = db.queue_command(g.tenant_id, action, args)
+    command = db.queue_command(g.tenant_id, action, queue_args)
 
     if is_mutation:
         tgt = target or (args[0] if args else "")
         db.log_audit(g.tenant_id, g.user_email, action, tgt, "queued")
         db.log_activity(g.tenant_id, "ad_action", g.user_email, target=tgt,
                         detail=f"{action} queued via dashboard")
-        db.increment_usage(g.tenant_id, "ad_commands")
+        _charge_ad_usage(g.tenant_id, action, args)
 
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
@@ -1628,6 +1775,11 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
                 f"Monthly AI usage limit reached ({ai_cap} on the {limits['label']} plan). "
                 "Upgrade to an active Pro or Enterprise subscription to continue."
             ),
+        }
+    if not _rate_limit(f"ai_chat:{tenant_id}", AI_CHAT_BURST_LIMIT_PER_HOUR, 3600):
+        return {
+            "success": False,
+            "message": "AI assistant rate limit reached. Please wait before sending more requests.",
         }
 
     # ---- session -------------------------------------------------------
@@ -1746,6 +1898,7 @@ CRITICAL RULES:
         system=system_prompt, messages=messages
     )
     reply        = response.content[0].text.strip()
+    db.increment_usage(tenant_id, "janus_calls")
     command_data = None
     try:
         import re
@@ -1780,7 +1933,7 @@ CRITICAL RULES:
                             detail=f"Chat policy blocked '{action}': {policy_reason}")
             return {"success": True, "reply": f"I can't run that action: {policy_reason}", "action_taken": None}
 
-        if action_policy.is_write(action) or action_policy.is_destructive(action):
+        if _is_ad_mutation(action):
             if not _rate_limit(f"ai_writes:{tenant_id}", 20, 3600):
                 return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
 
@@ -1797,34 +1950,31 @@ CRITICAL RULES:
                 "session_id": session_id,
             }
 
+        queue_args = _queue_args_with_ad_budget(tenant_id, action, args)
+
         # Monthly plan-quota enforcement. The dashboard (/dashboard/api/exec) and
         # the public API (/api/v1/actions) both hard-block write/destructive
         # actions once the tenant hits its ad_commands cap; without the same gate
         # here the limit could be bypassed simply by routing the action through
         # AI chat. Reads stay uncapped.
-        if action_policy.is_write(action) or action_policy.is_destructive(action):
-            plan   = db.get_tenant_plan(tenant_id)
-            limits = db.get_plan_limits(plan)
-            usage  = db.get_usage(tenant_id) or {}
-            used   = usage.get("ad_commands", 0)
-            cap    = limits.get("ad_commands")
-            if cap is not None and used >= cap:
+        if _is_ad_mutation(action):
+            limit_block = _ad_usage_limit_block(tenant_id, action, args)
+            if limit_block:
                 return {
                     "success": True,
                     "reply": (
-                        f"You've reached your monthly AD action limit "
-                        f"({cap} on the {limits['label']} plan). Upgrade to Pro for "
-                        f"{db.PLAN_LIMITS['pro']['ad_commands']} actions/month to continue."
+                        f"{limit_block['message']} Upgrade to Pro for "
+                        f"{db.PLAN_LIMITS['pro']['ad_commands']} AD actions/month to continue."
                     ),
                     "action_taken": None,
                 }
 
-        if action_policy.is_write(action) or action_policy.is_destructive(action):
+        if _is_ad_mutation(action):
             target = args[0] if args else ""
             db.log_audit(tenant_id, user_email, action, target, "queued")
-            db.increment_usage(tenant_id, "ad_commands")
+            _charge_ad_usage(tenant_id, action, args)
 
-        command    = db.queue_command(tenant_id, action, args)
+        command    = db.queue_command(tenant_id, action, queue_args)
         command_id = command["id"]
 
         result_data = None
@@ -1896,23 +2046,18 @@ Output format for action: {{"action": "action_name", "args": ["arg1"], "message"
                         "raw_data": result_data.get("data"),
                         "session_id": session_id,
                     }
-                if action_policy.is_write(action2) or action_policy.is_destructive(action2):
-                    plan2   = db.get_tenant_plan(tenant_id)
-                    limits2 = db.get_plan_limits(plan2)
-                    usage2  = db.get_usage(tenant_id) or {}
-                    cap2    = limits2.get("ad_commands")
-                    if cap2 is not None and usage2.get("ad_commands", 0) >= cap2:
+                queue_args2 = _queue_args_with_ad_budget(tenant_id, action2, args2)
+                if _is_ad_mutation(action2):
+                    limit_block2 = _ad_usage_limit_block(tenant_id, action2, args2)
+                    if limit_block2:
                         return {
                             "success": True,
-                            "reply": (
-                                f"You've reached your monthly AD action limit "
-                                f"({cap2} on the {limits2['label']} plan)."
-                            ),
+                            "reply": limit_block2["message"],
                             "action_taken": action,
                         }
                     db.log_audit(tenant_id, user_email, action2, args2[0] if args2 else "", "queued")
-                    db.increment_usage(tenant_id, "ad_commands")
-                cmd2      = db.queue_command(tenant_id, action2, args2)
+                    _charge_ad_usage(tenant_id, action2, args2)
+                cmd2      = db.queue_command(tenant_id, action2, queue_args2)
                 result2   = None
                 deadline2 = time.time() + 25
                 while time.time() < deadline2:
@@ -1932,7 +2077,6 @@ Final result: success={result2['success']}, message="{result2['message']}", data
 Write 2-3 sentences confirming what happened. Be direct and clear."""}]
                     )
                     final_reply = sum2.content[0].text.strip()
-                    db.increment_usage(tenant_id, "janus_calls")
                     db.add_chat_message(session_id, tenant_id, "assistant", final_reply, action2)
                     db.touch_chat_session(session_id)
                     db.update_chat_session_title(session_id, message[:60])
@@ -1942,7 +2086,6 @@ Write 2-3 sentences confirming what happened. Be direct and clear."""}]
                     return {"success": True, "reply": final_reply, "action_taken": action2,
                             "raw_data": result2.get("data"), "session_id": session_id}
             else:
-                db.increment_usage(tenant_id, "janus_calls")
                 db.add_chat_message(session_id, tenant_id, "assistant", chain_text, action)
                 db.touch_chat_session(session_id)
                 db.update_chat_session_title(session_id, message[:60])
@@ -1963,7 +2106,6 @@ Agent result: success={result_data['success']}, message="{result_data['message']
 Write a short, friendly plain-English summary of what happened. Keep it under 5 sentences. Be direct."""}]
         )
         final_reply = summary_response.content[0].text.strip()
-        db.increment_usage(tenant_id, "janus_calls")
         db.add_chat_message(session_id, tenant_id, "assistant", final_reply, action)
         db.touch_chat_session(session_id)
         db.update_chat_session_title(session_id, message[:60])
@@ -1981,7 +2123,6 @@ Write a short, friendly plain-English summary of what happened. Keep it under 5 
                 "raw_data": result_data.get("data"), "session_id": session_id}
 
     # Conversational — no AD action
-    db.increment_usage(tenant_id, "janus_calls")
     db.add_chat_message(session_id, tenant_id, "assistant", reply)
     db.touch_chat_session(session_id)
     db.update_chat_session_title(session_id, message[:60])
@@ -2597,22 +2738,22 @@ RULES:
         )
 
         if can_auto and janus_action and janus_args and perm_ok and policy_ok and limits.get("auto_actions", False):
-            if action_policy.is_write(janus_action) or action_policy.is_destructive(janus_action):
-                usage = db.get_usage(tenant_id) or {}
-                cap = limits.get("ad_commands")
-                if cap is not None and usage.get("ad_commands", 0) >= cap:
+            queue_args = _queue_args_with_ad_budget(tenant_id, janus_action, janus_args)
+            if _is_ad_mutation(janus_action):
+                limit_block = _ad_usage_limit_block(tenant_id, janus_action, janus_args)
+                if limit_block:
                     db.add_ticket_action(
                         ticket_id, tenant_id, "janus_analysis",
-                        f"{ai_name} could not auto-apply {janus_action}: monthly AD action limit reached.",
+                        f"{ai_name} could not auto-apply {janus_action}: {limit_block['message']}",
                         ai_actor
                     )
                     return {"parsed": parsed, "auto_resolved": False, "error": None}
                 db.log_audit(tenant_id, ai_actor, janus_action, janus_args[0] if janus_args else "", "queued")
-                db.increment_usage(tenant_id, "ad_commands")
+                _charge_ad_usage(tenant_id, janus_action, janus_args)
 
             db.add_ticket_action(ticket_id, tenant_id, "janus_analysis",
                                  f"{ai_name} is automatically applying fix: {janus_action} {janus_args}...", ai_actor)
-            command    = db.queue_command(tenant_id, janus_action, janus_args)
+            command    = db.queue_command(tenant_id, janus_action, queue_args)
             result_data = None
             deadline   = time.time() + 25
             while time.time() < deadline:
@@ -2870,20 +3011,20 @@ def apply_ticket_fix(ticket_id):
             return jsonify({"success": False, "message": "Invalid or expired confirmation code."}), 403
         args = pending["args"]
 
-    if action_policy.is_write(action) or action_policy.is_destructive(action):
-        plan, limits = _tenant_plan_limits(g.tenant_id)
-        usage = db.get_usage(g.tenant_id) or {}
-        cap = limits.get("ad_commands")
-        if cap is not None and usage.get("ad_commands", 0) >= cap:
+    queue_args = _queue_args_with_ad_budget(g.tenant_id, action, args)
+
+    if _is_ad_mutation(action):
+        limit_block = _ad_usage_limit_block(g.tenant_id, action, args)
+        if limit_block:
             return jsonify({
                 "success": False,
                 "limit_reached": True,
-                "message": f"Monthly AD action limit reached ({cap} on {limits['label']} plan).",
+                "message": limit_block["message"],
             }), 429
         db.log_audit(g.tenant_id, g.user_email, action, args[0] if args else "", "queued")
-        db.increment_usage(g.tenant_id, "ad_commands")
+        _charge_ad_usage(g.tenant_id, action, args)
 
-    command = db.queue_command(g.tenant_id, action, args)
+    command = db.queue_command(g.tenant_id, action, queue_args)
 
     db.add_ticket_action(ticket_id, g.tenant_id, "ad_action",
                          f"Fix queued: {action} {args}", g.user_email)
@@ -3296,8 +3437,13 @@ def agent_result():
     if not command_id:
         return jsonify({"success": False, "message": "command_id is required."}), 400
 
+    command = db.get_command(command_id, g.tenant["id"])
     db.store_result(command_id, g.tenant["id"], success, message, result_data)
-    return jsonify({"success": True, "message": "Result stored."})
+    extra_units = _reconcile_bulk_ad_usage(g.tenant["id"], command, success, result_data)
+    msg = "Result stored."
+    if extra_units:
+        msg = f"Result stored. Reconciled {_usage_units_label(extra_units)} for bulk usage."
+    return jsonify({"success": True, "message": msg})
 
 
 # ---------------------------------------------------------------------------
@@ -3335,20 +3481,19 @@ def queue_command():
         if not entry or entry.get("action") != action:
             return jsonify({"success": False, "message": "Invalid or expired confirm_token."}), 403
         args = entry["args"]
-    is_mutation = action_policy.is_write(action) or action_policy.is_destructive(action)
+    is_mutation = _is_ad_mutation(action)
+    queue_args = _queue_args_with_ad_budget(g.tenant["id"], action, args)
     if is_mutation:
-        plan, limits = _tenant_plan_limits(g.tenant["id"])
-        usage = db.get_usage(g.tenant["id"]) or {}
-        cap = limits.get("ad_commands")
-        if cap is not None and usage.get("ad_commands", 0) >= cap:
+        limit_block = _ad_usage_limit_block(g.tenant["id"], action, args)
+        if limit_block:
             return jsonify({
                 "success": False,
                 "limit_reached": True,
-                "message": f"Monthly AD action limit reached ({cap} on {limits['label']} plan).",
+                "message": limit_block["message"],
             }), 429
         db.log_audit(g.tenant["id"], "legacy-api", action, args[0] if args else "", "queued")
-        db.increment_usage(g.tenant["id"], "ad_commands")
-    command = db.queue_command(g.tenant["id"], action, args)
+        _charge_ad_usage(g.tenant["id"], action, args)
+    command = db.queue_command(g.tenant["id"], action, queue_args)
     return jsonify({"success": True, "message": "Command queued.", "data": command}), 202
 
 
