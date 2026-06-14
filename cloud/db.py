@@ -1273,6 +1273,20 @@ def create_feedback(tenant_id: str, user_email: str, message: str,
     return {"id": fb_id}
 
 
+def list_feedback(limit: int = 100) -> list:
+    """Return recent feedback submissions across all tenants, newest first."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM feedback ORDER BY created_at DESC LIMIT {_PH}",
+            (limit,),
+        )
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+
 def get_first_tenant_id() -> str | None:
     """Return the id of the first tenant created. Used by email webhook routing."""
     conn = _get_conn()

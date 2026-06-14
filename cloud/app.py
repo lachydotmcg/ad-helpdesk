@@ -3302,6 +3302,18 @@ def admin_list_tenants():
     return jsonify({"success": True, "data": db.list_tenants()})
 
 
+@app.route("/admin/feedback", methods=["GET"])
+@require_admin
+def admin_list_feedback():
+    """Return recent feedback submissions (newest first) as JSON."""
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+    limit = max(1, min(limit, 1000))
+    return jsonify({"success": True, "data": db.list_feedback(limit)})
+
+
 @app.route("/admin/tenants", methods=["POST"])
 @require_admin
 def admin_create_tenant():
