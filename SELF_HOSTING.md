@@ -41,6 +41,59 @@ python agent.py
 
 ---
 
+## Keeping the agent running without pywin32
+
+The agent connects **outbound only** — it never listens on a port. That means it does not have to run on the AD server itself: any always-on Windows machine with WinRM (or Tailscale) reach to the AD server can host it. Because of that, you don't need a true Windows Service (and the `pywin32` package the service installer relies on) just to keep it alive. The simplest dependency-free option is **Windows Task Scheduler**, which is built into every Windows install.
+
+### Prerequisites
+
+- Put your WinRM credentials in a `.env` file in the repo root (the same folder as `agent.py`). `ad_bridge.py` loads it automatically via `python-dotenv`:
+
+  ```ini
+  AD_VM_IP=100.x.x.x
+  AD_DOMAIN=LAB
+  AD_ADMIN_USER=svc.helpdesk
+  AD_ADMIN_PASS=YourPassword
+  # Force plain-HTTP WinRM on port 5985 instead of HTTPS 5986.
+  # Safe when the agent reaches the AD server over a Tailscale tunnel,
+  # since the tunnel already encrypts the traffic end to end.
+  AD_WINRM_HTTP=1
+  ```
+
+  > `AD_WINRM_HTTP` is read from the environment only (it is **not** one of the keys `agent.py` injects from `agent-config.json`), so it must live in `.env` or be set as a real environment variable. `cloud_url` and `tenant_api_key` still come from `agent-config.json`.
+
+### Register the task
+
+Run this once from an **elevated** Command Prompt or PowerShell. It launches `python agent.py` every time you log on. Replace the path with your actual checkout location:
+
+```bat
+schtasks /create /tn "AID Helpdesk Agent" /sc onlogon /rl highest /f ^
+  /tr "cmd /c cd /d C:\Users\you\ad-helpdesk && python agent.py"
+```
+
+- **Working directory matters.** The `cd /d C:\Users\you\ad-helpdesk` is required so the agent finds `agent-config.json` and loads `.env` from the repo root. Without it, Task Scheduler starts in `C:\Windows\System32` and `.env` won't be picked up.
+- If `python` isn't on the system `PATH`, use the full interpreter path, e.g. `cd /d C:\Users\you\ad-helpdesk && "C:\Python312\python.exe" agent.py`.
+- `/sc onlogon` starts it at user logon; swap for `/sc onstart` if you want it to run at boot before anyone logs in (requires `/ru SYSTEM`).
+
+### Start it now and verify
+
+```bat
+:: Start immediately without logging out
+schtasks /run /tn "AID Helpdesk Agent"
+
+:: Confirm it's registered and see Last Run Time / Last Result
+schtasks /query /tn "AID Helpdesk Agent" /v /fo LIST
+```
+
+A healthy `Last Result` is `0x0` (still running) or the task showing as **Running** in `taskschd.msc`. The most reliable confirmation is on the cloud side: the dashboard **Settings → Agent** status flips to connected within a few seconds once the agent starts polling. To stop or remove it:
+
+```bat
+schtasks /end    /tn "AID Helpdesk Agent"
+schtasks /delete /tn "AID Helpdesk Agent" /f
+```
+
+---
+
 ## Enable WinRM on your AD server
 
 ```powershell
