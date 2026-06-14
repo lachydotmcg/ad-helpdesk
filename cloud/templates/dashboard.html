@@ -135,6 +135,20 @@
 
     .nav-icon { font-size: 16px; width: 18px; text-align: center; }
 
+    .sidebar-legal {
+      padding: 16px 20px 0;
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .sidebar-legal a {
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .sidebar-legal a:hover { color: var(--accent2); }
+
     .nav-section {
       font-size: 11px;
       font-weight: 600;
@@ -992,6 +1006,11 @@
       <span class="nav-icon">🧠</span> <span id="nav-ai-config-label">Configure AI</span>
     </div>
     {% endif %}
+    <div class="sidebar-legal">
+      <a href="/privacy" target="_blank" rel="noopener">Privacy</a>
+      &nbsp;·&nbsp;
+      <a href="/terms" target="_blank" rel="noopener">Terms</a>
+    </div>
   </aside>
 
   <!-- Content -->
