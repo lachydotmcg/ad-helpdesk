@@ -37,7 +37,24 @@ import action_policy
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
+
+_IS_DEV = os.getenv("FLASK_ENV", "production") == "development"
+
+# Fail closed on required secrets. A hardcoded fallback signing key in a public
+# repo lets anyone forge a session cookie and impersonate any tenant, so in
+# production we refuse to start without an explicit SECRET_KEY rather than
+# silently running on a known default.
+_SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not _SECRET_KEY:
+    if _IS_DEV:
+        _SECRET_KEY = "dev-only-insecure-key-do-not-use-in-prod"
+    else:
+        raise RuntimeError(
+            "SECRET_KEY is not set. Refusing to start in production with a "
+            "default signing key (would allow session forgery / account "
+            "takeover). Set the SECRET_KEY environment variable."
+        )
+app.secret_key = _SECRET_KEY
 
 # Session cookie security:
 # - HttpOnly:  JS cannot read the cookie (Flask default is True)
@@ -46,10 +63,33 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
 # - Secure:    only send over HTTPS (disabled in dev so localhost works)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"]   = os.getenv("FLASK_ENV", "production") != "development"
+app.config["SESSION_COOKIE_SECURE"]   = not _IS_DEV
 
+# Admin endpoints must never be reachable without an explicit key. If ADMIN_KEY
+# is unset the require_admin decorator below denies every request (fail closed),
+# and in production we refuse to boot at all so the misconfig can't slip by.
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+if not ADMIN_KEY and not _IS_DEV:
+    raise RuntimeError(
+        "ADMIN_KEY is not set. Refusing to start in production: every /admin "
+        "endpoint would be publicly accessible. Set the ADMIN_KEY environment "
+        "variable."
+    )
 DEFAULT_AI_NAME = "Assistant"
+
+
+# Standard security headers applied to every response.
+@app.after_request
+def _security_headers(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    if not _IS_DEV:
+        resp.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return resp
 
 db.init_db()
 db.migrate_db()
@@ -595,10 +635,13 @@ def require_tenant(f):
 
 
 def require_admin(f):
-    """Authenticate admin endpoints using X-Admin-Key header."""
+    """Authenticate admin endpoints using X-Admin-Key header. Fails closed."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if ADMIN_KEY and request.headers.get("X-Admin-Key") != ADMIN_KEY:
+        # Fail closed: if no admin key is configured, deny rather than allow.
+        if not ADMIN_KEY:
+            return jsonify({"success": False, "message": "Admin access is not configured."}), 503
+        if request.headers.get("X-Admin-Key") != ADMIN_KEY:
             return jsonify({"success": False, "message": "Unauthorized."}), 401
         return f(*args, **kwargs)
     return decorated
