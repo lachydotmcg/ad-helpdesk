@@ -23,6 +23,7 @@ import sqlite3
 import uuid
 import json
 import os
+import secrets
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -391,6 +392,24 @@ def migrate_db():
             page        TEXT,
             created_at  TEXT NOT NULL
         )""")
+        # v9: shared rate-limit + confirm-token state (replaces in-memory dicts
+        # so limits and the destructive-action handshake survive deploys and
+        # hold across multiple dynos/instances).
+        cur.execute("""CREATE TABLE IF NOT EXISTS rate_hits (
+            id      TEXT PRIMARY KEY,
+            bucket  TEXT NOT NULL,
+            hit_at  TEXT NOT NULL
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS rate_hits_bucket_idx ON rate_hits(bucket)")
+        cur.execute("""CREATE TABLE IF NOT EXISTS confirm_tokens (
+            code        TEXT PRIMARY KEY,
+            tenant_id   TEXT NOT NULL,
+            action      TEXT NOT NULL,
+            args        TEXT NOT NULL,
+            expires_at  TEXT NOT NULL,
+            used        INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL
+        )""")
         conn.commit()
     except Exception:
         pass  # Safe to ignore — already exists
@@ -439,6 +458,94 @@ def get_last_agent_error(tenant_id: str, within_seconds: int = 300) -> str | Non
         conn.close()
     msg = (row.get("message") if row else None) or None
     return msg.strip()[:300] if msg else None
+
+
+# ---------------------------------------------------------------------------
+# Shared rate limiting + confirmation tokens (DB-backed)
+# These replace the old in-memory dicts so abuse limits and the destructive-
+# action handshake are consistent across deploys and multiple dynos.
+# ---------------------------------------------------------------------------
+
+def rate_limit_allow(bucket: str, max_calls: int, window_seconds: int) -> bool:
+    """Sliding-window rate limit. Records a hit and returns True if allowed,
+    or False if the bucket already holds >= max_calls within the window."""
+    from datetime import timedelta
+    now    = datetime.utcnow()
+    cutoff = (now - timedelta(seconds=window_seconds)).isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        # Drop this bucket's expired hits, then count what remains in-window.
+        cur.execute(f"DELETE FROM rate_hits WHERE bucket = {_PH} AND hit_at < {_PH}",
+                    (bucket, cutoff))
+        cur.execute(f"SELECT COUNT(*) AS n FROM rate_hits WHERE bucket = {_PH}", (bucket,))
+        n = _row(cur.fetchone())["n"]
+        if n >= max_calls:
+            conn.commit()
+            return False
+        cur.execute(f"INSERT INTO rate_hits (id, bucket, hit_at) VALUES ({_PH}, {_PH}, {_PH})",
+                    (str(uuid.uuid4()), bucket, now.isoformat()))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def issue_confirm_token(tenant_id: str, action: str, args: list,
+                        ttl_seconds: int = 300) -> str:
+    """Create a single-use 6-digit confirmation code for a destructive action."""
+    from datetime import timedelta
+    now     = datetime.utcnow()
+    expires = (now + timedelta(seconds=ttl_seconds)).isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        # Opportunistic cleanup of expired tokens.
+        cur.execute(f"DELETE FROM confirm_tokens WHERE expires_at < {_PH}", (now.isoformat(),))
+        # Generate a code, retrying on the rare PK collision.
+        for _ in range(5):
+            code = "".join(secrets.choice("0123456789") for _ in range(6))
+            try:
+                cur.execute(
+                    f"INSERT INTO confirm_tokens "
+                    f"(code, tenant_id, action, args, expires_at, used, created_at) "
+                    f"VALUES ({_PH}, {_PH}, {_PH}, {_PH}, {_PH}, 0, {_PH})",
+                    (code, tenant_id, action, json.dumps(args), expires, now.isoformat())
+                )
+                conn.commit()
+                return code
+            except Exception:
+                conn.rollback()
+                continue
+        raise RuntimeError("Could not allocate a confirmation code")
+    finally:
+        conn.close()
+
+
+def consume_confirm_token(tenant_id: str, code: str) -> dict | None:
+    """Atomically claim a confirmation token. Returns {action, args, tenant_id}
+    if valid (correct tenant, unexpired, unused) or None. Single-use is
+    guaranteed by the UPDATE ... WHERE used = 0 row-count check."""
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE confirm_tokens SET used = 1 "
+            f"WHERE code = {_PH} AND tenant_id = {_PH} AND used = 0 AND expires_at > {_PH}",
+            (code, tenant_id, now)
+        )
+        claimed = cur.rowcount
+        row = None
+        if claimed:
+            cur.execute(f"SELECT action, args FROM confirm_tokens WHERE code = {_PH}", (code,))
+            row = _row(cur.fetchone())
+        conn.commit()
+    finally:
+        conn.close()
+    if not claimed or not row:
+        return None
+    return {"tenant_id": tenant_id, "action": row["action"], "args": json.loads(row["args"])}
 
 
 def get_agent_status(tenant_id: str) -> dict:

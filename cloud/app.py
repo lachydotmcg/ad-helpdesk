@@ -96,20 +96,13 @@ db.migrate_db()
 
 
 # ---------------------------------------------------------------------------
-# Rate limiting (in-memory, resets on deploy — good enough for abuse prevention)
+# Rate limiting (DB-backed — shared across dynos, survives deploys)
 # ---------------------------------------------------------------------------
 
-_rate_store: dict[str, list[float]] = defaultdict(list)
-
 def _rate_limit(key: str, max_calls: int, window_seconds: int) -> bool:
-    """Return True if allowed, False if rate-limited. key = e.g. 'signup:1.2.3.4'"""
-    now  = time.time()
-    hits = _rate_store[key]
-    _rate_store[key] = [t for t in hits if now - t < window_seconds]
-    if len(_rate_store[key]) >= max_calls:
-        return False
-    _rate_store[key].append(now)
-    return True
+    """Return True if allowed, False if rate-limited. key = e.g. 'signup:1.2.3.4'.
+    Backed by the shared rate_hits table so limits hold across instances."""
+    return db.rate_limit_allow(key, max_calls, window_seconds)
 
 
 # ---------------------------------------------------------------------------
@@ -173,36 +166,17 @@ DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
     "create_ou",
 })
 
-_confirm_store: dict[str, dict] = {}   # token -> {action, args, tenant_id, expires, used}
 _CONFIRM_TTL = 300                     # 5 minutes
 
 def _issue_confirm_token(tenant_id: str, action: str, args: list) -> str:
-    """Generate a 6-digit confirmation code and store the pending action."""
-    # Prune expired entries
-    now = time.time()
-    expired = [k for k, v in _confirm_store.items() if v["expires"] < now]
-    for k in expired:
-        del _confirm_store[k]
-
-    code = "".join(secrets.choice("0123456789") for _ in range(6))
-    _confirm_store[code] = {
-        "tenant_id": tenant_id,
-        "action":    action,
-        "args":      args,
-        "expires":   now + _CONFIRM_TTL,
-        "used":      False,
-    }
-    return code
+    """Generate a 6-digit confirmation code and store the pending action.
+    Backed by the shared confirm_tokens table (survives deploys / multi-dyno)."""
+    return db.issue_confirm_token(tenant_id, action, args, _CONFIRM_TTL)
 
 def _consume_confirm_token(tenant_id: str, code: str) -> dict | None:
-    """Validate and consume a confirmation token. Returns the pending action or None."""
-    entry = _confirm_store.get(code)
-    if not entry:
-        return None
-    if entry["used"] or entry["tenant_id"] != tenant_id or time.time() > entry["expires"]:
-        return None
-    entry["used"] = True
-    return entry
+    """Validate and single-use-consume a confirmation token. Returns the pending
+    action {action, args, tenant_id} or None."""
+    return db.consume_confirm_token(tenant_id, code)
 
 
 def _gen_password(length: int = 16) -> str:
