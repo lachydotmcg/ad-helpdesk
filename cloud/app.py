@@ -1261,6 +1261,7 @@ def dashboard():
                            user_email=g.user_email,
                            user_role=g.user_role,
                            tenant_plan=plan,
+                           tenant_limits=db.get_plan_limits(plan),
                            ai_name=_get_ai_name(settings))
 
 

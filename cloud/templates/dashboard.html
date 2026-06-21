@@ -75,6 +75,11 @@
     }
 
     .nav-logo span { color: var(--accent2); font-weight: 400; }
+    .nav-logo img {
+      filter: drop-shadow(0 0 6px rgba(99,102,241,0.45));
+      transition: filter 0.25s ease;
+    }
+    .nav-logo:hover img { filter: drop-shadow(0 0 10px rgba(124,58,237,0.7)); }
 
     .nav-right {
       display: flex;
@@ -1582,18 +1587,12 @@
 
             <!-- Email Ticket Intake -->
             <div class="settings-section">
-              <div class="settings-section-title">📧 Email Ticket Intake
-                {% if tenant_plan in ['pro', 'enterprise'] %}
-                  <span style="font-size:11px;font-weight:400;color:var(--green);margin-left:8px;">✓ Available on your plan</span>
-                {% else %}
-                  <span style="font-size:11px;font-weight:400;color:var(--yellow);margin-left:8px;">Pro feature</span>
-                {% endif %}
-              </div>
+              <div class="settings-section-title">📧 Email Ticket Intake</div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
                 Forward emails to this webhook URL and they'll automatically become tickets — your AI will analyse them instantly.
                 Works with Mailgun, SendGrid, Postmark, and Cloudflare Email Routing.
               </div>
-              {% if tenant_plan in ['pro', 'enterprise'] %}
+              {% if tenant_limits.email_intake %}
               <div style="margin-bottom:10px;">
                 <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Your webhook URL</div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -1609,13 +1608,6 @@
                 No authentication header needed — your API key is in the URL.
                 Incoming emails create tickets in your queue automatically with AI analysis.
                 An auto-reply is sent to the sender confirming receipt.
-              </div>
-              {% else %}
-              <div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px 16px;">
-                <div style="font-size:13px;color:var(--text);margin-bottom:10px;">
-                  Upgrade to <strong>Pro</strong> to let staff email tickets directly to your helpdesk — your AI reads every one.
-                </div>
-                <a href="/billing" class="btn btn-primary" style="font-size:13px;">Upgrade to Pro →</a>
               </div>
               {% endif %}
             </div>
@@ -1711,8 +1703,8 @@
             <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
               <div class="settings-section-title">Billing &amp; Plan</div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-                You are on the <strong style="color:var(--accent2);">Pro Plan</strong> — £29/month.
-                Manage your subscription, view trial status, and update payment details.
+                You are on the <strong style="color:var(--accent2);">{{ tenant_limits.label }}</strong> — {{ tenant_limits.price }}.
+                Everything is unlocked while we're in early access. Paid plans are coming soon.
               </div>
               <a href="/billing" class="btn btn-ghost" style="font-size:13px;">💳 Manage Billing</a>
             </div>
@@ -1780,8 +1772,8 @@
             </div>
 
             <div class="settings-section">
-              <div class="settings-section-title">Auto-actions <span style="font-weight:400;font-size:11px;color:var(--muted);">Pro+</span></div>
-              {% if tenant_plan in ['pro', 'enterprise'] %}
+              <div class="settings-section-title">Auto-actions</div>
+              {% if tenant_limits.auto_actions %}
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">AD actions your AI can apply automatically without admin approval. Requires high confidence.</div>
               <div class="toggle-row">
                 <label class="toggle-switch" for="jc-auto-unlock">
@@ -1822,15 +1814,6 @@
                   <div class="label-title">Disable account</div>
                   <div class="label-desc">Automatically disable accounts; requires very high AI confidence</div>
                 </label>
-              </div>
-              {% else %}
-              <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.25);border-radius:10px;padding:18px 20px;display:flex;align-items:center;gap:16px;">
-                <div style="font-size:28px;line-height:1;">🔒</div>
-                <div>
-                  <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">Pro feature</div>
-                  <div style="font-size:12px;color:var(--muted);line-height:1.6;">Auto-actions let your AI resolve tickets hands-free; unlocking accounts, resetting passwords, and more without admin approval.</div>
-                  <a href="/billing" style="display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:var(--accent2);text-decoration:none;">Upgrade to Pro — A$29/month →</a>
-                </div>
               </div>
               {% endif %}
             </div>

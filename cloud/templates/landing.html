@@ -61,8 +61,23 @@
     /* ── Sections ── */
     section { padding: 80px 48px; max-width: 1080px; margin: 0 auto; }
 
-    /* ── Hero ── */
-    .hero { text-align: center; padding-top: 100px; padding-bottom: 80px; }
+    /* ── Hero (two-column: logo left, copy right) ── */
+    .hero {
+      display: flex; align-items: center; justify-content: center;
+      gap: clamp(28px, 5vw, 68px); flex-wrap: wrap;
+      padding-top: 96px; padding-bottom: 84px;
+    }
+    .hero-logo {
+      position: relative; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      width: clamp(190px, 26vw, 300px); aspect-ratio: 1;
+    }
+    .hero-logo img {
+      position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain;
+      filter: drop-shadow(0 10px 34px rgba(124,58,237,0.45));
+      animation: logoFloat 6s ease-in-out infinite;
+    }
+    .hero-copy { text-align: left; max-width: 560px; }
     .hero-badge {
       display: inline-block; margin-bottom: 20px;
       padding: 4px 14px; border-radius: 999px;
@@ -78,9 +93,9 @@
       margin-bottom: 20px;
     }
     .hero p {
-      font-size: 1.1rem; color: var(--muted); max-width: 580px; margin: 0 auto 36px;
+      font-size: 1.1rem; color: var(--muted); max-width: 560px; margin: 0 0 36px;
     }
-    .hero-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .hero-btns { display: flex; gap: 14px; justify-content: flex-start; flex-wrap: wrap; }
     .btn-primary {
       padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 700;
       background: var(--accent); color: #fff; text-decoration: none;
@@ -94,6 +109,31 @@
       border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s;
     }
     .btn-secondary:hover { border-color: var(--accent2); transform: translateY(-1px); }
+
+    /* ── Animated glow behind the hero logo ── */
+    .brand-glow {
+      position: absolute; width: 135%; aspect-ratio: 1; border-radius: 50%;
+      background: radial-gradient(circle, rgba(124,58,237,0.55), rgba(99,102,241,0.28) 45%, transparent 70%);
+      filter: blur(50px); z-index: 0;
+      animation: glowPulse 7s ease-in-out infinite;
+    }
+    @keyframes glowPulse {
+      0%, 100% { transform: scale(1);    opacity: 0.6; }
+      50%      { transform: scale(1.16); opacity: 1; }
+    }
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-10px); }
+    }
+    @media (max-width: 760px) {
+      .hero { flex-direction: column; }
+      .hero-copy { text-align: center; }
+      .hero-btns { justify-content: center; }
+      .hero p { margin-left: auto; margin-right: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-logo img, .brand-glow { animation: none; }
+    }
 
     /* ── Features ── */
     .features-grid {
@@ -188,12 +228,18 @@
 
 <!-- ── Hero ── -->
 <section class="hero">
-  <div class="hero-badge">Powered by an AI assistant</div>
-  <h1>Manage Active Directory<br />with plain English</h1>
-  <p>AID Helpdesk lets you unlock accounts, reset passwords, and manage users just by describing what you need. The AI assistant handles the rest.</p>
-  <div class="hero-btns">
-    <a class="btn-primary" href="/signup">Start free trial</a>
-    <a class="btn-secondary" href="#features">See how it works</a>
+  <div class="hero-logo">
+    <div class="brand-glow"></div>
+    <img src="/logo.png" alt="AID Helpdesk logo" />
+  </div>
+  <div class="hero-copy">
+    <div class="hero-badge">A helpdesk built into Active Directory</div>
+    <h1>Your ticketing system,<br />wired straight into AD</h1>
+    <p>AID Helpdesk gives you a full ticket queue that turns support requests into real Active Directory actions — unlocks, resets, OU moves, bulk changes. An AI assistant handles the routine ones automatically, and you drive the rest in plain English.</p>
+    <div class="hero-btns">
+      <a class="btn-primary" href="/signup">Start free trial</a>
+      <a class="btn-secondary" href="#features">See how it works</a>
+    </div>
   </div>
 </section>
 
@@ -203,19 +249,24 @@
   <div class="section-title">Everything your IT team needs</div>
   <div class="features-grid">
     <div class="feature-card">
-      <div class="feature-icon">✨</div>
-      <h3>AI assistant</h3>
-      <p>Describe what you need in plain English. The AI assistant understands, queries your AD, and takes action — or flags security concerns before anything happens.</p>
+      <div class="feature-icon">🎫</div>
+      <h3>Ticketing built into AD</h3>
+      <p>Your own helpdesk queue, wired straight into Active Directory. Staff emails become tickets, and tickets become real AD actions — no separate ticketing tool to license, sync, or maintain.</p>
     </div>
     <div class="feature-card">
-      <div class="feature-icon">🎫</div>
-      <h3>Smart Tickets</h3>
-      <p>Turn support emails into tickets automatically. The AI assistant analyses them, suggests fixes, and can auto-resolve common issues without human intervention.</p>
+      <div class="feature-icon">⚡</div>
+      <h3>Auto-actionable tickets</h3>
+      <p>Routine requests — unlocks, password resets, re-enables — resolve themselves. The AI closes them hands-free within the limits you set, and every action lands in a full audit trail.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✨</div>
+      <h3>Bulk actions, plain English</h3>
+      <p>Tell your assistant "move every Year 8 student to the new OU" or "reset the whole marketing team" — it builds and runs the batch in one pass. No PowerShell, no loops, no spreadsheets.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🔒</div>
-      <h3>Security Checks</h3>
-      <p>The AI assistant flags impersonation attempts, typosquatting, and suspicious requests before they reach your AD. Built-in permission checking keeps your data safe.</p>
+      <h3>Safe by design</h3>
+      <p>A hard permission layer classifies every action; destructive ones always need human confirmation. The AI also flags impersonation, typosquatting, and suspicious requests before they touch your AD.</p>
     </div>
   </div>
 </section>
@@ -235,15 +286,15 @@
     <div class="step">
       <div class="step-num">2</div>
       <div class="step-body">
-        <h4>Ask</h4>
-        <p>Type your request in plain English. Unlock a user, reset a password, create an account — just describe it.</p>
+        <h4>Ask or raise a ticket</h4>
+        <p>Type a request in plain English, or let an emailed ticket land in your queue. One user or five hundred — bulk moves and resets are a single instruction.</p>
       </div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
       <div class="step-body">
         <h4>Done</h4>
-        <p>The AI assistant acts on your AD and replies with what it did. Full audit trail kept automatically — nothing ever gets lost.</p>
+        <p>The assistant acts on your AD, resolves the ticket, and replies with exactly what it did. A full audit trail is kept automatically — nothing ever gets lost.</p>
       </div>
     </div>
   </div>
@@ -299,8 +350,8 @@
         Can my whole team use it? <span style="color:var(--accent2);">+</span>
       </summary>
       <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        Yes. The Pro plan includes up to 5 dashboard users per tenant with role-based access —
-        admin (full control) or viewer (read-only). Additional seats coming soon.
+        Yes. Add dashboard users with role-based access — admin (full control) or viewer
+        (read-only). While we're in early access, team seats are unlimited.
       </p>
     </details>
     <details style="padding:20px 24px;cursor:pointer;">
