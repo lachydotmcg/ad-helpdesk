@@ -420,8 +420,30 @@ def update_agent_ping(tenant_id: str) -> None:
         conn.close()
 
 
+def get_last_agent_error(tenant_id: str, within_seconds: int = 300) -> str | None:
+    """Return the message of the most recent FAILED command result within the
+    window, or None. Lets the dashboard show *why* actions aren't completing
+    (e.g. 'Cannot reach the domain controller...') instead of a bare timeout."""
+    from datetime import timedelta
+    cutoff = (datetime.utcnow() - timedelta(seconds=within_seconds)).isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT message FROM results WHERE tenant_id = {_PH} AND success = 0 "
+            f"AND created_at > {_PH} ORDER BY created_at DESC LIMIT 1",
+            (tenant_id, cutoff)
+        )
+        row = _row(cur.fetchone())
+    finally:
+        conn.close()
+    msg = (row.get("message") if row else None) or None
+    return msg.strip()[:300] if msg else None
+
+
 def get_agent_status(tenant_id: str) -> dict:
-    """Return whether the agent is online (pinged within last 35 seconds)."""
+    """Return whether the agent is online (pinged within last 35s) plus the
+    most recent failure message, if any, so the UI can explain problems."""
     from datetime import timedelta
     conn = _get_conn()
     try:
@@ -430,11 +452,12 @@ def get_agent_status(tenant_id: str) -> dict:
         row = _row(cur.fetchone())
     finally:
         conn.close()
+    last_error = get_last_agent_error(tenant_id)
     if not row or not row.get("last_agent_ping"):
-        return {"online": False, "last_ping": None}
+        return {"online": False, "last_ping": None, "last_error": last_error}
     last   = row["last_agent_ping"]
     cutoff = (datetime.utcnow() - timedelta(seconds=35)).isoformat()
-    return {"online": last > cutoff, "last_ping": last}
+    return {"online": last > cutoff, "last_ping": last, "last_error": last_error}
 
 
 def create_tenant(name: str) -> dict:
@@ -644,11 +667,31 @@ def get_command(command_id: str, tenant_id: str) -> dict | None:
     }
 
 
+# How long a queued command stays valid. Anything older is expired rather than
+# executed: the requester (dashboard long-poll / API) has already given up by
+# then, so running it late is pointless and, for writes, surprising. This also
+# stops a backlog from an agent outage turning into a multi-minute pile-up — the
+# agent always picks up the freshest still-relevant command, never stale ones.
+COMMAND_TTL_SECONDS = 45
+
 def get_pending_command(tenant_id: str) -> dict | None:
-    """Return the oldest pending command for this tenant and mark it as running."""
+    """Return the oldest *still-fresh* pending command and mark it running.
+
+    Before selecting, any pending command older than COMMAND_TTL_SECONDS is
+    marked 'expired' so the agent never churns through a stale backlog.
+    """
+    from datetime import timedelta
+    cutoff = (datetime.utcnow() - timedelta(seconds=COMMAND_TTL_SECONDS)).isoformat()
     conn = _get_conn()
     try:
         cur = _cur(conn)
+        # Expire stale pending commands in one shot (self-healing backlog).
+        cur.execute(
+            f"UPDATE commands SET status = 'expired' "
+            f"WHERE tenant_id = {_PH} AND status = 'pending' AND created_at < {_PH}",
+            (tenant_id, cutoff)
+        )
+        # Take the oldest command that's still within its TTL.
         cur.execute(
             f"SELECT * FROM commands WHERE tenant_id = {_PH} AND status = 'pending' "
             f"ORDER BY created_at ASC LIMIT 1",
@@ -656,6 +699,7 @@ def get_pending_command(tenant_id: str) -> dict | None:
         )
         row = _row(cur.fetchone())
         if not row:
+            conn.commit()   # persist the expirations even when nothing is pending
             return None
         cur.execute(
             f"UPDATE commands SET status = 'running' WHERE id = {_PH}", (row["id"],)

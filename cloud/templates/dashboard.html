@@ -401,6 +401,7 @@
 
     .status-dot.online  { background: var(--green); }
     .status-dot.offline { background: var(--red); }
+    .status-dot.warning { background: var(--yellow); }
 
     /* ---- Empty state ---- */
     .empty {
@@ -2310,7 +2311,7 @@
       const res  = await fetch('/dashboard/api/agent/status');
       const json = await res.json();
       if (json.success && json.data && json.data.online === false) {
-        setAgentStatus(false);
+        setAgentStatus(false, json.data.last_error);
         return true;
       }
     } catch (_) { /* status endpoint unreachable — don't block on it */ }
@@ -2363,21 +2364,43 @@
 
   let _agentOnline = null;
 
-  function setAgentStatus(online) {
+  function setAgentStatus(online, lastError) {
     _agentOnline = online;
-    const cls  = 'status-dot ' + (online ? 'online' : 'offline');
-    const text = online ? 'Agent connected' : 'No agent';
+    // "Warning" state: agent is polling fine but its recent actions are failing
+    // (e.g. it can't reach the domain controller). Surface why, not just a dot.
+    const warn = online && !!lastError;
+    const cls  = 'status-dot ' + (warn ? 'warning' : (online ? 'online' : 'offline'));
+    const text = warn ? 'Agent: action errors' : (online ? 'Agent connected' : 'No agent');
+    const tip  = lastError
+      ? 'Last error: ' + lastError
+      : (online ? 'Windows agent is running and polling'
+                : 'No Windows agent connected — run agent.py on your server');
     // Nav header dot
     const dot   = document.getElementById('agent-dot');
     const label = document.getElementById('agent-label');
-    if (dot)   dot.className    = cls;
-    if (label) { label.textContent = text; label.title = online ? 'Windows agent is running and polling' : 'No Windows agent connected — run agent.py on your server'; }
+    if (dot)   { dot.className = cls; dot.title = tip; }
+    if (label) { label.textContent = text; label.title = tip; }
     // Settings page dot (may not exist yet)
     const sdot   = document.getElementById('settings-agent-dot');
     const slabel = document.getElementById('settings-agent-label');
-    if (sdot)   sdot.className    = cls;
-    if (slabel) slabel.textContent = online ? 'Agent connected and polling' : 'No agent connected';
-    if (slabel) slabel.style.color = online ? 'var(--success)' : 'var(--error)';
+    if (sdot)   { sdot.className = cls; sdot.title = tip; }
+    if (slabel) {
+      slabel.textContent = warn ? 'Connected, but actions are failing'
+                                : (online ? 'Agent connected and polling' : 'No agent connected');
+      slabel.style.color = warn ? 'var(--warn, #fbbf24)'
+                                : (online ? 'var(--success)' : 'var(--error)');
+      slabel.title = tip;
+    }
+    // Inline warning banner on the settings/agent area, if present
+    const ebox = document.getElementById('agent-error-banner');
+    if (ebox) {
+      if (lastError) {
+        ebox.textContent = '⚠ ' + lastError;
+        ebox.style.display = 'block';
+      } else {
+        ebox.style.display = 'none';
+      }
+    }
   }
 
   // =========================================================
@@ -4541,7 +4564,7 @@
     try {
       const res  = await fetch('/dashboard/api/agent/status');
       const json = await res.json();
-      if (json.success) setAgentStatus(json.data.online);
+      if (json.success) setAgentStatus(json.data.online, json.data.last_error);
     } catch {
       setAgentStatus(false);
     }

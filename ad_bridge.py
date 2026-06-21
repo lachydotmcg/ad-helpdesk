@@ -9,6 +9,7 @@ Credentials are loaded from .env -- never hardcoded.
 
 import os
 import json
+import time
 import winrm
 from dotenv import load_dotenv
 
@@ -29,6 +30,10 @@ _USE_HTTPS  = os.getenv("AD_WINRM_HTTP", "0") != "1"
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _winrm_target() -> str:
+    return f"{_VM_IP}:{5986 if _USE_HTTPS else 5985}"
+
+
 def _session() -> winrm.Session:
     if _USE_HTTPS:
         endpoint = f"https://{_VM_IP}:5986/wsman"
@@ -39,12 +44,51 @@ def _session() -> winrm.Session:
         auth=(f"{_DOMAIN}\\{_ADMIN_USER}", _ADMIN_PASS),
         transport="ntlm",
         server_cert_validation="ignore",   # accepts self-signed certs; traffic is still encrypted
+        read_timeout_sec=20,               # fail a stalled read instead of hanging
+        operation_timeout_sec=15,          # must be < read_timeout_sec (pywinrm rule)
     )
 
 
+# ── WinRM connectivity circuit breaker ──────────────────────────────────────
+# If the domain controller is unreachable, every command would otherwise hang
+# for the full connection timeout. After a few consecutive connection failures
+# we "open" the breaker and fail fast for a cooldown window, so a DC outage
+# can't turn a queue of commands into a multi-minute pile-up. Only connection
+# errors trip it — ordinary AD errors (user not found, etc.) do not.
+_CB_FAIL_THRESHOLD = 3
+_CB_COOLDOWN_SEC   = 60
+_cb_failures   = 0
+_cb_open_until = 0.0
+
+_CONN_ERROR_HINTS = (
+    "max retries", "connection", "timed out", "timeout", "refused",
+    "no route", "unreachable", "failed to establish", "newconnectionerror",
+)
+
+
+def _is_connection_error(msg: str) -> bool:
+    m = (msg or "").lower()
+    return any(h in m for h in _CONN_ERROR_HINTS)
+
+
 def _run(ps_script: str) -> dict:
+    global _cb_failures, _cb_open_until
+    now = time.monotonic()
+
+    # Breaker open → fail fast without attempting a connection.
+    if now < _cb_open_until:
+        wait = int(_cb_open_until - now)
+        return {
+            "success": False, "data": None,
+            "message": (f"Domain controller at {_winrm_target()} unreachable — skipping for "
+                        f"{wait}s after repeated connection failures. Check the AD server is on "
+                        f"and WinRM is listening (Test-NetConnection {_VM_IP} -Port "
+                        f"{5986 if _USE_HTTPS else 5985})."),
+        }
+
     try:
         result = _session().run_ps(ps_script)
+        _cb_failures = 0   # any success closes the breaker
         if result.status_code != 0:
             err = result.std_err.decode("utf-8", errors="replace").strip()
             return {"success": False, "message": err, "data": None}
@@ -52,7 +96,18 @@ def _run(ps_script: str) -> dict:
         data = json.loads(raw) if raw else None
         return {"success": True, "message": "OK", "data": data}
     except Exception as e:
-        return {"success": False, "message": str(e), "data": None}
+        msg = str(e)
+        if _is_connection_error(msg):
+            _cb_failures += 1
+            if _cb_failures >= _CB_FAIL_THRESHOLD:
+                _cb_open_until = now + _CB_COOLDOWN_SEC
+            return {
+                "success": False, "data": None,
+                "message": (f"Cannot reach the domain controller at {_winrm_target()} over WinRM. "
+                            f"Check the server is on and the port is open. ({msg})"),
+            }
+        # Non-connection failure (e.g. AD object not found) — do not trip the breaker.
+        return {"success": False, "message": msg, "data": None}
 
 
 def _ps_escape(value: str) -> str:
