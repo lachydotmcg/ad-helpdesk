@@ -880,6 +880,125 @@ def email_intake(api_key):
     return jsonify({"success": True, "ticket_id": ticket["id"]}), 201
 
 
+# ---------------------------------------------------------------------------
+# Zoho Desk integration — inbound ticket webhook
+# ---------------------------------------------------------------------------
+
+_ZOHO_PRIORITY_MAP = {"urgent": "urgent", "high": "high", "medium": "medium", "low": "low"}
+
+
+def _parse_zoho_ticket(data: dict) -> dict:
+    """Map a Zoho Desk webhook payload to AID ticket fields, defensively.
+    Zoho's payload shape varies with how the webhook / workflow rule is set up,
+    so we check a few likely locations for each field and unwrap common envelopes."""
+    t = data if isinstance(data, dict) else {}
+    for key in ("ticket", "payload", "data"):
+        if isinstance(t.get(key), dict):
+            t = t[key]
+            break
+
+    def pick(*keys):
+        for k in keys:
+            v = t.get(k)
+            if v:
+                return v
+        return None
+
+    subject = pick("subject", "Subject", "ticketSubject") or "Support request"
+    desc    = pick("description", "Description", "content", "ticketDescription") or ""
+
+    email = pick("email", "Email", "fromEmailAddress", "contactEmail")
+    name  = pick("contactName", "customerName")
+    contact = t.get("contact") if isinstance(t.get("contact"), dict) else {}
+    if not email:
+        email = contact.get("email") or contact.get("emailId")
+    if not name:
+        name = (f"{contact.get('firstName','')} {contact.get('lastName','')}".strip() or None)
+
+    zoho_id   = str(pick("id", "ticketId") or "").strip() or None
+    ticket_no = pick("ticketNumber", "ticketNo")
+    priority  = _ZOHO_PRIORITY_MAP.get(str(pick("priority", "Priority") or "").strip().lower(), "medium")
+
+    return {
+        "subject":     str(subject)[:120].strip(),
+        "description": str(desc)[:4000].strip(),
+        "email":       (str(email).strip() if email else None),
+        "name":        (str(name).strip() if name else None),
+        "zoho_id":     zoho_id,
+        "ticket_no":   (str(ticket_no) if ticket_no else None),
+        "priority":    priority,
+    }
+
+
+@app.route("/webhook/zoho/<api_key>", methods=["POST"])
+def zoho_intake(api_key):
+    """Inbound Zoho Desk webhook — turns Zoho Desk tickets into AID tickets and
+    runs the same AI-analysis pipeline as email intake.
+
+    Set up in Zoho Desk (Setup → Automation → Webhooks, fired by a workflow rule
+    on ticket creation), POSTing the ticket as JSON to:
+      https://<your-app>/webhook/zoho/<tenant_api_key>
+    """
+    tenant = db.get_tenant_by_key(api_key)
+    if not tenant:
+        return jsonify({"success": False, "message": "Invalid API key."}), 401
+    tenant_id   = tenant["id"]
+    tenant_name = tenant.get("name", "")
+
+    plan   = db.get_tenant_plan(tenant_id)
+    limits = db.get_plan_limits(plan)
+    if not limits.get("integrations"):
+        return jsonify({"success": False,
+                        "message": f"Integrations are not available on the {limits['label']} plan."}), 403
+
+    # Webhooks can be chatty (create + update events); allow a generous window.
+    if not _rate_limit(f"zoho_intake:{tenant_id}", 120, 3600):
+        return jsonify({"success": False, "message": "Rate limit exceeded."}), 429
+
+    data = request.get_json(force=True, silent=True) or {}
+    z = _parse_zoho_ticket(data)
+    if not z["description"] and z["subject"] == "Support request":
+        return jsonify({"success": False,
+                        "message": "Could not parse Zoho ticket (subject/description missing)."}), 400
+
+    # Dedupe: a Zoho ticket we've already imported (workflow can fire repeatedly).
+    if z["zoho_id"]:
+        existing = db.find_ticket_by_external_ref(tenant_id, z["zoho_id"])
+        if existing:
+            return jsonify({"success": True, "message": "Already imported.",
+                            "ticket_id": existing["id"]}), 200
+
+    # Enforce the ticket plan cap.
+    cap = limits.get("tickets")
+    if cap is not None and len(db.list_tickets(tenant_id, limit=cap + 1)) >= cap:
+        return jsonify({"success": False, "message": "Ticket limit reached."}), 429
+
+    title = z["subject"] or (f"Zoho ticket {z['ticket_no']}".strip() if z["ticket_no"] else "Support request")
+    desc  = z["description"] or title
+
+    ticket = db.create_ticket(
+        tenant_id,
+        created_by      = "zoho-intake",
+        title           = title,
+        description     = desc,
+        priority        = z["priority"],
+        requester_name  = z["name"],
+        requester_email = z["email"],
+        source          = "zoho",
+        external_ref    = z["zoho_id"],
+    )
+
+    db.log_activity(tenant_id, "ticket_created", z["email"] or "zoho",
+                    target=title, detail="via Zoho Desk")
+
+    _run_janus_analysis(
+        tenant_id, tenant_name, ticket["id"],
+        title, desc, z["name"], z["email"], limits
+    )
+
+    return jsonify({"success": True, "ticket_id": ticket["id"]}), 201
+
+
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if "tenant_id" in session:

@@ -429,6 +429,15 @@ def migrate_db():
             used        INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT NOT NULL
         )""")
+        # v10: external_ref on tickets — links an AID ticket back to its source
+        # in an external system (e.g. a Zoho Desk ticket id) for two-way sync.
+        if _USE_PG:
+            cur.execute("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS external_ref TEXT")
+        else:
+            cur.execute("PRAGMA table_info(tickets)")
+            _tcols = [r["name"] for r in cur.fetchall()]
+            if "external_ref" not in _tcols:
+                cur.execute("ALTER TABLE tickets ADD COLUMN external_ref TEXT")
         conn.commit()
     except Exception:
         pass  # Safe to ignore — already exists
@@ -1147,7 +1156,8 @@ def get_chat_session(session_id: str, tenant_id: str) -> dict | None:
 
 def create_ticket(tenant_id: str, created_by: str, title: str, description: str,
                   priority: str = "medium", requester_name: str = None,
-                  requester_email: str = None, source: str = "manual") -> dict:
+                  requester_email: str = None, source: str = "manual",
+                  external_ref: str = None) -> dict:
     ticket_id = str(uuid.uuid4())
     now       = datetime.utcnow().isoformat()
     conn = _get_conn()
@@ -1156,15 +1166,32 @@ def create_ticket(tenant_id: str, created_by: str, title: str, description: str,
         cur.execute(
             f"""INSERT INTO tickets
                (id, tenant_id, title, description, status, priority, requester_name,
-                requester_email, source, created_by, created_at, updated_at)
-               VALUES ({_PH}, {_PH}, {_PH}, {_PH}, 'open', {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH})""",
+                requester_email, source, external_ref, created_by, created_at, updated_at)
+               VALUES ({_PH}, {_PH}, {_PH}, {_PH}, 'open', {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH})""",
             (ticket_id, tenant_id, title, description, priority,
-             requester_name, requester_email, source, created_by, now, now)
+             requester_name, requester_email, source, external_ref, created_by, now, now)
         )
         conn.commit()
     finally:
         conn.close()
     return {"id": ticket_id, "title": title, "status": "open", "priority": priority, "created_at": now}
+
+
+def find_ticket_by_external_ref(tenant_id: str, external_ref: str) -> dict | None:
+    """Return a ticket previously created from the given external system id, if any.
+    Lets webhook retries / duplicate events be deduped instead of creating clones."""
+    if not external_ref:
+        return None
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM tickets WHERE tenant_id = {_PH} AND external_ref = {_PH} LIMIT 1",
+            (tenant_id, external_ref)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
 
 
 def get_ticket(ticket_id: str, tenant_id: str) -> dict | None:

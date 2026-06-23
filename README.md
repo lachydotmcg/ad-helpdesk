@@ -129,6 +129,9 @@ Unlock accounts, reset passwords, enable accounts, hands-free, without waiting f
 ### Email ticket intake
 Point a Mailgun, SendGrid, or Postmark webhook at your dashboard and tickets flow in from email. Your AI sends the resolution back to the requester automatically.
 
+### Zoho Desk integration
+Already running a helpdesk in Zoho Desk? Fire a Zoho webhook at `/webhook/zoho/<your-api-key>` (Setup → Automation → Webhooks, on ticket creation) and Zoho tickets land in AID with full AI analysis and auto-resolution. Repeated webhook events are de-duplicated by Zoho ticket id.
+
 ### Scheduled reports
 Automated HTML email reports on a schedule you set: daily, weekly, or monthly.
 
