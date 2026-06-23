@@ -89,7 +89,7 @@ The **AID Agent** is a lightweight Windows Service that polls *outbound*; your A
 
 ### 1. Create an account
 
-Sign up free at [web-production-01ecc.up.railway.app/signup](https://web-production-01ecc.up.railway.app/signup). No credit card needed.
+Sign up free at [web-production-01ecc.up.railway.app/signup](https://aidhelpdesk-bba430f79b62.herokuapp.com). No credit card needed.
 
 ### 2. Copy your API key
 
