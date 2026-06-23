@@ -4,406 +4,559 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AID Helpdesk — Your AI Active Directory expert</title>
-  <meta name="description" content="AID Helpdesk is like having an Active Directory expert on your team. Unlock accounts, reset passwords, and manage users by asking in plain English. No AD knowledge required."/>
-  <link rel="icon" type="image/png" href="/logo.png"/>
-  <meta property="og:type" content="website"/>
-  <meta property="og:title" content="AID Helpdesk — Your AI Active Directory expert"/>
-  <meta property="og:description" content="An AD expert on your team, so you never have to be one. Unlock accounts, reset passwords, manage users — just ask in plain English. Free while in early access."/>
-  <meta property="og:image" content="/logo.png"/>
-  <meta name="twitter:card" content="summary"/>
-  <meta name="twitter:title" content="AID Helpdesk"/>
-  <meta name="twitter:description" content="Your AI Active Directory expert. Manage AD in plain English — no PowerShell, no AD knowledge required."/>
-  <meta name="twitter:image" content="/logo.png"/>
+  <meta name="description" content="AID Helpdesk is like having an Active Directory expert on your team. Unlock accounts, reset passwords, and manage users by asking in plain English. No AD knowledge required." />
+  <link rel="icon" type="image/png" href="/static/AIDLogo.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AID Helpdesk — Your AI Active Directory expert" />
+  <meta property="og:description" content="An AD expert on your team, so you never have to be one. Manage Active Directory in plain English. Free while in early access." />
+  <meta property="og:image" content="/static/AIDLogo.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="AID Helpdesk" />
+  <meta name="twitter:description" content="Your AI Active Directory expert. Manage AD in plain English — no PowerShell, no AD knowledge required." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0f0e1a;
-      --surface:  #1a1830;
-      --surface2: #221f3a;
+      --bg:       #0b0a14;
+      --surface:  #14121f;
+      --surface2: #1b1830;
       --accent:   #6366f1;
       --accent2:  #818cf8;
-      --text:     #e2e8f0;
-      --muted:    #94a3b8;
-      --border:   rgba(99,102,241,0.18);
+      --accent3:  #a855f7;
+      --text:     #eceefb;
+      --muted:    #9b9fb8;
+      --border:   rgba(129,140,248,0.16);
+      --border2:  rgba(129,140,248,0.30);
+      --radius:   16px;
     }
 
     html { scroll-behavior: smooth; }
-
     body {
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: 'DM Sans', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.6;
-      min-height: 100vh;
+      line-height: 1.65;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
+    /* Ambient page glow */
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(620px circle at 18% 8%, rgba(99,102,241,0.16), transparent 60%),
+        radial-gradient(700px circle at 86% 2%, rgba(168,85,247,0.12), transparent 55%);
+    }
+
+    h1, h2, h3, .wordmark { font-family: 'Space Grotesk', sans-serif; letter-spacing: -0.02em; }
+
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: rgba(129,140,248,0.35); }
+
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+    section { padding: 96px 0; }
 
     /* ── Nav ── */
     nav {
-      position: sticky; top: 0; z-index: 100;
+      position: sticky; top: 0; z-index: 50;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 48px;
-      background: rgba(15,14,26,0.85);
+      padding: 14px 24px; max-width: 1120px; margin: 0 auto;
       backdrop-filter: blur(12px);
+    }
+    .nav-bar {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(11,10,20,0.72);
       border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
     }
-    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-    .nav-logo img { width: 38px; height: 38px; object-fit: contain; }
-    .nav-logo span { font-size: 16px; font-weight: 700; color: var(--text); }
-    .nav-logo span em { color: var(--accent2); font-style: normal; }
-    .nav-cta {
-      padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
-      background: var(--accent); color: #fff; text-decoration: none;
-      transition: background 0.2s;
+    .nav-logo { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+    .nav-logo img { width: 34px; height: 34px; object-fit: contain;
+                    filter: drop-shadow(0 0 8px rgba(124,58,237,0.5)); }
+    .nav-logo span { font-family: 'Space Grotesk', sans-serif; font-size: 17px; }
+    .nav-logo em { color: var(--accent2); font-style: normal; }
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+    .nav-link {
+      font-size: 14px; color: var(--muted); padding: 8px 12px; border-radius: 8px;
+      transition: color 0.2s, background 0.2s;
     }
-    .nav-cta:hover { background: var(--accent2); }
+    .nav-link:hover { color: var(--text); background: rgba(129,140,248,0.08); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 15px;
+      padding: 11px 20px; border-radius: 10px; border: none;
+      transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .btn:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 8px 24px rgba(99,102,241,0.32); }
+    .btn-primary:hover { background: var(--accent2); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(99,102,241,0.42); }
+    .btn-ghost { background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border2); }
+    .btn-ghost:hover { border-color: var(--accent2); transform: translateY(-2px); }
+    .btn-sm { padding: 9px 16px; font-size: 14px; }
+    .btn svg { width: 18px; height: 18px; }
 
-    /* ── Sections ── */
-    section { padding: 80px 48px; max-width: 1080px; margin: 0 auto; }
-
-    /* ── Hero (two-column: logo left, copy right) ── */
+    /* ── Hero ── */
     .hero {
-      display: flex; align-items: center; justify-content: center;
-      gap: clamp(28px, 5vw, 68px); flex-wrap: wrap;
-      padding-top: 96px; padding-bottom: 84px;
+      display: grid; grid-template-columns: minmax(0, 320px) 1fr;
+      align-items: center; gap: clamp(28px, 5vw, 72px);
+      padding-top: 72px; padding-bottom: 64px;
     }
-    .hero-logo {
-      position: relative; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      width: clamp(190px, 26vw, 300px); aspect-ratio: 1;
+    .hero-logo { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
+    .hero-logo .glow {
+      position: absolute; width: 132%; aspect-ratio: 1; border-radius: 50%; z-index: 0;
+      background: radial-gradient(circle, rgba(124,58,237,0.6), rgba(99,102,241,0.28) 45%, transparent 70%);
+      filter: blur(52px); animation: glowPulse 7s ease-in-out infinite;
     }
     .hero-logo img {
-      position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain;
-      filter: drop-shadow(0 10px 34px rgba(124,58,237,0.45));
-      animation: logoFloat 6s ease-in-out infinite;
+      position: relative; z-index: 1; width: 100%; height: auto;
+      filter: drop-shadow(0 12px 38px rgba(124,58,237,0.5));
+      animation: float 6s ease-in-out infinite;
     }
-    .hero-copy { text-align: left; max-width: 560px; }
-    .hero-badge {
-      display: inline-block; margin-bottom: 20px;
-      padding: 4px 14px; border-radius: 999px;
-      background: rgba(99,102,241,0.12); border: 1px solid var(--border);
-      font-size: 12px; font-weight: 600; color: var(--accent2); letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .hero h1 {
-      font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 800; line-height: 1.15;
-      letter-spacing: -0.02em;
-      background: linear-gradient(135deg, var(--text) 30%, var(--accent2) 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 20px;
-    }
-    .hero p {
-      font-size: 1.1rem; color: var(--muted); max-width: 560px; margin: 0 0 36px;
-    }
-    .hero-btns { display: flex; gap: 14px; justify-content: flex-start; flex-wrap: wrap; }
-    .btn-primary {
-      padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 700;
-      background: var(--accent); color: #fff; text-decoration: none;
-      transition: background 0.2s, transform 0.15s;
-      box-shadow: 0 0 24px rgba(99,102,241,0.35);
-    }
-    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
-    .btn-secondary {
-      padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
-      background: var(--surface); color: var(--text); text-decoration: none;
-      border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s;
-    }
-    .btn-secondary:hover { border-color: var(--accent2); transform: translateY(-1px); }
+    @keyframes glowPulse { 0%,100% { transform: scale(1); opacity: .6; } 50% { transform: scale(1.14); opacity: 1; } }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
-    /* ── Animated glow behind the hero logo ── */
-    .brand-glow {
-      position: absolute; width: 135%; aspect-ratio: 1; border-radius: 50%;
-      background: radial-gradient(circle, rgba(124,58,237,0.55), rgba(99,102,241,0.28) 45%, transparent 70%);
-      filter: blur(50px); z-index: 0;
-      animation: glowPulse 7s ease-in-out infinite;
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px; margin-bottom: 22px;
+      padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      color: var(--accent2); background: rgba(99,102,241,0.1); border: 1px solid var(--border2);
     }
-    @keyframes glowPulse {
-      0%, 100% { transform: scale(1);    opacity: 0.6; }
-      50%      { transform: scale(1.16); opacity: 1; }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent2);
+                  box-shadow: 0 0 8px var(--accent2); animation: blink 2.2s ease infinite; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+    .hero h1 {
+      font-size: clamp(2.3rem, 5.2vw, 3.7rem); font-weight: 700; line-height: 1.08; margin-bottom: 20px;
     }
-    @keyframes logoFloat {
-      0%, 100% { transform: translateY(0); }
-      50%      { transform: translateY(-10px); }
+    .hero h1 .grad {
+      background: linear-gradient(110deg, var(--accent2), var(--accent3));
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     }
-    @media (max-width: 760px) {
-      .hero { flex-direction: column; }
-      .hero-copy { text-align: center; }
-      .hero-btns { justify-content: center; }
-      .hero p { margin-left: auto; margin-right: auto; }
+    .hero p.lede { font-size: 1.16rem; color: var(--muted); max-width: 560px; margin-bottom: 32px; }
+    .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; }
+    .hero-note { margin-top: 16px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+    .hero-note svg { width: 15px; height: 15px; color: var(--accent2); }
+
+    /* ── Carousel ── */
+    .showcase-head { text-align: center; margin-bottom: 40px; }
+    .eyebrow { font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600;
+               letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); margin-bottom: 12px; }
+    .section-title { font-size: clamp(1.7rem, 3.6vw, 2.5rem); font-weight: 700; line-height: 1.15; }
+    .section-sub { color: var(--muted); font-size: 1.05rem; max-width: 560px; margin: 14px auto 0; }
+
+    .carousel { position: relative; max-width: 980px; margin: 0 auto; }
+    .frame {
+      border-radius: var(--radius); overflow: hidden;
+      border: 1px solid var(--border2); background: var(--surface);
+      box-shadow: 0 30px 80px -28px rgba(0,0,0,0.8), 0 0 0 1px rgba(129,140,248,0.06);
     }
-    @media (prefers-reduced-motion: reduce) {
-      .hero-logo img, .brand-glow { animation: none; }
+    .frame-bar {
+      display: flex; align-items: center; gap: 7px; padding: 12px 16px;
+      background: #0d0c17; border-bottom: 1px solid var(--border);
     }
+    .frame-bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+    .frame-bar .r { background: #ff5f57; } .frame-bar .y { background: #febc2e; } .frame-bar .g { background: #28c840; }
+    .frame-bar .url {
+      margin-left: 10px; font-size: 12px; color: var(--muted); font-family: 'DM Sans', monospace;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 12px;
+    }
+    .slides { position: relative; aspect-ratio: 1857 / 967; background: var(--bg); }
+    .slides img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top;
+      opacity: 0; transition: opacity 0.6s ease; pointer-events: none;
+    }
+    .slides img.active { opacity: 1; pointer-events: auto; }
+    .slide-caption { text-align: center; margin-top: 18px; font-size: 14px; color: var(--muted); min-height: 21px; }
+
+    .car-arrow {
+      position: absolute; top: 50%; transform: translateY(-50%); z-index: 5; cursor: pointer;
+      width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+      background: rgba(20,18,31,0.82); border: 1px solid var(--border2); color: var(--text);
+      backdrop-filter: blur(6px); transition: background 0.2s, transform 0.2s;
+    }
+    .car-arrow:hover { background: var(--accent); transform: translateY(-50%) scale(1.06); }
+    .car-arrow:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+    .car-arrow svg { width: 20px; height: 20px; }
+    .car-arrow.prev { left: -22px; } .car-arrow.next { right: -22px; }
+    .dots { display: flex; gap: 9px; justify-content: center; margin-top: 18px; }
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%; cursor: pointer; border: none; padding: 0;
+      background: rgba(255,255,255,0.18); transition: background 0.2s, transform 0.2s, width 0.25s;
+    }
+    .dot:hover { background: rgba(255,255,255,0.4); }
+    .dot.active { background: var(--accent2); width: 26px; border-radius: 5px; }
+    .dot:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
 
     /* ── Features ── */
-    .features-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 48px; }
+    .card {
+      background: linear-gradient(180deg, var(--surface), rgba(20,18,31,0.6));
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 28px;
+      transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
     }
-    .feature-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-      padding: 28px; transition: border-color 0.2s, transform 0.2s;
+    .card:hover { border-color: var(--border2); transform: translateY(-4px); box-shadow: 0 20px 44px -24px rgba(99,102,241,0.5); }
+    .card .ico {
+      width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 18px;
+      background: rgba(99,102,241,0.12); border: 1px solid var(--border2); color: var(--accent2);
     }
-    .feature-card:hover { border-color: var(--accent2); transform: translateY(-3px); }
-    .feature-icon { font-size: 28px; margin-bottom: 14px; }
-    .feature-card h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
-    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+    .card .ico svg { width: 23px; height: 23px; }
+    .card h3 { font-size: 1.12rem; font-weight: 600; margin-bottom: 9px; }
+    .card p { font-size: 0.95rem; color: var(--muted); }
 
-    /* ── How it works ── */
-    .section-label {
-      font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-      color: var(--accent2); margin-bottom: 10px;
+    /* ── Steps ── */
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 48px; }
+    .step { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; }
+    .step .num {
+      width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 16px;
+      font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px;
+      color: var(--accent2); background: rgba(99,102,241,0.12); border: 1px solid var(--border2);
     }
-    .section-title { font-size: clamp(1.5rem, 3vw, 2.2rem); font-weight: 800; margin-bottom: 48px; }
-    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-    .step {
-      display: flex; gap: 16px; align-items: flex-start;
-      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px;
-    }
-    .step-num {
-      flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
-      background: rgba(99,102,241,0.15); border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: 800; color: var(--accent2);
-    }
-    .step-body h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
-    .step-body p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+    .step h4 { font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; margin-bottom: 8px; }
+    .step p { font-size: 0.93rem; color: var(--muted); }
 
     /* ── Pricing ── */
-    .pricing-card {
-      max-width: 460px; margin: 0 auto;
-      background: var(--surface); border: 1px solid var(--accent); border-radius: 18px;
-      padding: 40px; text-align: center;
-      box-shadow: 0 0 48px rgba(99,102,241,0.15);
+    .price-card {
+      max-width: 460px; margin: 48px auto 0; text-align: center; padding: 40px;
+      background: linear-gradient(180deg, var(--surface2), var(--surface));
+      border: 1px solid var(--border2); border-radius: 20px;
+      box-shadow: 0 30px 70px -30px rgba(99,102,241,0.5);
     }
-    .plan-name { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent2); text-transform: uppercase; margin-bottom: 8px; }
-    .plan-price { font-size: 3rem; font-weight: 800; color: var(--text); }
-    .plan-price span { font-size: 1rem; font-weight: 400; color: var(--muted); }
-    .plan-note { font-size: 13px; color: var(--muted); margin: 10px 0 28px; }
-    .plan-features { list-style: none; text-align: left; margin-bottom: 32px; }
-    .plan-features li {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 0; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+    .price-name { font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600;
+                  letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent2); }
+    .price-amt { font-family: 'Space Grotesk', sans-serif; font-size: 3.2rem; font-weight: 700; margin: 8px 0 2px; }
+    .price-amt span { font-family: 'DM Sans'; font-size: 1rem; font-weight: 400; color: var(--muted); }
+    .price-note { color: var(--muted); font-size: 0.95rem; margin-bottom: 26px; }
+    .price-list { list-style: none; text-align: left; margin-bottom: 30px; }
+    .price-list li { display: flex; align-items: center; gap: 11px; padding: 9px 0; font-size: 0.95rem;
+                     border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .price-list li:last-child { border-bottom: none; }
+    .price-list svg { width: 18px; height: 18px; color: var(--accent2); flex-shrink: 0; }
+    .price-card .btn-primary { width: 100%; justify-content: center; }
+    .price-card .fine { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+    /* ── FAQ ── */
+    .faq { max-width: 720px; margin: 48px auto 0; }
+    .faq details {
+      border: 1px solid var(--border); border-radius: 12px; padding: 4px 22px; margin-bottom: 12px;
+      background: var(--surface); transition: border-color 0.2s;
     }
-    .plan-features li:last-child { border-bottom: none; }
-    .check { color: var(--accent2); font-size: 16px; }
-    .btn-pricing {
-      display: block; width: 100%; padding: 14px; border-radius: 10px;
-      font-size: 15px; font-weight: 700; background: var(--accent); color: #fff;
-      text-decoration: none; transition: background 0.2s;
+    .faq details[open] { border-color: var(--border2); }
+    .faq summary {
+      cursor: pointer; padding: 16px 0; font-weight: 600; list-style: none;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
     }
-    .btn-pricing:hover { background: var(--accent2); }
-    .trial-note { font-size: 12px; color: var(--muted); margin-top: 12px; }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary .pm { color: var(--accent2); font-size: 22px; transition: transform 0.2s; }
+    .faq details[open] summary .pm { transform: rotate(45deg); }
+    .faq p { color: var(--muted); font-size: 0.95rem; padding: 0 0 18px; }
+
+    /* ── CTA band ── */
+    .cta-band {
+      text-align: center; border-radius: 24px; padding: 64px 24px; margin: 0 auto;
+      background:
+        radial-gradient(600px circle at 50% 0%, rgba(99,102,241,0.2), transparent 60%),
+        linear-gradient(180deg, var(--surface2), var(--surface));
+      border: 1px solid var(--border2);
+    }
+    .cta-band h2 { font-size: clamp(1.7rem, 4vw, 2.6rem); margin-bottom: 14px; }
+    .cta-band p { color: var(--muted); max-width: 460px; margin: 0 auto 28px; }
 
     /* ── Footer ── */
-    footer {
-      border-top: 1px solid var(--border); padding: 32px 48px;
-      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
-      font-size: 13px; color: var(--muted);
-    }
-    footer a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
-    footer a:hover { color: var(--accent2); }
+    footer { border-top: 1px solid var(--border); padding: 36px 0; }
+    .foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+            color: var(--muted); font-size: 14px; }
+    .foot a { transition: color 0.2s; } .foot a:hover { color: var(--accent2); }
+    .foot-links { display: flex; gap: 18px; flex-wrap: wrap; }
+
+    /* ── Reveal on scroll ── */
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16,1,0.3,1); }
+    .reveal.in { opacity: 1; transform: none; }
 
     /* ── Responsive ── */
-    @media (max-width: 640px) {
-      nav { padding: 12px 20px; }
-      section { padding: 60px 20px; }
-      .hero { padding-top: 60px; }
-      footer { padding: 24px 20px; flex-direction: column; text-align: center; }
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; text-align: center; padding-top: 48px; }
+      .hero-logo { max-width: 220px; margin: 0 auto; }
+      .hero p.lede { margin-left: auto; margin-right: auto; }
+      .hero-cta, .hero-note { justify-content: center; }
+      .car-arrow.prev { left: 8px; } .car-arrow.next { right: 8px; }
+      section { padding: 72px 0; }
+    }
+    @media (max-width: 520px) {
+      .nav-link { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+      .reveal { opacity: 1; transform: none; }
     }
   </style>
 </head>
 <body>
 
-<!-- ── Navigation ── -->
-<nav>
-  <a class="nav-logo" href="/">
-    <img src="/logo.png" alt="AID Helpdesk logo" />
-    <span><em>AID</em> Helpdesk</span>
-  </a>
-  <div style="display:flex;gap:10px;align-items:center;">
-    <a href="/login" style="font-size:14px;color:var(--muted);text-decoration:none;">Sign in</a>
-    <a class="nav-cta" href="/signup">Get started</a>
-  </div>
-</nav>
+<!-- ── Nav ── -->
+<div class="nav-bar">
+  <nav>
+    <a class="nav-logo" href="/" aria-label="AID Helpdesk home">
+      <img src="/static/AIDLogo.png" alt="AID Helpdesk logo" />
+      <span><em>AID</em> Helpdesk</span>
+    </a>
+    <div class="nav-right">
+      <a class="nav-link" href="#features">Features</a>
+      <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#pricing">Pricing</a>
+      <a class="nav-link" href="/login">Sign in</a>
+      <a class="btn btn-primary btn-sm" href="/signup">Get started</a>
+    </div>
+  </nav>
+</div>
 
-<!-- ── Hero ── -->
-<section class="hero">
-  <div class="hero-logo">
-    <div class="brand-glow"></div>
-    <img src="/logo.png" alt="AID Helpdesk logo" />
-  </div>
-  <div class="hero-copy">
-    <div class="hero-badge">Your AI Active Directory expert</div>
-    <h1>An AD expert on your team,<br />so you never have to be one</h1>
-    <p>AID Helpdesk is like hiring an Active Directory expert who never clocks off. Unlock accounts, reset passwords, move users, run bulk changes, just ask in plain English. No PowerShell, no MMC consoles, no AD knowledge required. Set it up once and let it run your day-to-day.</p>
-    <div class="hero-btns">
-      <a class="btn-primary" href="/signup">Start free trial</a>
-      <a class="btn-secondary" href="#features">See how it works</a>
-    </div>
-  </div>
-</section>
+<div class="wrap">
 
-<!-- ── Features ── -->
-<section id="features">
-  <div class="section-label">What you get</div>
-  <div class="section-title">Everything your IT team needs</div>
-  <div class="features-grid">
-    <div class="feature-card">
-      <div class="feature-icon">🧠</div>
-      <h3>An AD expert on your team</h3>
-      <p>Ask in plain English and it just happens. "Unlock Sarah", "reset the new starter", "who's locked out right now?" — your assistant knows Active Directory inside out so you don't have to. No PowerShell, no MMC consoles, no jargon.</p>
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-logo">
+      <div class="glow" aria-hidden="true"></div>
+      <img src="/static/AIDLogo.png" alt="AID Helpdesk logo" />
     </div>
-    <div class="feature-card">
-      <div class="feature-icon">🎫</div>
-      <h3>Tickets that resolve themselves</h3>
-      <p>Your own helpdesk queue, wired straight into AD. Staff emails become tickets, and routine ones — unlocks, password resets, re-enables — close hands-free within the limits you set. Every action lands in a full audit trail.</p>
+    <div class="hero-copy">
+      <span class="badge"><span class="dot" aria-hidden="true"></span> Your AI Active Directory expert</span>
+      <h1>An AD expert on your team,<br /><span class="grad">so you never have to be one</span></h1>
+      <p class="lede">AID Helpdesk is like hiring an Active Directory expert who never clocks off. Unlock accounts, reset passwords, move users, run bulk changes — just ask in plain English. No PowerShell, no MMC consoles, no AD knowledge required.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="/signup">
+          Start free
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-ghost" href="#showcase">See it in action</a>
+      </div>
+      <p class="hero-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+        Free while in early access · No credit card required
+      </p>
     </div>
-    <div class="feature-card">
-      <div class="feature-icon">✨</div>
-      <h3>Bulk actions, plain English</h3>
-      <p>Tell your assistant "move every Year 8 student to the new OU" or "reset the whole marketing team" — it builds and runs the batch in one pass. No PowerShell, no loops, no spreadsheets.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">🔌</div>
-      <h3>Syncs with Zoho Desk</h3>
-      <p>Already running a helpdesk in Zoho Desk? Tickets sync straight into AID and get the same AI triage and auto-resolution — no migration, no double entry. Inbound email (Mailgun, SendGrid, Postmark) flows into the same queue too.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">🔒</div>
-      <h3>Safe by design</h3>
-      <p>A hard permission layer classifies every action; destructive ones always need human confirmation. The AI also flags impersonation, typosquatting, and suspicious requests before they touch your AD.</p>
-    </div>
-  </div>
-</section>
+  </section>
 
-<!-- ── How it works ── -->
-<section id="how-it-works">
-  <div class="section-label">Getting started</div>
-  <div class="section-title">Three steps to your first action</div>
-  <div class="steps">
-    <div class="step">
-      <div class="step-num">1</div>
-      <div class="step-body">
+  <!-- ── Product showcase / carousel ── -->
+  <section id="showcase">
+    <div class="showcase-head reveal">
+      <div class="eyebrow">See it in action</div>
+      <h2 class="section-title">Your whole AD, one calm dashboard</h2>
+      <p class="section-sub">Live user lists, an assistant that speaks plain English, and tickets that resolve themselves.</p>
+    </div>
+
+    <div class="carousel reveal" role="region" aria-roledescription="carousel" aria-label="Product screenshots">
+      <button class="car-arrow prev" aria-label="Previous screenshot">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <button class="car-arrow next" aria-label="Next screenshot">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <div class="frame">
+        <div class="frame-bar" aria-hidden="true">
+          <i class="r"></i><i class="y"></i><i class="g"></i>
+          <span class="url">app.aidhelpdesk.com/dashboard</span>
+        </div>
+        <div class="slides">
+          <img class="active" src="/static/shot-dashboard.png" alt="AID Helpdesk dashboard showing the live AD user list, domain stats, and one-click actions" data-cap="Dashboard — live AD users, domain stats, and one-click actions" />
+          <img src="/static/shot-assistant.png" alt="The AID assistant resolving an Active Directory request typed in plain English" data-cap="Assistant — manage Active Directory in plain English" />
+          <img src="/static/shot-ticket.png" alt="A support ticket triaged and auto-resolved by the AID AI assistant" data-cap="Tickets — the AI triages, scores risk, and auto-resolves routine requests" />
+        </div>
+      </div>
+      <p class="slide-caption" id="slide-cap" aria-live="polite">Dashboard — live AD users, domain stats, and one-click actions</p>
+      <div class="dots" role="tablist" aria-label="Choose screenshot"></div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section id="features">
+    <div class="showcase-head reveal">
+      <div class="eyebrow">What you get</div>
+      <h2 class="section-title">Everything your IT team needs</h2>
+    </div>
+    <div class="features">
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.142 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.142 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></svg></div>
+        <h3>An AD expert on your team</h3>
+        <p>Ask in plain English and it just happens. “Unlock Sarah”, “reset the new starter”, “who's locked out right now?” Your assistant knows Active Directory inside out so you don't have to.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg></div>
+        <h3>Tickets that resolve themselves</h3>
+        <p>Your own helpdesk queue, wired straight into AD. Staff emails become tickets, and routine ones close hands-free within the limits you set — every action in a full audit trail.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <h3>Bulk actions, plain English</h3>
+        <p>“Move every Year 8 student to the new OU” or “reset the whole marketing team” — it builds and runs the batch in one pass. No PowerShell, no loops, no spreadsheets.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>Safe by design</h3>
+        <p>A hard permission layer classifies every action; high-blast ones always need confirmation. The AI flags impersonation and suspicious requests before they touch your AD.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h3M15 7h3a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3M8 12h8"/></svg></div>
+        <h3>Syncs with Zoho Desk</h3>
+        <p>Already running a helpdesk in Zoho Desk? Tickets sync straight into AID and get the same AI triage and auto-resolution — no migration, no double entry. Inbound email flows in too.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/></svg></div>
+        <h3>No ports, no VPN</h3>
+        <p>A lightweight Windows agent polls outbound only. Your Active Directory never faces the internet — no firewall rules, no exposed endpoints, works behind any NAT or Tailscale.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ── -->
+  <section id="how">
+    <div class="showcase-head reveal">
+      <div class="eyebrow">Getting started</div>
+      <h2 class="section-title">Live in three steps</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="num">1</div>
         <h4>Connect</h4>
-        <p>Install the Windows agent on your server. It connects out to the cloud — no inbound ports or VPN needed.</p>
+        <p>Install the Windows agent on your server. It connects out to the cloud — no inbound ports, no VPN, no firewall changes.</p>
       </div>
-    </div>
-    <div class="step">
-      <div class="step-num">2</div>
-      <div class="step-body">
-        <h4>Ask or raise a ticket</h4>
-        <p>Type a request in plain English, or let an emailed ticket land in your queue. One user or five hundred — bulk moves and resets are a single instruction.</p>
+      <div class="step reveal">
+        <div class="num">2</div>
+        <h4>Ask, or let tickets land</h4>
+        <p>Type a request in plain English, or let emailed and Zoho Desk tickets flow into your queue. One user or five hundred, it's one instruction.</p>
       </div>
-    </div>
-    <div class="step">
-      <div class="step-num">3</div>
-      <div class="step-body">
+      <div class="step reveal">
+        <div class="num">3</div>
         <h4>Done</h4>
-        <p>The assistant acts on your AD, resolves the ticket, and replies with exactly what it did. A full audit trail is kept automatically — nothing ever gets lost.</p>
+        <p>The assistant acts on your AD, resolves the ticket, and tells you exactly what it did. A full audit trail is kept automatically.</p>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ── FAQ ── -->
-<section id="faq" style="padding-top:0;">
-  <div class="section-label">FAQ</div>
-  <div class="section-title">Common questions</div>
-  <div style="display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;">
-    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        Does it work with on-premises Active Directory? <span style="color:var(--accent2);">+</span>
-      </summary>
-      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        Yes. AID Helpdesk is built specifically for on-premises Windows Active Directory.
-        A lightweight agent runs on your AD server and connects outbound to the cloud —
-        no inbound firewall rules or VPN changes needed.
-      </p>
-    </details>
-    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        Is Azure AD / Entra ID supported? <span style="color:var(--accent2);">+</span>
-      </summary>
-      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        Not yet — Azure AD / Entra ID support is on the roadmap. The current version targets
-        on-premises AD environments running Windows Server. Join the waitlist on signup to be notified.
-      </p>
-    </details>
-    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        How secure is it? <span style="color:var(--accent2);">+</span>
-      </summary>
-      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        All communication is over HTTPS. The agent polls the cloud using a per-tenant API key —
-        your AD is never directly exposed to the internet. The AI assistant also actively flags
-        impersonation attempts and suspicious requests before any action is taken.
-        Every write operation is logged in a tamper-evident audit trail.
-      </p>
-    </details>
-    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        What AD actions can the AI assistant perform? <span style="color:var(--accent2);">+</span>
-      </summary>
-      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        Unlock accounts, reset passwords, enable/disable accounts, add/remove group membership,
-        move users between OUs, create new user accounts, and retrieve user info.
-        More actions are added regularly.
-      </p>
-    </details>
-    <details style="padding:20px 24px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        Can my whole team use it? <span style="color:var(--accent2);">+</span>
-      </summary>
-      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        Yes. Add dashboard users with role-based access — admin (full control) or viewer
-        (read-only). While we're in early access, team seats are unlimited.
-      </p>
-    </details>
-    <details style="padding:20px 24px;cursor:pointer;">
-      <summary style="font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;">
-        How do I get started? <span style="color:var(--accent2);">+</span>
-      </summary>
-      <p style="margin-top:12px;font-size:14px;color:var(--muted);line-height:1.7;">
-        Create a free account, copy your API key from Settings, drop it into
-        <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">agent-config.json</code>
-        on your Windows server, and run <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;">python agent.py</code>.
-        The whole setup takes under 5 minutes.
-      </p>
-    </details>
-  </div>
-</section>
+  <!-- ── Pricing ── -->
+  <section id="pricing">
+    <div class="showcase-head reveal">
+      <div class="eyebrow">Pricing</div>
+      <h2 class="section-title">Free while we're in early access</h2>
+      <p class="section-sub">Everything unlocked while I gather feedback. Paid plans come later.</p>
+    </div>
+    <div class="price-card reveal">
+      <div class="price-name">Free Trial</div>
+      <div class="price-amt">A$0 <span>/ no card</span></div>
+      <div class="price-note">Every feature, no commitment.</div>
+      <ul class="price-list">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> 20 AI scans + 50 AD actions / month</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Plain-English assistant &amp; auto-actions</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Email + Zoho Desk ticket intake</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Unlimited team members &amp; tickets</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Scheduled reports &amp; full audit log</li>
+      </ul>
+      <a class="btn btn-primary" href="/signup">Get started free</a>
+      <p class="fine">No credit card. No commitment.</p>
+    </div>
+  </section>
 
-<!-- ── Pricing ── -->
-<section id="pricing">
-  <div class="section-label">Pricing</div>
-  <div class="section-title" style="text-align:center;">Free while we're in early access</div>
-  <div class="pricing-card">
-    <div class="plan-name">Free Trial</div>
-    <div class="plan-price">A$0 <span>/ no card required</span></div>
-    <div class="plan-note">Everything unlocked. Paid plans coming soon.</div>
-    <ul class="plan-features">
-      <li><span class="check">✓</span> 20 AI scans + 50 AD actions / month</li>
-      <li><span class="check">✓</span> AI assistant — natural language commands</li>
-      <li><span class="check">✓</span> Ticket system with email ingestion</li>
-      <li><span class="check">✓</span> Auto-actions, scheduled reports, custom scripts</li>
-      <li><span class="check">✓</span> Unlimited team members &amp; tickets</li>
-      <li><span class="check">✓</span> Slack / Teams integration &amp; full audit log</li>
-    </ul>
-    <a class="btn-pricing" href="/signup">Get started free</a>
-    <p class="trial-note">No credit card. No commitment.</p>
-  </div>
-</section>
+  <!-- ── FAQ ── -->
+  <section id="faq" style="padding-top:0;">
+    <div class="showcase-head reveal">
+      <div class="eyebrow">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq reveal">
+      <details>
+        <summary>Do I need to know Active Directory? <span class="pm" aria-hidden="true">+</span></summary>
+        <p>No — that's the whole point. You describe what you need in plain English and the assistant handles the AD side. No PowerShell, no MMC consoles, no jargon.</p>
+      </details>
+      <details>
+        <summary>Is my Active Directory exposed to the internet? <span class="pm" aria-hidden="true">+</span></summary>
+        <p>Never. A lightweight Windows agent polls outbound over HTTPS. No inbound ports, no VPN, no firewall rules. Your AD never faces the internet.</p>
+      </details>
+      <details>
+        <summary>Can the AI do something destructive by mistake? <span class="pm" aria-hidden="true">+</span></summary>
+        <p>A hard permission layer in Python classifies every action. High-blast operations (disabling accounts, bulk OU moves) always require explicit confirmation — the AI cannot bypass it.</p>
+      </details>
+      <details>
+        <summary>Can my whole team use it? <span class="pm" aria-hidden="true">+</span></summary>
+        <p>Yes. Add dashboard users with role-based access — admin (full control) or viewer (read-only). While we're in early access, team seats are unlimited.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ── CTA band ── -->
+  <section style="padding-top:0;">
+    <div class="cta-band reveal">
+      <h2>Stop clicking through MMC consoles</h2>
+      <p>Spin it up free, connect your agent, and let an AD expert handle the day-to-day.</p>
+      <a class="btn btn-primary" href="/signup">
+        Get started free
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </section>
+
+</div>
 
 <!-- ── Footer ── -->
 <footer>
-  <span>AID Helpdesk — Manage Active Directory with plain English</span>
-  <div style="display:flex;gap:16px;flex-wrap:wrap;">
-    <a href="/login">Sign in</a>
-    <a href="/signup" style="color:var(--accent2);">Get started →</a>
-    <a href="/privacy">Privacy</a>
-    <a href="/terms">Terms</a>
+  <div class="wrap foot">
+    <span>AID Helpdesk — your AI Active Directory expert</span>
+    <div class="foot-links">
+      <a href="/login">Sign in</a>
+      <a href="/signup">Get started</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </div>
   </div>
 </footer>
 
+<script>
+  // ── Carousel ──
+  (function () {
+    const slides = Array.from(document.querySelectorAll('.slides img'));
+    const dotsWrap = document.querySelector('.dots');
+    const cap = document.getElementById('slide-cap');
+    if (!slides.length) return;
+    let i = 0, timer;
+
+    slides.forEach((s, idx) => {
+      const b = document.createElement('button');
+      b.className = 'dot' + (idx === 0 ? ' active' : '');
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-label', 'Screenshot ' + (idx + 1));
+      b.addEventListener('click', () => { go(idx); rest(); });
+      dotsWrap.appendChild(b);
+    });
+    const dots = Array.from(dotsWrap.children);
+
+    function go(n) {
+      i = (n + slides.length) % slides.length;
+      slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+      dots.forEach((d, idx) => d.classList.toggle('active', idx === i));
+      if (cap) cap.textContent = slides[i].dataset.cap || '';
+    }
+    function next() { go(i + 1); }
+    function rest() { clearInterval(timer); if (!reduced) timer = setInterval(next, 4500); }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelector('.car-arrow.next').addEventListener('click', () => { next(); rest(); });
+    document.querySelector('.car-arrow.prev').addEventListener('click', () => { go(i - 1); rest(); });
+    const car = document.querySelector('.carousel');
+    car.addEventListener('mouseenter', () => clearInterval(timer));
+    car.addEventListener('mouseleave', rest);
+    rest();
+  })();
+
+  // ── Scroll reveal ──
+  (function () {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const els = document.querySelectorAll('.reveal');
+    if (reduced) { els.forEach(e => e.classList.add('in')); return; }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    els.forEach(e => io.observe(e));
+  })();
+</script>
 </body>
 </html>
