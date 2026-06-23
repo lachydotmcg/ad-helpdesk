@@ -165,6 +165,7 @@ AID Helpdesk is **completely free** right now. I'm trialling it out and gatherin
 | Tickets | Unlimited |
 | Team members | Unlimited |
 | Email ticket intake | ✓ |
+| Zoho Desk sync | ✓ |
 | AI auto-actions | ✓ |
 | Scheduled reports | ✓ |
 | Custom PowerShell scripts | ✓ (up to 3) |
