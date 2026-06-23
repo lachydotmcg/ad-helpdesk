@@ -641,7 +641,14 @@ def require_dashboard_user(f):
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "service": "ad-helpdesk-cloud"})
+    # Verify the database is actually reachable so uptime monitors catch a DB
+    # outage instead of seeing a green "ok" from an app that can't serve anyone.
+    db_ok = db.ping()
+    return jsonify({
+        "status":  "ok" if db_ok else "degraded",
+        "service": "ad-helpdesk-cloud",
+        "db":      "up" if db_ok else "down",
+    }), (200 if db_ok else 503)
 
 
 @app.route("/robots.txt")

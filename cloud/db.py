@@ -64,6 +64,25 @@ def _cur(conn):
 _PH = "%s" if _USE_PG else "?"
 
 
+def ping() -> bool:
+    """Lightweight connectivity check (SELECT 1) for the /health endpoint."""
+    conn = None
+    try:
+        conn = _get_conn()
+        cur  = _cur(conn)
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        return True
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def _row(row):
     """Convert a db row to a plain dict, or None."""
     return dict(row) if row else None
