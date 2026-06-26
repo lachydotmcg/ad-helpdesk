@@ -122,7 +122,7 @@
        Each card runs one continuous loop: slow-fall in from the top, ease to a
        brief rest at centre-right, then drift on out toward the lower right and
        fade. Four cards share the loop on staggered (negative) delays so there is
-       always a steady stream — no snapping between fixed slots. */
+       always a steady stream, no snapping between fixed slots. */
     .hero-reel {
       position: relative; height: 460px; align-self: center;
       overflow: visible;
@@ -137,6 +137,12 @@
       animation: reelFlow 13s linear infinite;
     }
     .reel-card img { display: block; width: 100%; height: auto; object-fit: cover; pointer-events: none; }
+    .reel-bar {
+      display: flex; align-items: center; gap: 7px; padding: 10px 13px;
+      background: #0d0c17; border-bottom: 1px solid var(--border);
+    }
+    .reel-bar i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+    .reel-bar .r { background: #ff5f57; } .reel-bar .y { background: #febc2e; } .reel-bar .g { background: #28c840; }
     .reel-card:nth-of-type(1) { animation-delay: 0s; }
     .reel-card:nth-of-type(2) { animation-delay: -4.333s; }
     .reel-card:nth-of-type(3) { animation-delay: -8.666s; }
@@ -193,12 +199,10 @@
       display: flex; align-items: center; overflow: hidden;
     }
     .fs-grid {
-      width: 100%;
-      display: grid; grid-template-columns: minmax(240px, 380px) 1fr;
-      gap: clamp(28px, 4vw, 56px); align-items: center;
-      /* left aligns to the centred container; right column bleeds to the edge */
-      padding-left: max(24px, calc((100% - 1120px) / 2 + 24px));
-      padding-right: 0;
+      width: 100%; max-width: 1560px; margin: 0 auto;
+      display: grid; grid-template-columns: minmax(200px, 300px) 1fr;
+      gap: clamp(20px, 3vw, 44px); align-items: center;
+      padding: 0 28px;
     }
     .fs-title {
       font-family: 'Space Grotesk', sans-serif;
@@ -238,15 +242,24 @@
     .fs-item.active h3 { color: var(--text); }
     .fs-item.active p { max-height: 200px; opacity: 1; margin-top: 10px; }
 
+    .fs-selfhost {
+      display: inline-flex; align-items: center; gap: 10px; margin-top: 28px;
+      font-size: 0.92rem; color: var(--muted); line-height: 1.5;
+      border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px;
+      transition: color 0.2s, border-color 0.2s, background 0.2s;
+    }
+    .fs-selfhost:hover { color: var(--text); border-color: var(--accent2); background: rgba(129,140,248,0.06); }
+    .fs-selfhost svg { width: 19px; height: 19px; flex-shrink: 0; color: var(--accent2); }
+
     .fs-media { position: relative; }
     .fs-media-inner {
-      position: relative; aspect-ratio: 1857 / 967; max-height: 82vh; border-radius: 18px 0 0 18px; overflow: hidden;
-      border: 1px solid var(--border2); border-right: none; background: var(--surface);
+      position: relative; aspect-ratio: 4 / 3; max-height: 86vh; border-radius: 18px; overflow: hidden;
+      border: 1px solid var(--border2); background: var(--surface);
       box-shadow: 0 40px 100px -34px rgba(0,0,0,0.85), 0 0 0 1px rgba(129,140,248,0.06);
     }
     .fs-shot {
       position: absolute; inset: 0; width: 100%; height: 100%;
-      object-fit: contain; object-position: left center;
+      object-fit: cover; object-position: top center;
       opacity: 0; transform: scale(1.03); transition: opacity 0.6s ease, transform 0.7s ease;
     }
     .fs-shot.active { opacity: 1; transform: scale(1); }
@@ -322,7 +335,7 @@
 
     .b-span2 { grid-row: span 2; }
 
-    /* The assistant flexes over the top-right of the panel — big, dropping into
+    /* The assistant flexes over the top-right of the panel, big, dropping into
        the feature tile's empty space */
     .bicep {
       position: absolute; z-index: 6; pointer-events: none;
@@ -660,7 +673,7 @@
       .fs-item h3 { color: var(--text) !important; }
       .fs-item p { max-height: 200px; opacity: 1; margin-top: 10px; }
       .fs-item::before { transform: scaleY(1); }
-      .fs-media-inner { aspect-ratio: 1857 / 967; border-radius: 14px; border-right: 1px solid var(--border2); }
+      .fs-media-inner { aspect-ratio: 4 / 3; border-radius: 14px; border-right: 1px solid var(--border2); }
       .fs-shot { position: relative; }
       .fs-shot:not(.active) { display: none; }
 
@@ -731,9 +744,18 @@
     </div>
 
     <div class="hero-reel" id="hero-reel" aria-hidden="true">
-      <div class="reel-card"><img src="/static/shot-dashboard.png" alt="" /></div>
-      <div class="reel-card"><img src="/static/shot-assistant.png" alt="" /></div>
-      <div class="reel-card"><img src="/static/shot-ticket.png" alt="" /></div>
+      <div class="reel-card">
+        <div class="reel-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+        <img src="/static/shot-dashboard.png" alt="" />
+      </div>
+      <div class="reel-card">
+        <div class="reel-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+        <img src="/static/shot-assistant.png" alt="" />
+      </div>
+      <div class="reel-card">
+        <div class="reel-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+        <img src="/static/shot-ticket.png" alt="" />
+      </div>
       <div class="reel-glow"></div>
     </div>
   </section>
@@ -823,6 +845,10 @@
               <p>Access and manage your Active Directory with plain English from anywhere, no VPNs, no meshnet, and still maximally secure.</p>
             </div>
           </div>
+          <a class="fs-selfhost" href="https://github.com/lachydotmcg/ad-helpdesk" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2c-3.34.73-4.04-1.6-4.04-1.6-.55-1.39-1.34-1.76-1.34-1.76-1.1-.75.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.0-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.3-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .5Z"/></svg>
+            Prefer to self-host? Run it completely free, locally. Source is on GitHub.
+          </a>
         </div>
 
         <div class="fs-media" aria-hidden="true">
