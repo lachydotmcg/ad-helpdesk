@@ -7,141 +7,14 @@ All functions return: {"success": bool, "message": str, "data": dict | list | No
 Credentials are loaded from .env -- never hardcoded.
 """
 
-import os
-import json
-import time
-import winrm
-from dotenv import load_dotenv
-
-load_dotenv()
-
-_VM_IP      = os.getenv("AD_VM_IP")
-_DOMAIN     = os.getenv("AD_DOMAIN")          # e.g. "lab" (without .local)
-_ADMIN_USER = os.getenv("AD_ADMIN_USER", "Administrator")
-_ADMIN_PASS = os.getenv("AD_ADMIN_PASS")
-
-# HTTPS (port 5986) is the default. Set AD_WINRM_HTTP=1 in your env/config
-# to fall back to plain HTTP — only acceptable inside a Tailscale tunnel or
-# fully isolated LAN where you accept the risk of unencrypted credentials.
-_USE_HTTPS  = os.getenv("AD_WINRM_HTTP", "0") != "1"
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _winrm_target() -> str:
-    return f"{_VM_IP}:{5986 if _USE_HTTPS else 5985}"
-
-
-def _session() -> winrm.Session:
-    if _USE_HTTPS:
-        endpoint = f"https://{_VM_IP}:5986/wsman"
-    else:
-        endpoint = f"http://{_VM_IP}:5985/wsman"
-    return winrm.Session(
-        endpoint,
-        auth=(f"{_DOMAIN}\\{_ADMIN_USER}", _ADMIN_PASS),
-        transport="ntlm",
-        server_cert_validation="ignore",   # accepts self-signed certs; traffic is still encrypted
-        read_timeout_sec=20,               # fail a stalled read instead of hanging
-        operation_timeout_sec=15,          # must be < read_timeout_sec (pywinrm rule)
-    )
-
-
-# ── WinRM connectivity circuit breaker ──────────────────────────────────────
-# If the domain controller is unreachable, every command would otherwise hang
-# for the full connection timeout. After a few consecutive connection failures
-# we "open" the breaker and fail fast for a cooldown window, so a DC outage
-# can't turn a queue of commands into a multi-minute pile-up. Only connection
-# errors trip it — ordinary AD errors (user not found, etc.) do not.
-_CB_FAIL_THRESHOLD = 3
-_CB_COOLDOWN_SEC   = 60
-_cb_failures   = 0
-_cb_open_until = 0.0
-
-_CONN_ERROR_HINTS = (
-    "max retries", "connection", "timed out", "timeout", "refused",
-    "no route", "unreachable", "failed to establish", "newconnectionerror",
+from winrm_core import (
+    _run,
+    _ps_escape,
+    _normalise_list,
+    _domain_dn,
+    _make_ou_path,
+    _DOMAIN,
 )
-
-
-def _is_connection_error(msg: str) -> bool:
-    m = (msg or "").lower()
-    return any(h in m for h in _CONN_ERROR_HINTS)
-
-
-def _run(ps_script: str) -> dict:
-    global _cb_failures, _cb_open_until
-    now = time.monotonic()
-
-    # Breaker open → fail fast without attempting a connection.
-    if now < _cb_open_until:
-        wait = int(_cb_open_until - now)
-        return {
-            "success": False, "data": None,
-            "message": (f"Domain controller at {_winrm_target()} unreachable — skipping for "
-                        f"{wait}s after repeated connection failures. Check the AD server is on "
-                        f"and WinRM is listening (Test-NetConnection {_VM_IP} -Port "
-                        f"{5986 if _USE_HTTPS else 5985})."),
-        }
-
-    try:
-        result = _session().run_ps(ps_script)
-        _cb_failures = 0   # any success closes the breaker
-        if result.status_code != 0:
-            err = result.std_err.decode("utf-8", errors="replace").strip()
-            return {"success": False, "message": err, "data": None}
-        raw = result.std_out.decode("utf-8", errors="replace").strip()
-        data = json.loads(raw) if raw else None
-        return {"success": True, "message": "OK", "data": data}
-    except Exception as e:
-        msg = str(e)
-        if _is_connection_error(msg):
-            _cb_failures += 1
-            if _cb_failures >= _CB_FAIL_THRESHOLD:
-                _cb_open_until = now + _CB_COOLDOWN_SEC
-            return {
-                "success": False, "data": None,
-                "message": (f"Cannot reach the domain controller at {_winrm_target()} over WinRM. "
-                            f"Check the server is on and the port is open. ({msg})"),
-            }
-        # Non-connection failure (e.g. AD object not found) — do not trip the breaker.
-        return {"success": False, "message": msg, "data": None}
-
-
-def _ps_escape(value: str) -> str:
-    return value.replace("'", "''")
-
-
-def _normalise_list(data) -> list:
-    """PowerShell returns a dict for single results, list for multiple. Always return list."""
-    if data is None:
-        return []
-    return data if isinstance(data, list) else [data]
-
-
-def _domain_dn() -> str:
-    """Build the DC=... base DN from AD_DOMAIN env var.
-    Handles both 'lab' (→ DC=lab,DC=local) and 'lab.local' formats.
-    """
-    domain = _DOMAIN.lower() if _DOMAIN else "domain.local"
-    if "." not in domain:
-        domain = domain + ".local"
-    return ",".join(f"DC={part}" for part in domain.split("."))
-
-
-def _make_ou_path(ou_name: str) -> str:
-    """Convert a simple OU name to a full Distinguished Name.
-    Accepts either a plain name ('Staff') or a full DN ('OU=Staff,DC=lab,DC=local').
-    """
-    if not ou_name:
-        return ""
-    ou_name = ou_name.strip()
-    if "=" in ou_name:
-        return ou_name           # already a full DN
-    return f"OU={ou_name},{_domain_dn()}"
-
 
 # ---------------------------------------------------------------------------
 # Query operations
@@ -710,3 +583,44 @@ foreach ($v in $moved.Values) {{ $total += $v }}
         err_note = f" ({len(errs)} error(s) — check data.errors for details)" if errs else ""
         r["message"] = f"Bulk move complete: {total} user(s) moved across {len(rules)} rule(s){err_note}."
     return r
+
+
+# ---------------------------------------------------------------------------
+# Action registry -- merged by agent.py. Every bridge module exposes ACTIONS
+# mapping a flat action name to a callable taking one list of args.
+# ---------------------------------------------------------------------------
+
+ACTIONS = {
+    # Query / read
+    "get_user_info":              lambda a: get_user_info(*a),
+    "list_users":                 lambda a: list_users(*a) if a else list_users(),
+    "list_users_in_ou":           lambda a: list_users_in_ou(*a),
+    "search_users":               lambda a: search_users(*a),
+    "list_locked_accounts":       lambda a: list_locked_accounts(),
+    "list_expired_passwords":     lambda a: list_expired_passwords(),
+    "get_stats":                  lambda a: get_stats(),
+    "list_ous":                   lambda a: list_ous(),
+    # Groups
+    "list_groups":                lambda a: list_groups(),
+    "search_groups":              lambda a: search_groups(*a),
+    "get_group_members":          lambda a: get_group_members(*a),
+    "list_group_memberships":     lambda a: list_group_memberships(*a),
+    "add_to_group":               lambda a: add_to_group(*a),
+    "remove_from_group":          lambda a: remove_from_group(*a),
+    # Account mutations
+    "reset_password":             lambda a: reset_password(*a),
+    "unlock_account":             lambda a: unlock_account(*a),
+    "disable_account":            lambda a: disable_account(*a),
+    "enable_account":             lambda a: enable_account(*a),
+    "force_password_change":      lambda a: force_password_change(*a),
+    "set_password_never_expires": lambda a: set_password_never_expires(*a),
+    "create_user":                lambda a: create_user(*a),
+    "move_user":                  lambda a: move_user(*a),
+    # OU management + bulk ops
+    "create_ou":                  lambda a: create_ou(*a),
+    "bulk_move_users":            lambda a: bulk_move_users(*a),
+    # Custom tenant scripts: args = [ps_content, user_arg0, user_arg1, ...]
+    "run_custom_script":          lambda a: run_custom_script(*a),
+}
+
+CAPABILITY = "ad"

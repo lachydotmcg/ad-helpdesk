@@ -37,38 +37,22 @@ def load_config() -> dict:
         return json.load(f)
 
 
-ACTIONS = {
-    # Query / read
-    "get_user_info":              lambda a: ad_bridge.get_user_info(*a),
-    "list_users":                 lambda a: ad_bridge.list_users(*a) if a else ad_bridge.list_users(),
-    "list_users_in_ou":           lambda a: ad_bridge.list_users_in_ou(*a),
-    "search_users":               lambda a: ad_bridge.search_users(*a),
-    "list_locked_accounts":       lambda a: ad_bridge.list_locked_accounts(),
-    "list_expired_passwords":     lambda a: ad_bridge.list_expired_passwords(),
-    "get_stats":                  lambda a: ad_bridge.get_stats(),
-    "list_ous":                   lambda a: ad_bridge.list_ous(),
-    # Groups
-    "list_groups":                lambda a: ad_bridge.list_groups(),
-    "search_groups":              lambda a: ad_bridge.search_groups(*a),
-    "get_group_members":          lambda a: ad_bridge.get_group_members(*a),
-    "list_group_memberships":     lambda a: ad_bridge.list_group_memberships(*a),
-    "add_to_group":               lambda a: ad_bridge.add_to_group(*a),
-    "remove_from_group":          lambda a: ad_bridge.remove_from_group(*a),
-    # Account mutations
-    "reset_password":             lambda a: ad_bridge.reset_password(*a),
-    "unlock_account":             lambda a: ad_bridge.unlock_account(*a),
-    "disable_account":            lambda a: ad_bridge.disable_account(*a),
-    "enable_account":             lambda a: ad_bridge.enable_account(*a),
-    "force_password_change":      lambda a: ad_bridge.force_password_change(*a),
-    "set_password_never_expires": lambda a: ad_bridge.set_password_never_expires(*a),
-    "create_user":                lambda a: ad_bridge.create_user(*a),
-    "move_user":                  lambda a: ad_bridge.move_user(*a),
-    # OU management + bulk ops
-    "create_ou":                  lambda a: ad_bridge.create_ou(*a),
-    "bulk_move_users":            lambda a: ad_bridge.bulk_move_users(*a),
-    # Custom tenant scripts: args = [ps_content, user_arg0, user_arg1, ...]
-    "run_custom_script":          lambda a: ad_bridge.run_custom_script(*a),
-}
+# Merge action registries from every available bridge module. Each module
+# exposes ACTIONS (flat name -> callable taking an args list) and CAPABILITY.
+_BRIDGE_MODULES = [ad_bridge]
+for _name in ("dns_bridge", "dhcp_bridge", "gpo_bridge", "nps_bridge"):
+    try:
+        _BRIDGE_MODULES.append(__import__(_name))
+    except ImportError:
+        pass
+
+ACTIONS = {}
+CAPABILITIES = []
+for _mod in _BRIDGE_MODULES:
+    ACTIONS.update(getattr(_mod, "ACTIONS", {}))
+    _cap = getattr(_mod, "CAPABILITY", None)
+    if _cap:
+        CAPABILITIES.append(_cap)
 
 
 def execute(command: dict) -> dict:
@@ -116,6 +100,20 @@ def main():
         print(f" [ERROR] Cannot reach cloud backend: {e}")
         print(f"         Check cloud_url in agent-config.json and make sure the server is running.\n")
         sys.exit(1)
+
+    # Report which service modules this agent has, so the dashboard can light
+    # up the matching tabs. Older cloud backends without the endpoint just 404;
+    # that's fine, the agent works exactly as before.
+    try:
+        requests.post(
+            f"{cloud_url}/agent/capabilities",
+            headers=headers,
+            json={"capabilities": CAPABILITIES, "actions": sorted(ACTIONS.keys())},
+            timeout=timeout,
+        )
+        print(f" [OK] Capabilities reported: {', '.join(CAPABILITIES)}\n")
+    except Exception:
+        pass
 
     while True:
         try:
