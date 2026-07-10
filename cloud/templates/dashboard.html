@@ -138,7 +138,37 @@
     .nav-item:hover { color: var(--text); background: var(--surface2); }
     .nav-item.active { color: var(--accent2); border-left-color: var(--accent); background: rgba(99,102,241,0.08); }
 
+    .nav-item-disabled { opacity: 0.4; cursor: not-allowed; position: relative; }
+    .nav-item-disabled:hover { color: var(--muted); background: none; }
+    .nav-item-disabled .nav-tooltip {
+      display: none;
+      position: absolute;
+      left: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      margin-left: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 20;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    .nav-item-disabled:hover .nav-tooltip { display: block; }
+
     .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+
+    .coming-online-panel {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .coming-online-panel .coming-online-icon { font-size: 40px; margin-bottom: 12px; }
+    .coming-online-panel h3 { color: var(--text); font-size: 17px; margin-bottom: 8px; }
+    .coming-online-panel p { font-size: 13px; max-width: 420px; margin: 0 auto; }
 
     .sidebar-legal {
       padding: 16px 20px 0;
@@ -974,7 +1004,7 @@
 <div class="main">
   <!-- Sidebar -->
   <aside>
-    <div class="nav-section">Manage</div>
+    <div class="nav-section">Active Directory</div>
     <div class="nav-item active" onclick="showPage('users')">
       <span class="nav-icon">👥</span> All Users
     </div>
@@ -984,6 +1014,41 @@
     </div>
     <div class="nav-item" onclick="showPage('expired')">
       <span class="nav-icon">⏰</span> Pwd Expired
+    </div>
+    <div class="nav-section">Windows Server</div>
+    {% set caps = capabilities or ['ad'] %}
+    {% if 'dns' in caps %}
+    <div class="nav-item" onclick="showPage('dns')">
+      <span class="nav-icon">🌐</span> DNS
+    </div>
+    {% else %}
+    <div class="nav-item nav-item-disabled">
+      <span class="nav-icon">🌐</span> DNS
+      <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
+    </div>
+    {% endif %}
+    {% if 'dhcp' in caps %}
+    <div class="nav-item" onclick="showPage('dhcp')">
+      <span class="nav-icon">📡</span> DHCP
+    </div>
+    {% else %}
+    <div class="nav-item nav-item-disabled">
+      <span class="nav-icon">📡</span> DHCP
+      <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
+    </div>
+    {% endif %}
+    {% if 'gpo' in caps %}
+    <div class="nav-item" onclick="showPage('gpo')">
+      <span class="nav-icon">🗂️</span> Group Policy
+    </div>
+    {% else %}
+    <div class="nav-item nav-item-disabled">
+      <span class="nav-icon">🗂️</span> Group Policy
+      <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
+    </div>
+    {% endif %}
+    <div class="nav-item" onclick="showPage('entra')">
+      <span class="nav-icon">☁️</span> Entra ID
     </div>
     <div class="nav-section">Support</div>
     <div class="nav-item" onclick="showPage('tickets')">
@@ -1216,6 +1281,62 @@
         </div>
         <div id="expired-table-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== DNS PAGE ===== -->
+    <div class="page" id="page-dns">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">DNS</span>
+        </div>
+        <div class="coming-online-panel">
+          <div class="coming-online-icon">🌐</div>
+          <h3>DNS management is coming online</h3>
+          <p>Zone and record management will appear here once this module ships. Your agent will report this capability automatically when it is ready.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== DHCP PAGE ===== -->
+    <div class="page" id="page-dhcp">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">DHCP</span>
+        </div>
+        <div class="coming-online-panel">
+          <div class="coming-online-icon">📡</div>
+          <h3>DHCP management is coming online</h3>
+          <p>Scope, lease, and reservation management will appear here once this module ships. Your agent will report this capability automatically when it is ready.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== GROUP POLICY PAGE ===== -->
+    <div class="page" id="page-gpo">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Group Policy</span>
+        </div>
+        <div class="coming-online-panel">
+          <div class="coming-online-icon">🗂️</div>
+          <h3>Group Policy management is coming online</h3>
+          <p>GPO listing, links, and reports will appear here once this module ships. Your agent will report this capability automatically when it is ready.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ENTRA ID PAGE ===== -->
+    <div class="page" id="page-entra">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Entra ID</span>
+        </div>
+        <div class="coming-online-panel">
+          <div class="coming-online-icon">☁️</div>
+          <h3>Entra ID integration is coming online</h3>
+          <p>Cloud user and group management via Microsoft Graph will appear here once this module ships. You will be able to enter your app registration details in Settings.</p>
         </div>
       </div>
     </div>
@@ -4012,6 +4133,10 @@
     users:    'All Users',
     locked:   'Locked Accounts',
     expired:  'Expired Passwords',
+    dns:      'DNS',
+    dhcp:     'DHCP',
+    gpo:      'Group Policy',
+    entra:    'Entra ID',
     tickets:  'Tickets',
     chat:     'AI Assistant',
     audit:    'Audit Log',

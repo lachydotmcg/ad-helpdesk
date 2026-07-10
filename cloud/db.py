@@ -104,7 +104,8 @@ _SCHEMA = [
         api_key        TEXT NOT NULL UNIQUE,
         created_at     TEXT NOT NULL,
         plan           TEXT NOT NULL DEFAULT 'free',
-        last_agent_ping TEXT
+        last_agent_ping TEXT,
+        capabilities   TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS tenant_users (
         id            TEXT PRIMARY KEY,
@@ -438,6 +439,16 @@ def migrate_db():
             _tcols = [r["name"] for r in cur.fetchall()]
             if "external_ref" not in _tcols:
                 cur.execute("ALTER TABLE tickets ADD COLUMN external_ref TEXT")
+        # v11: capabilities column on tenants — JSON-encoded list of module
+        # names ("ad", "dns", "dhcp", "gpo", ...) the tenant's agent has
+        # reported it can serve. Unset/null means "ad only" (legacy agents).
+        if _USE_PG:
+            cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS capabilities TEXT")
+        else:
+            cur.execute("PRAGMA table_info(tenants)")
+            _tencols = [r["name"] for r in cur.fetchall()]
+            if "capabilities" not in _tencols:
+                cur.execute("ALTER TABLE tenants ADD COLUMN capabilities TEXT")
         conn.commit()
     except Exception:
         pass  # Safe to ignore — already exists
@@ -651,6 +662,43 @@ def list_tenants() -> list:
         return _rows(cur.fetchall())
     finally:
         conn.close()
+
+
+def set_tenant_capabilities(tenant_id: str, caps: list) -> None:
+    """Store the list of service capabilities the tenant's agent reported."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"UPDATE tenants SET capabilities = {_PH} WHERE id = {_PH}",
+            (json.dumps(list(caps)), tenant_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tenant_capabilities(tenant_id: str) -> list:
+    """Return the tenant's reported capabilities. Defaults to ['ad'] when
+    unset/null so existing tenants (with legacy agents that never called
+    /agent/capabilities) keep working as before."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"SELECT capabilities FROM tenants WHERE id = {_PH}", (tenant_id,))
+        row = _row(cur.fetchone())
+    finally:
+        conn.close()
+    raw = row.get("capabilities") if row else None
+    if not raw:
+        return ["ad"]
+    try:
+        caps = json.loads(raw)
+        if isinstance(caps, list) and caps:
+            return caps
+    except Exception:
+        pass
+    return ["ad"]
 
 
 # ---------------------------------------------------------------------------

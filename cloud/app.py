@@ -17,6 +17,7 @@ Environment variables:
 """
 
 import os
+import re
 import json
 import time
 import smtplib
@@ -1356,13 +1357,15 @@ def api_v1_action(action):
 def dashboard():
     plan = db.get_tenant_plan(g.tenant_id)
     settings = db.get_settings(g.tenant_id)
+    capabilities = db.get_tenant_capabilities(g.tenant_id)
     return render_template("dashboard.html",
                            tenant_name=g.tenant_name,
                            user_email=g.user_email,
                            user_role=g.user_role,
                            tenant_plan=plan,
                            tenant_limits=db.get_plan_limits(plan),
-                           ai_name=_get_ai_name(settings))
+                           ai_name=_get_ai_name(settings),
+                           capabilities=capabilities)
 
 
 @app.route("/billing")
@@ -3578,6 +3581,33 @@ def agent_poll():
     db.update_agent_ping(g.tenant["id"])
     command = db.get_pending_command(g.tenant["id"])
     return jsonify({"success": True, "command": command})
+
+
+@app.route("/agent/capabilities", methods=["POST"])
+@require_tenant
+def agent_capabilities():
+    """Agent calls this on startup to report which service modules and
+    detected Windows roles it can serve (e.g. ["ad", "dns", "dhcp"]).
+    Stored per-tenant so the dashboard can grey out tabs the agent can't
+    back yet."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "message": "JSON body required."}), 400
+    caps = data.get("capabilities")
+    if not isinstance(caps, list):
+        return jsonify({"success": False, "message": "'capabilities' must be a list."}), 400
+    if len(caps) > 20:
+        return jsonify({"success": False, "message": "Too many capabilities (max 20)."}), 400
+    clean = []
+    for c in caps:
+        if not isinstance(c, str):
+            return jsonify({"success": False, "message": "Each capability must be a string."}), 400
+        c = c.strip()
+        if not c or len(c) > 32 or not re.match(r"^[A-Za-z0-9_]+$", c):
+            return jsonify({"success": False, "message": f"Invalid capability name: {c!r}"}), 400
+        clean.append(c)
+    db.set_tenant_capabilities(g.tenant["id"], clean)
+    return jsonify({"ok": True})
 
 
 @app.route("/agent/result", methods=["POST"])

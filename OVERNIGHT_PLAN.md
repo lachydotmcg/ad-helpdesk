@@ -25,10 +25,10 @@
 
 ## Phase 0 — Foundations (do first, everything depends on it)
 
-- [ ] **0.1 Extract shared WinRM core.** Pull `_session`, `_run`, circuit breaker, and error helpers out of `ad_bridge.py` into `winrm_core.py`. `ad_bridge.py` imports from it; behaviour unchanged. Smoke test: `python -c "import ad_bridge"` and existing agent still maps all ACTIONS.
-- [ ] **0.2 Action registry refactor in agent.py.** Replace the hand-written ACTIONS dict with auto-registration: each bridge module exposes `ACTIONS = {"name": callable}` and agent.py merges them. Keeps the flat action-name namespace (`list_dns_zones`, not `dns.list_zones`) for backwards compat.
-- [ ] **0.3 Capability handshake.** Agent reports its available modules + detected Windows roles to the cloud on startup (`POST /agent/capabilities`). Cloud stores per-tenant capabilities; dashboard tabs grey out when the agent can't serve them. DB: add `capabilities` JSON column to tenants (or agents) table with migration handled in `init_db()` for both SQLite and Postgres.
-- [ ] **0.4 Dashboard tab shell.** Sidebar/tab navigation in the dashboard template: Active Directory (existing content moves here), DNS, DHCP, Group Policy, Entra ID, Tickets, Settings. Tabs beyond AD render "coming online" placeholders until their phase lands. Keep the existing purple/indigo design language.
+- [x] **0.1 Extract shared WinRM core.** Pull `_session`, `_run`, circuit breaker, and error helpers out of `ad_bridge.py` into `winrm_core.py`. `ad_bridge.py` imports from it; behaviour unchanged. Smoke test: `python -c "import ad_bridge"` and existing agent still maps all ACTIONS.
+- [x] **0.2 Action registry refactor in agent.py.** (agent side of 0.3 done too; cloud side in progress) Replace the hand-written ACTIONS dict with auto-registration: each bridge module exposes `ACTIONS = {"name": callable}` and agent.py merges them. Keeps the flat action-name namespace (`list_dns_zones`, not `dns.list_zones`) for backwards compat.
+- [x] **0.3 Capability handshake.** Agent reports its available modules + detected Windows roles to the cloud on startup (`POST /agent/capabilities`). Cloud stores per-tenant capabilities; dashboard tabs grey out when the agent can't serve them. DB: add `capabilities` JSON column to tenants (or agents) table with migration handled in `init_db()` for both SQLite and Postgres.
+- [x] **0.4 Dashboard tab shell.** Sidebar/tab navigation in the dashboard template: Active Directory (existing content moves here), DNS, DHCP, Group Policy, Entra ID, Tickets, Settings. Tabs beyond AD render "coming online" placeholders until their phase lands. Keep the existing purple/indigo design language.
 
 ## Phase 1 — DNS (easiest win, sets the pattern)
 
