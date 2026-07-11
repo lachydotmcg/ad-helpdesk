@@ -19,6 +19,7 @@
    - Routine writes (DNS record add, DHCP reservation): ticket/chat confirm flow, same as password resets.
    - High blast-radius (GPO link/unlink/edit, DNS zone delete, DHCP scope delete, Entra role changes): require the 6-digit human-confirm token, same as `disable_account`.
 6. **No em dashes** in any user-facing copy. Ever.
+6b. **Use proper inline SVG icons/logos in UI work**, not emoji or plain text labels. Lachy keeps a good reference collection in his Metis Orchestrator project (OneDrive\Documents, Metis folder) — match that quality bar for nav items, badges, and feature cards.
 7. At the end of the overnight run, write the jarvis-log entry summarising what shipped.
 
 ---
@@ -34,8 +35,8 @@
 
 - [x] **1.1 `dns_bridge.py`**: list_zones, get_zone, list_records(zone, type?), add_record (A/AAAA/CNAME/MX/TXT/PTR), update_record, remove_record, get_scavenging, toggle_scavenging. Uses `DnsServer` PS module via winrm_core. Script-builder functions unit-testable offline.
 - [x] **1.2 Agent wiring**: register DNS actions, capability flag `dns`.
-- [ ] **1.3 Cloud routes + tab UI**: zone list → record table with inline add/edit/delete (writes go through the confirm flow). Record-type badges, TTL display, search.
-- [ ] **1.4 AI tools**: expose DNS actions to the assistant's tool schema with descriptions + arg specs; threat-score guidance (record delete on a zone apex = high).
+- [x] **1.3 Cloud routes + tab UI**: zone list → record table with inline add/edit/delete (writes go through the confirm flow). Record-type badges, TTL display, search.
+- [x] **1.4 AI tools**: expose DNS actions to the assistant's tool schema with descriptions + arg specs; threat-score guidance (record delete on a zone apex = high).
 - [ ] **1.5 Ticket auto-resolution**: "the printer hostname isn't resolving" style tickets can trigger DNS lookups in analysis.
 
 ## Phase 2 — DHCP

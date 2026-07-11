@@ -36,6 +36,11 @@ READ: frozenset[str] = frozenset({
     "search_groups",
     "get_group_members",
     "list_group_memberships",
+    # DNS reads
+    "list_dns_zones",
+    "get_dns_zone",
+    "list_dns_records",
+    "get_dns_scavenging",
 })
 
 WRITE: frozenset[str] = frozenset({
@@ -46,6 +51,11 @@ WRITE: frozenset[str] = frozenset({
     "add_to_group",
     "set_password_never_expires",
     "run_custom_script",   # classification can be overridden per-script at queue time
+    # DNS routine writes -- adding/updating a specific record, same tier as a
+    # password reset. Reviewed by the admin in the chat/ticket flow, not
+    # gated behind a 6-digit confirmation token.
+    "add_dns_record",
+    "update_dns_record",
 })
 
 # These can never be auto-resolved by the AI assistant. A human must always confirm them.
@@ -56,6 +66,10 @@ DESTRUCTIVE: frozenset[str] = frozenset({
     "move_user",
     "create_ou",
     "bulk_move_users",
+    # DNS high-caution ops -- removing a record or changing scavenging can
+    # break name resolution for a whole zone; always require human confirmation.
+    "remove_dns_record",
+    "set_dns_scavenging",
 })
 
 ALL_ACTIONS: frozenset[str] = READ | WRITE | DESTRUCTIVE
@@ -84,6 +98,10 @@ REVERSIBLE: dict[str, bool] = {
     "move_user":                  True,
     "create_ou":                  False,  # can be deleted, but OU creation may have downstream effects
     "bulk_move_users":            True,   # users can be moved back, but tedious at scale
+    "add_dns_record":             True,   # can be removed again
+    "update_dns_record":          True,   # old value can be restored
+    "remove_dns_record":          True,   # can be re-added, but breaks resolution until it is
+    "set_dns_scavenging":         True,   # can be toggled back
 }
 
 

@@ -1287,14 +1287,38 @@
 
     <!-- ===== DNS PAGE ===== -->
     <div class="page" id="page-dns">
-      <div class="panel">
+      <div class="panel" id="dns-zones-panel">
         <div class="panel-header">
-          <span class="panel-title">DNS</span>
+          <span class="panel-title">DNS Zones</span>
+          <button class="btn btn-ghost" onclick="loadDnsZones()">↺ Refresh</button>
         </div>
-        <div class="coming-online-panel">
-          <div class="coming-online-icon">🌐</div>
-          <h3>DNS management is coming online</h3>
-          <p>Zone and record management will appear here once this module ships. Your agent will report this capability automatically when it is ready.</p>
+        <div id="dns-zones-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel" id="dns-records-panel" style="display:none;margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Records: <span id="dns-current-zone"></span></span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" id="dns-add-record-btn" onclick="openAddDnsRecord()">+ Add Record</button>
+            <button class="btn btn-ghost" onclick="loadDnsRecords(_dnsCurrentZone)">↺ Refresh</button>
+          </div>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="dns-record-search" type="search" placeholder="Search by name or value..." oninput="filterDnsRecords()" autocomplete="off" spellcheck="false"/>
+          <select class="search-input" id="dns-record-type-filter" onchange="loadDnsRecords(_dnsCurrentZone)" style="max-width:140px;">
+            <option value="">All types</option>
+            <option value="A">A</option>
+            <option value="AAAA">AAAA</option>
+            <option value="CNAME">CNAME</option>
+            <option value="MX">MX</option>
+            <option value="TXT">TXT</option>
+            <option value="PTR">PTR</option>
+          </select>
+        </div>
+        <div id="dns-records-wrap">
+          <div class="empty"><div class="empty-icon">🌐</div>Select a zone above to view its records.</div>
         </div>
       </div>
     </div>
@@ -2165,6 +2189,42 @@
   </div>
 </div>
 
+<!-- Add DNS record modal -->
+<div class="modal-overlay" id="modal-dns-add">
+  <div class="modal">
+    <h2>Add DNS Record</h2>
+    <p>Add a record to zone <strong id="dns-add-zone-label"></strong>.</p>
+    <div class="field">
+      <label>Name (use "@" for the zone apex)</label>
+      <input type="text" id="dns-add-name" placeholder="www"/>
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <select id="dns-add-type" class="search-input" style="width:100%" onchange="updateDnsValueHint()">
+        <option value="A">A</option>
+        <option value="AAAA">AAAA</option>
+        <option value="CNAME">CNAME</option>
+        <option value="MX">MX</option>
+        <option value="TXT">TXT</option>
+        <option value="PTR">PTR</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Value</label>
+      <input type="text" id="dns-add-value" placeholder="10.0.0.5"/>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="dns-add-value-hint">IPv4 address, e.g. 10.0.0.5</div>
+    </div>
+    <div class="field">
+      <label>TTL (seconds)</label>
+      <input type="number" id="dns-add-ttl" value="3600" min="1" max="2592000"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-dns-add')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddDnsRecord()">Add Record</button>
+    </div>
+  </div>
+</div>
+
 <!-- Reset password modal -->
 <div class="modal-overlay" id="modal-reset">
   <div class="modal">
@@ -2363,7 +2423,8 @@
   // (+ reset_password / set_password_never_expires) on the backend.
   const DESTRUCTIVE_ACTIONS = new Set([
     'disable_account', 'remove_from_group', 'move_user', 'create_user',
-    'create_ou', 'bulk_move_users', 'reset_password', 'set_password_never_expires'
+    'create_ou', 'bulk_move_users', 'reset_password', 'set_password_never_expires',
+    'remove_dns_record', 'set_dns_scavenging'
   ]);
 
   async function execCommand(action, args = [], target = '') {
@@ -2458,6 +2519,29 @@
       }
     }
     throw new Error('Timed out waiting for the agent to respond — it may have stopped. Check that it is running on your server.');
+  }
+
+  // DNS routes are dedicated (/api/dns/...) rather than the generic
+  // /dashboard/api/exec, but they queue commands and hand back a command_id
+  // the same way, so they reuse pollResult()/showConfirmChallenge() above.
+  async function dnsGet(url) {
+    const res  = await fetch(url);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Request failed');
+    return await pollResult(json.command_id);
+  }
+
+  async function dnsPost(url, body) {
+    let res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let json = await res.json();
+    if (json.requires_confirmation) {
+      const confirmed = await showConfirmChallenge(json.action_label, json.confirm_token);
+      if (!confirmed) throw new Error('Action cancelled.');
+      res  = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, confirm_token: confirmed }) });
+      json = await res.json();
+    }
+    if (!json.success) throw new Error(json.message || 'Request failed');
+    return await pollResult(json.command_id);
   }
 
   async function run(action, args = [], target = '', useCache = false) {
@@ -2859,6 +2943,157 @@
     }
     cacheInvalidate('list_users[]', 'get_stats[]');
     loadExpired(); loadStats();
+  }
+
+  // =========================================================
+  // DNS
+  // =========================================================
+
+  let _dnsZones = [];
+  let _dnsCurrentZone = '';
+  let _dnsRecords = [];
+
+  async function loadDnsZones() {
+    document.getElementById('dns-zones-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    document.getElementById('dns-records-panel').style.display = 'none';
+    try {
+      const data = await dnsGet('/api/dns/zones');
+      _dnsZones = Array.isArray(data) ? data : (data.zones || []);
+      if (!_dnsZones.length) {
+        document.getElementById('dns-zones-wrap').innerHTML =
+          '<div class="empty"><div class="empty-icon">🌐</div>No DNS zones found.</div>';
+        return;
+      }
+      let html = '<table><thead><tr><th>Zone</th><th>Type</th><th>Dynamic Update</th><th>Reverse Lookup</th><th></th></tr></thead><tbody>';
+      for (const z of _dnsZones) {
+        const name  = z.name || '-';
+        const nameH = escHtml(name);
+        const reverseBadge = z.is_reverse_lookup_zone
+          ? '<span class="badge" style="background:rgba(99,102,241,0.15);color:var(--accent2);border:1px solid rgba(99,102,241,0.3);">Reverse</span>'
+          : '<span style="color:var(--muted);font-size:12px;">Forward</span>';
+        html += `<tr><td><code style="font-size:12px;color:var(--accent2)">${nameH}</code></td>` +
+                `<td style="font-size:12px;color:var(--muted)">${escHtml(z.zone_type || '-')}</td>` +
+                `<td style="font-size:12px;color:var(--muted)">${escHtml(z.dynamic_update || '-')}</td>` +
+                `<td>${reverseBadge}</td>` +
+                `<td><button class="btn btn-ghost btn-sm" onclick="selectDnsZone('${jsArg(name)}')">View Records</button></td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('dns-zones-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('dns-zones-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function selectDnsZone(zone) {
+    _dnsCurrentZone = zone;
+    document.getElementById('dns-current-zone').textContent = zone;
+    document.getElementById('dns-records-panel').style.display = '';
+    document.getElementById('dns-record-type-filter').value = '';
+    document.getElementById('dns-record-search').value = '';
+    loadDnsRecords(zone);
+  }
+
+  async function loadDnsRecords(zone) {
+    if (!zone) return;
+    document.getElementById('dns-records-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const rtype = document.getElementById('dns-record-type-filter').value;
+      const qs = new URLSearchParams({ zone, type: rtype });
+      const data = await dnsGet('/api/dns/records?' + qs.toString());
+      _dnsRecords = Array.isArray(data) ? data : (data.records || []);
+      renderDnsRecords();
+    } catch (e) {
+      document.getElementById('dns-records-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  const DNS_TYPE_COLORS = { A: '#34d399', AAAA: '#34d399', CNAME: '#60a5fa', MX: '#fbbf24', TXT: '#a78bfa', PTR: '#f87171' };
+
+  function renderDnsRecords() {
+    const q = (document.getElementById('dns-record-search').value || '').toLowerCase();
+    const rows = _dnsRecords.filter(r => {
+      if (!q) return true;
+      return String(r.HostName || '').toLowerCase().includes(q) || String(r.Value || '').toLowerCase().includes(q);
+    });
+    if (!rows.length) {
+      document.getElementById('dns-records-wrap').innerHTML =
+        '<div class="empty"><div class="empty-icon">🌐</div>No matching records.</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>Name</th><th>Type</th><th>Value</th><th>TTL</th><th></th></tr></thead><tbody>';
+    for (const r of rows) {
+      const name  = r.HostName || '-';
+      const type  = r.RecordType || '-';
+      const value = r.Value != null ? String(r.Value) : '-';
+      const ttl   = r.TTLSeconds != null ? Math.round(r.TTLSeconds) : '-';
+      const color = DNS_TYPE_COLORS[type] || 'var(--muted)';
+      const apexNote = name === '@' ? ' <span style="font-size:10px;color:var(--yellow);">APEX</span>' : '';
+      html += `<tr><td><code style="font-size:12px;color:var(--accent2)">${escHtml(name)}</code>${apexNote}</td>` +
+              `<td><span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}55;">${escHtml(type)}</span></td>` +
+              `<td style="font-size:12px;">${escHtml(value)}</td>` +
+              `<td style="font-size:12px;color:var(--muted)">${ttl}</td>` +
+              `<td><button class="btn btn-danger btn-sm" onclick="deleteDnsRecord('${jsArg(name)}','${jsArg(type)}','${jsArg(value)}')">Delete</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('dns-records-wrap').innerHTML = html;
+  }
+
+  function filterDnsRecords() { renderDnsRecords(); }
+
+  const DNS_VALUE_HINTS = {
+    A: 'IPv4 address, e.g. 10.0.0.5',
+    AAAA: 'IPv6 address, e.g. fe80::1',
+    CNAME: 'Target hostname, e.g. server1.company.local',
+    MX: 'Preference and mail host, e.g. 10 mail.company.local',
+    TXT: 'Free text, e.g. v=spf1 include:_spf.company.com ~all',
+    PTR: 'Target hostname for the reverse record',
+  };
+
+  function updateDnsValueHint() {
+    const type = document.getElementById('dns-add-type').value;
+    document.getElementById('dns-add-value-hint').textContent = DNS_VALUE_HINTS[type] || '';
+  }
+
+  function openAddDnsRecord() {
+    if (!_dnsCurrentZone) { toast('Select a zone first.', 'error'); return; }
+    document.getElementById('dns-add-zone-label').textContent = _dnsCurrentZone;
+    document.getElementById('dns-add-name').value = '';
+    document.getElementById('dns-add-value').value = '';
+    document.getElementById('dns-add-ttl').value = 3600;
+    document.getElementById('dns-add-type').value = 'A';
+    updateDnsValueHint();
+    openModal('modal-dns-add');
+  }
+
+  async function submitAddDnsRecord() {
+    const name  = document.getElementById('dns-add-name').value.trim();
+    const type  = document.getElementById('dns-add-type').value;
+    const value = document.getElementById('dns-add-value').value.trim();
+    const ttl   = parseInt(document.getElementById('dns-add-ttl').value, 10) || 3600;
+    if (!name || !value) { toast('Name and value are required.', 'error'); return; }
+    if (name === '@' && !confirm('This is the zone apex record. Changing it can affect mail routing or the primary address for the whole domain. Continue?')) return;
+    closeModal('modal-dns-add');
+    toast(`Adding ${type} record '${name}'...`, 'info');
+    try {
+      await dnsPost('/api/dns/records', { zone: _dnsCurrentZone, name, type, value, ttl });
+      toast(`${type} record '${name}' added.`, 'success');
+      loadDnsRecords(_dnsCurrentZone);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function deleteDnsRecord(name, type, value) {
+    const apexNote = name === '@' ? ' This is the zone apex record.' : '';
+    if (!confirm(`Delete ${type} record '${name}' (${value}) from zone ${_dnsCurrentZone}?${apexNote}`)) return;
+    toast(`Removing ${type} record '${name}'...`, 'info');
+    try {
+      await dnsPost('/api/dns/records/delete', { zone: _dnsCurrentZone, name, type, value });
+      toast(`${type} record '${name}' removed.`, 'success');
+      loadDnsRecords(_dnsCurrentZone);
+    } catch (e) { toast(e.message, 'error'); }
   }
 
   // =========================================================
@@ -4166,6 +4401,7 @@
       if (name === 'users')    loadUsers();
       if (name === 'locked')   loadLocked();
       if (name === 'expired')  loadExpired();
+      if (name === 'dns')      loadDnsZones();
       if (name === 'audit')    loadAudit();
       if (name === 'team')     loadTeam();
       if (name === 'tickets')  loadTickets();

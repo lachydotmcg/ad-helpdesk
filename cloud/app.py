@@ -142,6 +142,15 @@ TIME_SAVED_MINUTES: dict[str, float] = {
     "list_ous":                   0.5,
     "list_groups":                0.5,
     "get_group_members":          0.5,
+    # DNS
+    "add_dns_record":             1.5,
+    "update_dns_record":          1.5,
+    "remove_dns_record":          1.0,
+    "set_dns_scavenging":         1.0,
+    "list_dns_zones":             0.5,
+    "list_dns_records":           0.5,
+    "get_dns_zone":               0.5,
+    "get_dns_scavenging":         0.5,
 }
 
 
@@ -165,6 +174,10 @@ DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
     "disable_account",
     "bulk_move_users",
     "create_ou",
+    # DNS: removing a record or changing scavenging can break name resolution
+    # for a whole zone, so both require the 6-digit confirmation challenge.
+    "remove_dns_record",
+    "set_dns_scavenging",
 })
 
 _CONFIRM_TTL = 300                     # 5 minutes
@@ -1834,6 +1847,8 @@ def dashboard_exec():
                 "set_password_never_expires": f"Set password-never-expires for {subject}",
                 "create_ou":                f"Create OU: {subject}",
                 "bulk_move_users":          "Bulk move users — review the rules carefully before confirming",
+                "remove_dns_record":        f"Remove DNS record '{args[1] if len(args)>1 else '?'}' ({args[2] if len(args)>2 else '?'}) from zone {subject}",
+                "set_dns_scavenging":       "Change DNS scavenging state",
             }
             return jsonify({
                 "success":              False,
@@ -1889,6 +1904,144 @@ def dashboard_result(command_id):
     if not result:
         return jsonify({"success": False, "pending": True, "message": "Not ready yet."}), 202
     return jsonify({"success": True, "pending": False, "data": result})
+
+
+# ---------------------------------------------------------------------------
+# Dashboard API -- DNS
+# Thin, capability-gated wrappers around the same queue_command / confirm-token
+# machinery dashboard_exec uses for AD actions. Reads and the routine record
+# add queue immediately; remove_dns_record and set_dns_scavenging (both in
+# DESTRUCTIVE_ACTIONS) go through the same 6-digit challenge as disable_account.
+# ---------------------------------------------------------------------------
+
+def _require_dns_capability() -> str | None:
+    """Return a friendly error message if this tenant's agent hasn't reported
+    the 'dns' capability, else None."""
+    caps = db.get_tenant_capabilities(g.tenant_id)
+    if "dns" not in caps:
+        return (
+            "DNS management isn't available yet. Your Windows agent hasn't reported "
+            "the DNS Server role as installed, or hasn't connected since it was added."
+        )
+    return None
+
+
+@app.route("/api/dns/zones", methods=["GET"])
+@require_dashboard_user
+def api_dns_zones():
+    """Queue a DNS zone list. Body: none. Returns { command_id }."""
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_dns_zones", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dns/records", methods=["GET"])
+@require_dashboard_user
+def api_dns_records_list():
+    """Queue a DNS record list for a zone. Query: ?zone=...&type=... (type optional)."""
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    zone = request.args.get("zone", "").strip()
+    record_type = request.args.get("type", "").strip()
+    if not zone:
+        return jsonify({"success": False, "message": "A zone name is required."}), 400
+    command = db.queue_command(g.tenant_id, "list_dns_records", [zone, record_type])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dns/records", methods=["POST"])
+@require_dashboard_user
+def api_dns_records_add():
+    """
+    Queue a DNS record add (routine write, no confirmation token).
+    Body: { "zone": "...", "name": "...", "type": "A", "value": "...", "ttl": 3600 }
+    """
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data   = request.get_json() or {}
+    zone   = str(data.get("zone", "")).strip()
+    name   = str(data.get("name", "")).strip()
+    rtype  = str(data.get("type", "")).strip()
+    value  = str(data.get("value", "")).strip()
+    ttl    = data.get("ttl", 3600)
+
+    if not (zone and name and rtype and value):
+        return jsonify({"success": False, "message": "Zone, name, type, and value are all required."}), 400
+
+    action = "add_dns_record"
+    args   = [zone, name, rtype, value, ttl]
+
+    ok, reason = action_policy.validate(action, source="human")
+    if not ok:
+        return jsonify({"success": False, "message": reason}), 403
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, f"{name}.{zone}", "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=f"{name}.{zone}",
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dns/records/delete", methods=["POST"])
+@require_dashboard_user
+def api_dns_records_delete():
+    """
+    Queue a DNS record removal. High-caution -- gated behind the same 6-digit
+    confirmation challenge as disable_account (remove_dns_record is in
+    DESTRUCTIVE_ACTIONS).
+    Body: { "zone": "...", "name": "...", "type": "A", "value": "...", "confirm_token": "" }
+    """
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data          = request.get_json() or {}
+    zone          = str(data.get("zone", "")).strip()
+    name          = str(data.get("name", "")).strip()
+    rtype         = str(data.get("type", "")).strip()
+    value         = str(data.get("value", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    action = "remove_dns_record"
+    args   = [zone, name, rtype, value]
+
+    if not confirm_token:
+        if not (zone and name and rtype and value):
+            return jsonify({"success": False, "message": "Zone, name, type, and value are all required."}), 400
+        ok, reason = action_policy.validate(action, source="human")
+        if not ok:
+            return jsonify({"success": False, "message": reason}), 403
+        code = _issue_confirm_token(g.tenant_id, action, args)
+        apex_note = " (this is the zone apex record -- double-check before confirming)" if name == "@" else ""
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Remove {rtype} record '{name}' from zone {zone}{apex_note}",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending:
+        return jsonify({
+            "success": False,
+            "message": "Invalid or expired confirmation code. Please try again.",
+        }), 403
+
+    action = pending["action"]
+    args   = pending["args"]
+    zone, name = (args[0], args[1]) if len(args) >= 2 else (zone, name)
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, f"{name}.{zone}", "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=f"{name}.{zone}",
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
 
 
 def _run_chat(tenant_id: str, user_email: str, message: str,
@@ -2015,6 +2168,27 @@ Available AD actions (use exact action names):
   list_expired_passwords     args: []                              -- all accounts with expired passwords
   get_stats                  args: []                              -- domain summary (total, locked, expired)
 
+  DNS (only offer these if the tenant's agent has the 'dns' capability -- if a DNS
+  action fails with a capability error, tell the user DNS management isn't connected yet):
+  list_dns_zones              args: []                                          -- LOW RISK, read-only. List all DNS zones.
+  get_dns_zone                args: [zone]                                      -- LOW RISK, read-only. Zone details (type, dynamic update, reverse-lookup).
+  list_dns_records            args: [zone, type]                                -- LOW RISK, read-only. type is optional (A/AAAA/CNAME/MX/TXT/PTR), pass "" for all.
+  get_dns_scavenging          args: []                                          -- LOW RISK, read-only. Current scavenging settings.
+  add_dns_record               args: [zone, name, type, value, ttl_seconds]     -- ROUTINE WRITE. Adds one record. ttl_seconds defaults to 3600 if unsure.
+  update_dns_record            args: [zone, name, type, old_value, new_value]   -- ROUTINE WRITE. Changes an existing record's value.
+  remove_dns_record            args: [zone, name, type, value]                  -- HIGH CAUTION. Deletes a record; can break name resolution. The dashboard
+                                                                                    always makes the admin confirm this with a 6-digit code before it runs --
+                                                                                    you do not need to ask for extra confirmation yourself, just queue it plainly.
+  set_dns_scavenging           args: [zone_or_scope, true|false]                -- HIGH CAUTION. Changes stale-record cleanup for the whole DNS server.
+                                                                                    Also gated behind a 6-digit confirmation code before it runs.
+
+  DNS SAFETY RULE -- zone apex records: if `name` is "@" (the zone apex, i.e. the
+  domain's root record), treat any add/update/remove on it as HIGH RISK regardless
+  of the action's normal tier -- apex records often carry mail routing (MX/TXT/SPF)
+  or the primary A record for the whole domain. Call this out explicitly in your
+  "message" field so the admin sees the warning before confirming, e.g.
+  "Warning: this is the zone apex record -- changing it affects the whole domain."
+
 When you need to run an AD action, respond ONLY with this exact JSON (no preamble, no extra text):
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
@@ -2031,6 +2205,7 @@ CRITICAL RULES:
         'list_users', 'list_users_in_ou', 'list_groups', 'list_locked_accounts',
         'list_expired_passwords', 'get_stats', 'list_group_memberships',
         'get_group_members',
+        'list_dns_zones', 'get_dns_zone', 'list_dns_records', 'get_dns_scavenging',
     }
 
     client   = anthropic.Anthropic(api_key=api_key)
