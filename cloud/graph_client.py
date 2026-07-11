@@ -49,7 +49,17 @@ import time
 import urllib.parse
 
 import requests
-import msal
+
+# msal is an optional dependency: Entra ID is one feature of the platform, so a
+# missing msal must never crash the whole app on import. If it is absent, the
+# module still imports and GraphClient construction fails with a friendly error
+# telling the operator to install it. This keeps the rest of the dashboard alive.
+try:
+    import msal
+    _MSAL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    msal = None
+    _MSAL_AVAILABLE = False
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 GRAPH_SCOPE = ["https://graph.microsoft.com/.default"]
@@ -111,6 +121,11 @@ class GraphClient:
     """
 
     def __init__(self, tenant_id, client_id, client_secret, timeout=15):
+        if not _MSAL_AVAILABLE:
+            raise RuntimeError(
+                "Entra ID support requires the 'msal' package, which is not installed. "
+                "Add msal to requirements and redeploy."
+            )
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret

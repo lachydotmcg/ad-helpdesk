@@ -1,6 +1,11 @@
+# Cloud backend dependencies (Heroku / Railway build from THIS root file).
+# Keep in sync with cloud/requirements.txt - the cloud app imports all of these.
 flask>=3.0.0
 python-dotenv>=1.0.0
 werkzeug>=3.0.0
 anthropic>=0.25.0
 psycopg2-binary>=2.9.0
 stripe>=9.0.0
+requests>=2.31.0
+msal>=1.24
+cryptography>=42.0.0

@@ -2688,7 +2688,10 @@ def _get_graph_client():
     creds = _entra_settings(g.tenant_id)
     if not (creds["tenant_id"] and creds["client_id"] and creds["client_secret"]):
         return None, "Entra ID is not configured. Add your Entra credentials in Settings."
-    return GraphClient(creds["tenant_id"], creds["client_id"], creds["client_secret"]), None
+    try:
+        return GraphClient(creds["tenant_id"], creds["client_id"], creds["client_secret"]), None
+    except Exception as e:
+        return None, str(e)
 
 
 def _generate_temp_password() -> str:
