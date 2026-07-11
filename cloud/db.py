@@ -26,6 +26,11 @@ import os
 import secrets
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+import secrets_crypto
+
+# Tenant-settings keys that hold secrets and must be encrypted at rest. Encryption
+# is transparent: callers of get_settings/update_settings always see plaintext.
+SECRET_SETTING_KEYS = ("smtp_pass", "graph_client_secret")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "adhelpdesk.db")
 
@@ -1406,11 +1411,10 @@ _SETTINGS_DEFAULTS = {
     "ticket_labels":      [],
     "slack_webhook_url":  "",
     "teams_webhook_url":  "",
-    # Entra ID (Microsoft Graph) app registration, per tenant. Stored in the
-    # same tenant_settings JSON blob as smtp_pass and the webhook URLs --
-    # this table has no column-level encryption anywhere in the schema, so
-    # graph_client_secret is plaintext at rest here, matching that existing
-    # pattern rather than introducing a new one for just this field.
+    # Entra ID (Microsoft Graph) app registration, per tenant. Secret fields
+    # (graph_client_secret, smtp_pass) are encrypted at rest via secrets_crypto
+    # when SETTINGS_ENCRYPTION_KEY is configured; get_settings/update_settings
+    # handle that transparently, so callers always work with plaintext.
     "graph_tenant_id":    "",
     "graph_client_id":    "",
     "graph_client_secret": "",
@@ -1435,6 +1439,11 @@ def get_settings(tenant_id: str) -> dict:
         merged = {**_SETTINGS_DEFAULTS, **saved}
         if "ai_context" not in saved and saved.get("janus_context"):
             merged["ai_context"] = saved.get("janus_context")
+        # Decrypt secret fields for the caller. Legacy plaintext values pass
+        # through untouched, so this is safe before the first encrypted save.
+        for key in SECRET_SETTING_KEYS:
+            if merged.get(key):
+                merged[key] = secrets_crypto.decrypt_secret(merged[key])
         return merged
     except Exception:
         return dict(_SETTINGS_DEFAULTS)
@@ -1446,6 +1455,13 @@ def update_settings(tenant_id: str, settings: dict) -> None:
     settings.pop("janus_name", None)
     if "ai_context" in settings:
         settings.pop("janus_context", None)
+    # Encrypt secret fields before persisting. Encrypting a copy keeps the
+    # caller's dict as plaintext, and encrypt_secret is a no-op on empty values,
+    # already-encrypted values, or when no encryption key is configured.
+    settings = dict(settings)
+    for key in SECRET_SETTING_KEYS:
+        if settings.get(key):
+            settings[key] = secrets_crypto.encrypt_secret(settings[key])
     now = datetime.utcnow().isoformat()
     uid = str(uuid.uuid4())
     conn = _get_conn()

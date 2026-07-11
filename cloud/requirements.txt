@@ -5,3 +5,4 @@ anthropic>=0.25.0
 psycopg2-binary>=2.9.0
 stripe>=9.0.0
 msal>=1.24
+cryptography>=42.0.0

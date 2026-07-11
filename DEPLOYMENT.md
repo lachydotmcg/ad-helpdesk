@@ -25,6 +25,7 @@
 | `SECRET_KEY` | Yes | Flask session signing key |
 | `ADMIN_KEY` | Yes | Protects `/admin/*` endpoints |
 | `ANTHROPIC_API_KEY` | Yes | Claude Haiku for AI assistant |
+| `SETTINGS_ENCRYPTION_KEY` | Recommended | Encrypts tenant secrets (SMTP password, Entra client secret) at rest. Any passphrase works; a long random string is best. Without it, those secrets are stored in plaintext. See note below. |
 | `DATABASE_URL` | Auto-set by Railway | PostgreSQL connection string |
 | `PORT` | Auto-set by Railway | Server port (default 5000) |
 | `SMTP_HOST` | Optional | Outbound email (reports, ticket replies, password resets) |
@@ -33,6 +34,15 @@
 | `SMTP_PASS` | Optional | SMTP password or app password |
 | `SMTP_FROM` | Optional | From address for outbound email |
 | `STRIPE_PUBLIC_KEY` | Optional | Enables Stripe billing UI |
+
+### Encrypting tenant secrets at rest
+
+Set `SETTINGS_ENCRYPTION_KEY` to any passphrase (a long random string is ideal, for example the output of `python -c "import secrets; print(secrets.token_urlsafe(48))"`). When set, per-tenant secrets stored in the database (SMTP password, Entra client secret) are encrypted with Fernet and never written in plaintext.
+
+Notes:
+- Encryption is transparent. Existing plaintext values keep working and get encrypted the next time a tenant saves settings.
+- Keep the key stable. If you rotate it, previously encrypted secrets can no longer be decrypted and tenants must re-enter them.
+- Without the key set, the app still runs, but those secrets are stored in plaintext (a warning is logged on startup). Set the key before any tenant enters real credentials.
 
 ---
 

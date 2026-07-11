@@ -3782,7 +3782,11 @@ def dashboard_update_settings():
             current[k] = v
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
-    return jsonify({"success": True, "data": current})
+    safe = dict(current)
+    for _secret in ("smtp_pass", "graph_client_secret"):
+        if safe.get(_secret):
+            safe[_secret] = ""   # never echo secrets back; client shows placeholder
+    return jsonify({"success": True, "data": safe})
 
 
 @app.route("/dashboard/api/integrations/test", methods=["POST"])
