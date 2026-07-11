@@ -63,7 +63,7 @@
 
 ## Phase 5 — NPS (stretch, only if everything above is green)
 
-- [ ] **5.1 Read-only**: list network policies, connection request policies, RADIUS clients (`Get-NpsRadiusClient` etc. or `netsh nps export` parse). Display-only tab. No writes overnight.
+- [x] **5.1 Read-only**: list network policies, connection request policies, RADIUS clients (`Get-NpsRadiusClient` etc. or `netsh nps export` parse). Display-only tab. No writes overnight. — bridge done; display tab pending.
 
 ## Phase 6 — Motion graphics (prep only, no spend)
 
