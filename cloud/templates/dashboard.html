@@ -281,6 +281,12 @@
       margin-bottom: 24px;
     }
 
+    /* Default inner padding for panel content so it clears the rounded corners.
+       Panels that need full-bleed content override this with an inline padding. */
+    .panel-body {
+      padding: 26px 28px;
+    }
+
     .panel-header {
       display: flex;
       align-items: center;
@@ -315,8 +321,8 @@
       flex: 1;
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 14px;
+      border-radius: 9px;
+      padding: 9px 14px;
       color: var(--text);
       font-size: 13px;
       font-family: inherit;
@@ -868,15 +874,18 @@
 
     /* ---- Settings page ---- */
     .settings-section {
-      margin-bottom: 28px;
+      margin-bottom: 30px;
+    }
+    .settings-section:last-child {
+      margin-bottom: 0;
     }
 
     .settings-section-title {
       font-size: 13px;
       font-weight: 600;
       color: var(--text);
-      margin-bottom: 14px;
-      padding-bottom: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
       border-bottom: 1px solid var(--border);
     }
 
@@ -1887,7 +1896,7 @@
             <span class="panel-title">⚙️ Settings</span>
             <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()" disabled style="opacity:0.45;cursor:default;">Save changes</button>
           </div>
-          <div style="padding:24px;">
+          <div class="panel-body">
 
             <!-- Requester Roles -->
             <div class="settings-section">
@@ -1915,7 +1924,7 @@
                 <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Added alongside defaults: Open, In Progress, Resolved, Closed.</div>
                 <div id="custom-statuses-list"></div>
                 <div style="display:flex;gap:8px;margin-top:8px;">
-                  <input class="search-input" id="new-custom-status" placeholder="e.g. Waiting on customer" style="font-size:12px;padding:6px 10px;flex:1;" onkeydown="if(event.key==='Enter')addCustomStatus()"/>
+                  <input class="search-input" id="new-custom-status" placeholder="e.g. Waiting on customer" style="font-size:12px;padding:8px 12px;flex:1;" onkeydown="if(event.key==='Enter')addCustomStatus()"/>
                   <button class="btn btn-ghost" style="font-size:12px;" onclick="addCustomStatus()">+ Add</button>
                 </div>
               </div>
@@ -1926,7 +1935,7 @@
                 <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Added alongside defaults: Low, Medium, High, Urgent.</div>
                 <div id="custom-priorities-list"></div>
                 <div style="display:flex;gap:8px;margin-top:8px;">
-                  <input class="search-input" id="new-custom-priority" placeholder="e.g. Critical" style="font-size:12px;padding:6px 10px;flex:1;" onkeydown="if(event.key==='Enter')addCustomPriority()"/>
+                  <input class="search-input" id="new-custom-priority" placeholder="e.g. Critical" style="font-size:12px;padding:8px 12px;flex:1;" onkeydown="if(event.key==='Enter')addCustomPriority()"/>
                   <button class="btn btn-ghost" style="font-size:12px;" onclick="addCustomPriority()">+ Add</button>
                 </div>
               </div>
@@ -1937,7 +1946,7 @@
                 <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Tags like Spam, Hardware, Warranty — applied per-ticket from the ticket detail panel.</div>
                 <div id="custom-labels-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:20px;margin-bottom:10px;"></div>
                 <div style="display:flex;gap:8px;">
-                  <input class="search-input" id="new-custom-label" placeholder="e.g. Hardware" style="font-size:12px;padding:6px 10px;flex:1;" onkeydown="if(event.key==='Enter')addCustomLabelSetting()"/>
+                  <input class="search-input" id="new-custom-label" placeholder="e.g. Hardware" style="font-size:12px;padding:8px 12px;flex:1;" onkeydown="if(event.key==='Enter')addCustomLabelSetting()"/>
                   <button class="btn btn-ghost" style="font-size:12px;" onclick="addCustomLabelSetting()">+ Add</button>
                 </div>
               </div>
