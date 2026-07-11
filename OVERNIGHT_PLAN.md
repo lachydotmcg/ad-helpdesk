@@ -41,8 +41,8 @@
 
 ## Phase 2 — DHCP
 
-- [ ] **2.1 `dhcp_bridge.py`**: list_scopes, get_scope, list_leases(scope), list_reservations, add_reservation, remove_reservation, add_exclusion_range, remove_exclusion_range, scope stats (utilisation %). `DhcpServer` PS module.
-- [ ] **2.2 Agent wiring + capability flag.**
+- [x] **2.1 `dhcp_bridge.py`**: list_scopes, get_scope, list_leases(scope), list_reservations, add_reservation, remove_reservation, add_exclusion_range, remove_exclusion_range, scope stats (utilisation %). `DhcpServer` PS module.
+- [x] **2.2 Agent wiring + capability flag.**
 - [ ] **2.3 Cloud tab**: scope cards with utilisation bars, lease table (IP, MAC, hostname, expiry), reservation management. Convert-lease-to-reservation one-click (confirm flow).
 - [ ] **2.4 AI tools + threat scoring** (scope/exclusion changes = high; reading leases = low).
 
