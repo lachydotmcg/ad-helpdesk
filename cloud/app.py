@@ -79,6 +79,36 @@ if not ADMIN_KEY and not _IS_DEV:
     )
 DEFAULT_AI_NAME = "Assistant"
 
+# Assistant intelligence tiers. Tenants pick one in Configure AI; it selects the
+# Claude model the assistant reasons with. Cost multipliers are relative to the
+# Normal (Haiku) tier and are used to weight monthly AI-scan usage accordingly.
+AI_MODELS = {
+    "normal": {"model": "claude-haiku-4-5-20251001", "label": "Normal", "cost": 1.0},
+    "high":   {"model": "claude-sonnet-5",           "label": "High",   "cost": 2.5},
+    "super":  {"model": "claude-opus-4-8",            "label": "Super",  "cost": 5.0},
+}
+DEFAULT_AI_TIER = "normal"
+
+
+def _ai_tier(tenant_id):
+    """Return the tenant's chosen intelligence tier key (validated)."""
+    try:
+        tier = (db.get_settings(tenant_id) or {}).get("ai_model", DEFAULT_AI_TIER)
+    except Exception:
+        tier = DEFAULT_AI_TIER
+    return tier if tier in AI_MODELS else DEFAULT_AI_TIER
+
+
+def _ai_model(tenant_id):
+    """Return the Claude model id for the tenant's intelligence tier."""
+    return AI_MODELS[_ai_tier(tenant_id)]["model"]
+
+
+def _ai_cost(tenant_id):
+    """Usage weight (rounded up) for one assistant call at the tenant's tier."""
+    import math
+    return int(math.ceil(AI_MODELS[_ai_tier(tenant_id)]["cost"]))
+
 
 # Standard security headers applied to every response.
 @app.after_request
@@ -616,7 +646,7 @@ Each fact: {{"category": "org|preference|user|ou_structure", "key": "short label
 Output ONLY the JSON array, no other text."""
 
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_ai_model(tenant_id),
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -3237,11 +3267,11 @@ CRITICAL RULES:
     messages.append({"role": "user", "content": message})
 
     response     = client.messages.create(
-        model="claude-haiku-4-5-20251001", max_tokens=512,
+        model=_ai_model(tenant_id), max_tokens=512,
         system=system_prompt, messages=messages
     )
     reply        = response.content[0].text.strip()
-    db.increment_usage(tenant_id, "janus_calls")
+    db.increment_usage(tenant_id, "janus_calls", _ai_cost(tenant_id))
     command_data = None
     try:
         import re
@@ -3370,7 +3400,7 @@ Do NOT run another lookup — use the data you already have.
 Output format for action: {{"action": "action_name", "args": ["arg1"], "message": "what you are doing"}}"""
 
             chain_resp = client.messages.create(
-                model="claude-haiku-4-5-20251001", max_tokens=300,
+                model=_ai_model(tenant_id), max_tokens=300,
                 messages=[{"role": "user", "content": chain_prompt}]
             )
             chain_text = chain_resp.content[0].text.strip()
@@ -3438,7 +3468,7 @@ Output format for action: {{"action": "action_name", "args": ["arg1"], "message"
                 if result2:
                     pw_note2 = f"\nIMPORTANT: New password set: {args2[1]} - include it in your reply." if action2 == "reset_password" and len(args2) >= 2 else ""
                     sum2 = client.messages.create(
-                        model="claude-haiku-4-5-20251001", max_tokens=300,
+                        model=_ai_model(tenant_id), max_tokens=300,
                         messages=[{"role": "user", "content": f"""You are {ai_name}. The user asked: "{message}"
 You searched first ({action} {args}), then ran: {action2} {args2}
 Final result: success={result2['success']}, message="{result2['message']}", data={json.dumps(result2.get('data',''))[:600]}
@@ -3466,7 +3496,7 @@ Write 2-3 sentences confirming what happened. Be direct and clear."""}]
             password_note = f"\nIMPORTANT: The new password that was set is: {args[1]} - you MUST include this in your reply so the admin can share it."
 
         summary_response = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=300,
+            model=_ai_model(tenant_id), max_tokens=300,
             messages=[{"role": "user", "content": f"""You are {ai_name}, an AD Helpdesk AI assistant. The user asked: "{message}"
 You ran this AD action: {action}
 Arguments used: {args}
@@ -3749,7 +3779,7 @@ def dashboard_update_settings():
                "security_checks", "email_domain", "roles",
                "custom_statuses", "custom_priorities", "ticket_labels",
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
-               "ai_context", "ai_name",
+               "ai_context", "ai_name", "ai_model",
                "report_enabled", "report_frequency", "report_day",
                "report_hour", "report_recipients", "last_report_sent",
                "slack_webhook_url", "teams_webhook_url",
@@ -3782,6 +3812,8 @@ def dashboard_update_settings():
                 continue
             if k == "ai_name":
                 v = str(v or "").strip() or DEFAULT_AI_NAME
+            if k == "ai_model" and v not in AI_MODELS:
+                v = DEFAULT_AI_TIER
             current[k] = v
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
@@ -4082,7 +4114,7 @@ RULES:
 - DNS fixes (add_dns_record, update_dns_record) must always be recommended with can_auto_resolve set to false -- they always need a human to confirm, never set it true for those two actions."""
 
         resp   = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_ai_model(tenant_id),
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -4128,7 +4160,7 @@ Result: {lookup_summary}
 Now give your final analysis using the exact JSON format above. Do not request another lookup."""
 
                 resp = client.messages.create(
-                    model="claude-haiku-4-5-20251001",
+                    model=_ai_model(tenant_id),
                     max_tokens=500,
                     messages=[{"role": "user", "content": follow_up_prompt}]
                 )

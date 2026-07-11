@@ -889,6 +889,36 @@
       border-bottom: 1px solid var(--border);
     }
 
+    /* Assistant intelligence selector */
+    .intel-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .intel-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    }
+    .intel-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+    .intel-card.selected {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, rgba(99,102,241,0.14), rgba(129,140,248,0.06));
+      box-shadow: 0 0 0 1px var(--accent) inset;
+    }
+    .intel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .intel-name { font-size: 14px; font-weight: 700; color: var(--text); }
+    .intel-mult {
+      font-size: 11px; font-weight: 700; color: var(--accent2);
+      background: rgba(99,102,241,0.12); border-radius: 999px; padding: 2px 8px;
+    }
+    .intel-model { font-size: 11px; color: var(--accent2); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.02em; }
+    .intel-desc { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+    @media (max-width: 620px) { .intel-grid { grid-template-columns: 1fr; } }
+
     .toggle-row {
       display: flex;
       align-items: flex-start;
@@ -2145,6 +2175,40 @@
                 <div>
                   <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Trusted Email Domain <span style="font-weight:400;">(for security checks)</span></label>
                   <input id="jc-email-domain" type="text" class="search-input" placeholder="yourcompany.com" style="font-size:13px;width:100%;" oninput="markAiSettingsDirty()">
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-section-title">Intelligence</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                Choose how much reasoning power your assistant uses for chat, ticket analysis, and insights.
+                Higher tiers are noticeably sharper on tricky requests, and use more of your monthly AI allowance per call.
+              </div>
+              <div class="intel-grid" id="jc-intel-grid">
+                <div class="intel-card" data-tier="normal" onclick="selectIntel('normal')">
+                  <div class="intel-head">
+                    <span class="intel-name">Normal</span>
+                    <span class="intel-mult">1x</span>
+                  </div>
+                  <div class="intel-model">Haiku 4.5</div>
+                  <div class="intel-desc">Fast and efficient. Great for everyday lookups and routine tickets.</div>
+                </div>
+                <div class="intel-card" data-tier="high" onclick="selectIntel('high')">
+                  <div class="intel-head">
+                    <span class="intel-name">High</span>
+                    <span class="intel-mult">2.5x</span>
+                  </div>
+                  <div class="intel-model">Sonnet</div>
+                  <div class="intel-desc">Stronger reasoning for multi-step actions and ambiguous requests.</div>
+                </div>
+                <div class="intel-card" data-tier="super" onclick="selectIntel('super')">
+                  <div class="intel-head">
+                    <span class="intel-name">Super</span>
+                    <span class="intel-mult">5x</span>
+                  </div>
+                  <div class="intel-model">Opus</div>
+                  <div class="intel-desc">Maximum capability for the hardest calls and highest-stakes analysis.</div>
                 </div>
               </div>
             </div>
@@ -6258,12 +6322,24 @@
     document.getElementById('report-day-wrap').style.display = freq === 'weekly' ? '' : 'none';
   }
 
+  let _selectedIntel = 'normal';
+  function selectIntel(tier) {
+    _selectedIntel = tier;
+    document.querySelectorAll('#jc-intel-grid .intel-card').forEach(c => {
+      c.classList.toggle('selected', c.dataset.tier === tier);
+    });
+    markAiSettingsDirty();
+  }
+
   async function loadAiConfig() {
     try {
       const res  = await fetch('/dashboard/api/settings');
       const body = await res.json();
       if (!body.success) return;
       const s = body.data;
+      selectIntel(s.ai_model || 'normal');
+      _aiSettingsDirty = false;  // selectIntel marks dirty; loading is not a user edit
+      const _sb = document.getElementById('jc-save-btn'); if (_sb) _sb.style.display = 'none';
       document.getElementById('jc-janus-enabled').checked   = !!s.janus_enabled;
       document.getElementById('jc-janus-scan').checked      = !!s.janus_scan_emails;
       document.getElementById('jc-security-checks').checked = !!s.security_checks;
@@ -6428,6 +6504,7 @@
       janus_auto_actions: _aa,
       ai_name:            document.getElementById('jc-ai-name').value.trim(),
       email_domain:       document.getElementById('jc-email-domain').value.trim(),
+      ai_model:           _selectedIntel,
       ai_context:         document.getElementById('jc-context').value,
       report_enabled:     reEnabled,
       report_frequency:   document.getElementById('jc-report-freq').value,

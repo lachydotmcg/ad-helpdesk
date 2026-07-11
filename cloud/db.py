@@ -1403,6 +1403,8 @@ _SETTINGS_DEFAULTS = {
     "janus_auto_actions": [],
     "ai_name":            "Assistant",
     "ai_context":         "",
+    "ai_model":           "normal",   # assistant intelligence tier: normal | high | super
+
     "security_checks":    True,
     "email_domain":       "",
     "roles":              [],
