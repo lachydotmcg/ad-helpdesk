@@ -2920,6 +2920,24 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
                     f" | Allowed actions: {', '.join(r.get('allowed_actions', []) or ['all'])}\n"
                 )
 
+        tenant_caps  = db.get_tenant_capabilities(tenant_id) or []
+        dns_enabled  = "dns" in tenant_caps
+        dns_context  = ""
+        if dns_enabled:
+            dns_context = """
+
+DNS LOOKUPS: This tenant's agent has DNS management connected. If the ticket sounds
+DNS-shaped (a hostname isn't resolving, a device can't be reached by name, "works by IP
+but not by name", a record looks wrong or missing) you may run ONE read-only DNS lookup
+before finishing your analysis. To do that, respond with ONLY this JSON instead of the
+final analysis format:
+{"dns_lookup": {"action": "list_dns_zones|get_dns_zone|list_dns_records|get_dns_scavenging", "args": ["arg1"]}}
+You will then be shown the lookup result and asked for the final analysis. Only use
+read actions here (list_dns_zones, get_dns_zone, list_dns_records, get_dns_scavenging) --
+never request a DNS write (add/update/remove a record) from analysis. If a DNS fix is
+needed, put it in the "action"/"args" fields of the final analysis JSON as normal so it
+goes through the existing confirm flow like any other action."""
+
         trusted_domain  = settings.get("email_domain", "")
         security_checks = settings.get("security_checks", True)
         security_context = ""
@@ -2961,6 +2979,7 @@ Requester name: {requester_name or 'Unknown'}
 Requester email: {requester_email or 'none provided'}
 {roles_context}
 {security_context}
+{dns_context}
 
 Available AD actions for auto-resolution:
   unlock_account         args: [username]                   -- unlock a locked account
@@ -2973,6 +2992,8 @@ Available AD actions for auto-resolution:
   move_user              args: [username, ou_name]          -- move user to a different OU
   create_user            args: [first, last, username, ou]  -- create new AD account (ou optional)
   get_user_info          args: [username]                   -- look up user details (use when ticket needs review, not action)
+  add_dns_record         args: [zone, name, type, value, ttl_seconds]  -- add a DNS record (recommend only; do not auto-resolve from analysis)
+  update_dns_record      args: [zone, name, type, old_value, new_value] -- change a DNS record's value (recommend only; do not auto-resolve from analysis)
 
 Respond in EXACTLY this JSON format (no other text):
 {{
@@ -3002,7 +3023,8 @@ RULES:
 - For password resets, generate a secure temporary password: uppercase + lowercase + numbers + symbol, 12+ chars.
 - security_flag must be null if no concerns (not an empty string).
 - threat_title must NOT say "typosquatting" - use "Impersonation" instead.
-- For group operations, use the group name exactly as the user wrote it."""
+- For group operations, use the group name exactly as the user wrote it.
+- DNS fixes (add_dns_record, update_dns_record) must always be recommended with can_auto_resolve set to false -- they always need a human to confirm, never set it true for those two actions."""
 
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -3010,7 +3032,59 @@ RULES:
             messages=[{"role": "user", "content": prompt}]
         )
         raw    = resp.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+
+        # One optional DNS read hop: the model may ask for a read-only DNS lookup
+        # before finalising its analysis. Only wired up when the tenant's agent
+        # actually has the 'dns' capability, and only READ actions are allowed --
+        # this mirrors the single-lookup chain used by the AI chat flow.
+        try:
+            precheck = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            precheck = None
+
+        if dns_enabled and isinstance(precheck, dict) and "dns_lookup" in precheck:
+            lookup      = precheck.get("dns_lookup") or {}
+            lookup_action = lookup.get("action")
+            lookup_args   = lookup.get("args", [])
+            DNS_READ_ACTIONS = {"list_dns_zones", "get_dns_zone", "list_dns_records", "get_dns_scavenging"}
+
+            if lookup_action in DNS_READ_ACTIONS:
+                command     = db.queue_command(tenant_id, lookup_action, lookup_args)
+                result_data = None
+                deadline    = time.time() + 15
+                while time.time() < deadline:
+                    time.sleep(0.6)
+                    result = db.get_command_result(command["id"], tenant_id)
+                    if result:
+                        result_data = result
+                        break
+
+                lookup_summary = (
+                    json.dumps(result_data.get("data", {}))[:1200]
+                    if result_data and result_data.get("success")
+                    else "Lookup failed or the agent did not respond in time -- proceed without DNS data."
+                )
+
+                follow_up_prompt = f"""{prompt}
+
+You already ran a DNS lookup: {lookup_action} {lookup_args}
+Result: {lookup_summary}
+
+Now give your final analysis using the exact JSON format above. Do not request another lookup."""
+
+                resp = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=500,
+                    messages=[{"role": "user", "content": follow_up_prompt}]
+                )
+                raw = resp.content[0].text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+
         parsed = json.loads(raw)
+
+        # Code-enforced, not prompt-enforced: DNS fixes are recommendations only
+        # and must go through the existing confirm flow, never auto-execute here.
+        if parsed.get("action") in ("add_dns_record", "update_dns_record"):
+            parsed["can_auto_resolve"] = False
 
         analysis_text = parsed.get("analysis", "")
         security_flag = parsed.get("security_flag")

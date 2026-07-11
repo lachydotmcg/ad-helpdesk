@@ -37,7 +37,7 @@
 - [x] **1.2 Agent wiring**: register DNS actions, capability flag `dns`.
 - [x] **1.3 Cloud routes + tab UI**: zone list → record table with inline add/edit/delete (writes go through the confirm flow). Record-type badges, TTL display, search.
 - [x] **1.4 AI tools**: expose DNS actions to the assistant's tool schema with descriptions + arg specs; threat-score guidance (record delete on a zone apex = high).
-- [ ] **1.5 Ticket auto-resolution**: "the printer hostname isn't resolving" style tickets can trigger DNS lookups in analysis.
+- [x] **1.5 Ticket auto-resolution**: "the printer hostname isn't resolving" style tickets can trigger DNS lookups in analysis.
 
 ## Phase 2 — DHCP
 
