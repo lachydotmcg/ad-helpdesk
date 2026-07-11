@@ -85,7 +85,6 @@ DEFAULT_AI_NAME = "Assistant"
 AI_MODELS = {
     "normal": {"model": "claude-haiku-4-5-20251001", "label": "Normal", "cost": 1.0},
     "high":   {"model": "claude-sonnet-5",           "label": "High",   "cost": 2.5},
-    "super":  {"model": "claude-opus-4-8",            "label": "Super",  "cost": 5.0},
 }
 DEFAULT_AI_TIER = "normal"
 
@@ -96,6 +95,8 @@ def _ai_tier(tenant_id):
         tier = (db.get_settings(tenant_id) or {}).get("ai_model", DEFAULT_AI_TIER)
     except Exception:
         tier = DEFAULT_AI_TIER
+    if tier == "super":       # legacy tier, now folded into High
+        tier = "high"
     return tier if tier in AI_MODELS else DEFAULT_AI_TIER
 
 

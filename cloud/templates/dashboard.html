@@ -872,7 +872,7 @@
     .chat-empty-icon { font-size: 40px; }
     .chat-empty-icon img { width: 54px; height: 54px; object-fit: contain;
       filter: drop-shadow(0 0 14px rgba(168,85,247,0.55)); }
-    .panel-title .title-star { width: 18px; height: 18px; object-fit: contain;
+    .title-star { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0;
       vertical-align: -3px; filter: drop-shadow(0 0 5px rgba(168,85,247,0.5)); }
     .chat-empty h3 { font-size: 16px; color: var(--text); font-weight: 500; }
     .chat-empty p  { font-size: 13px; text-align: center; max-width: 360px; line-height: 1.6; }
@@ -918,7 +918,7 @@
     /* Assistant intelligence selector */
     .intel-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 12px;
     }
     .intel-card {
@@ -1126,7 +1126,10 @@
     </div>
       </div>
     </div>
-    {% set caps = capabilities or ['ad'] %}
+    {# Temporary: show every Windows Server tab regardless of agent capability so
+       the panels are all reachable. Swap back to `capabilities or ['ad']` to
+       re-enable capability-based greying. #}
+    {% set caps = ['ad', 'dns', 'dhcp', 'gpo', 'nps'] %}
     {% if 'dns' in caps %}
     <div class="nav-item" onclick="showPage('dns')">
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></svg></span> DNS
@@ -1167,7 +1170,8 @@
       <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
     </div>
     {% endif %}
-    {% if entra_configured %}
+    {# Temporary: always show Entra ID enabled so the panel is reachable. #}
+    {% if true %}
     <div class="nav-item" onclick="showPage('entra')">
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span> Entra ID
     </div>
@@ -2241,7 +2245,6 @@
                     <span class="intel-name">Normal</span>
                     <span class="intel-mult">1x</span>
                   </div>
-                  <div class="intel-model">Haiku 4.5</div>
                   <div class="intel-desc">Fast and efficient. Great for everyday lookups and routine tickets.</div>
                 </div>
                 <div class="intel-card" data-tier="high" onclick="selectIntel('high')">
@@ -2249,16 +2252,7 @@
                     <span class="intel-name">High</span>
                     <span class="intel-mult">2.5x</span>
                   </div>
-                  <div class="intel-model">Sonnet</div>
-                  <div class="intel-desc">Stronger reasoning for multi-step actions and ambiguous requests.</div>
-                </div>
-                <div class="intel-card" data-tier="super" onclick="selectIntel('super')">
-                  <div class="intel-head">
-                    <span class="intel-name">Super</span>
-                    <span class="intel-mult">5x</span>
-                  </div>
-                  <div class="intel-model">Opus</div>
-                  <div class="intel-desc">Maximum capability for the hardest calls and highest-stakes analysis.</div>
+                  <div class="intel-desc">Stronger reasoning for multi-step actions, ambiguous requests, and the hardest calls.</div>
                 </div>
               </div>
             </div>
