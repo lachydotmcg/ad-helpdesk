@@ -75,7 +75,7 @@
 ## Phase 7 — Polish + wrap-up
 
 - [ ] **7.1 Landing page**: add a "Full Windows Server management" section with the new tabs (DNS/DHCP/GPO/Entra) as feature cards. Update README feature table + roadmap checkboxes.
-- [ ] **7.2 Docs**: ARCHITECTURE.md gains the module registry + capability handshake; SECURITY.md gains the new safety-tier table.
+- [x] **7.2 Docs**: ARCHITECTURE.md gains the module registry + capability handshake; SECURITY.md gains the new safety-tier table.
 - [ ] **7.3 Full boot verification**, push everything green, write jarvis-log, leave a MORNING.md summarising: what shipped, what's half-done, what needs Lachy (Higgsfield spend, Entra app registration, live-DC testing checklist).
 
 ---
