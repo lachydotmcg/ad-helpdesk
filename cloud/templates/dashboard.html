@@ -1041,24 +1041,24 @@
   <aside>
     <div class="nav-section">Active Directory</div>
     <div class="nav-item active" onclick="showPage('users')">
-      <span class="nav-icon">👥</span> All Users
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> All Users
     </div>
     <div class="nav-item" onclick="showPage('locked')">
-      <span class="nav-icon">🔒</span> Locked Out
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span> Locked Out
       <span id="locked-badge" style="margin-left:auto;font-size:11px;color:var(--red);display:none"></span>
     </div>
     <div class="nav-item" onclick="showPage('expired')">
-      <span class="nav-icon">⏰</span> Pwd Expired
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> Pwd Expired
     </div>
     <div class="nav-section">Windows Server</div>
     {% set caps = capabilities or ['ad'] %}
     {% if 'dns' in caps %}
     <div class="nav-item" onclick="showPage('dns')">
-      <span class="nav-icon">🌐</span> DNS
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></svg></span> DNS
     </div>
     {% else %}
     <div class="nav-item nav-item-disabled">
-      <span class="nav-icon">🌐</span> DNS
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></svg></span> DNS
       <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
     </div>
     {% endif %}
@@ -1074,11 +1074,11 @@
     {% endif %}
     {% if 'gpo' in caps %}
     <div class="nav-item" onclick="showPage('gpo')">
-      <span class="nav-icon">🗂️</span> Group Policy
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span> Group Policy
     </div>
     {% else %}
     <div class="nav-item nav-item-disabled">
-      <span class="nav-icon">🗂️</span> Group Policy
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span> Group Policy
       <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
     </div>
     {% endif %}
@@ -1104,29 +1104,29 @@
     {% endif %}
     <div class="nav-section">Support</div>
     <div class="nav-item" onclick="showPage('tickets')">
-      <span class="nav-icon">🎫</span> Tickets
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4z"/><path d="M13 7v10"/></svg></span> Tickets
       <span id="open-tickets-badge" style="margin-left:auto;font-size:11px;color:var(--yellow);display:none"></span>
     </div>
     <div class="nav-section">Activity</div>
     <div class="nav-item" onclick="showPage('chat')">
-      <span class="nav-icon">✨</span> <span id="nav-ai-label">AI Assistant</span>
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c.4 3.6 2.4 5.6 6 6-3.6.4-5.6 2.4-6 6-.4-3.6-2.4-5.6-6-6 3.6-.4 5.6-2.4 6-6z"/></svg></span> <span id="nav-ai-label">AI Assistant</span>
     </div>
     <div class="nav-item" onclick="showPage('activity')">
-      <span class="nav-icon">⚡</span> Activity Feed
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span> Activity Feed
     </div>
     <div class="nav-item" onclick="showPage('audit')">
-      <span class="nav-icon">📋</span> Audit Log
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 9h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span> Audit Log
     </div>
     {% if user_role == 'admin' %}
     <div class="nav-section">Settings</div>
     <div class="nav-item" onclick="showPage('team')">
-      <span class="nav-icon">👤</span> Team
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Team
     </div>
     <div class="nav-item" onclick="showPage('settings')">
-      <span class="nav-icon">⚙️</span> Settings
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Settings
     </div>
     <div class="nav-item" onclick="showPage('janus-config')">
-      <span class="nav-icon">🧠</span> <span id="nav-ai-config-label">Configure AI</span>
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span> <span id="nav-ai-config-label">Configure AI</span>
     </div>
     {% endif %}
     <div class="sidebar-legal">
