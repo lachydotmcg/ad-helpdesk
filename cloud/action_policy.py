@@ -48,6 +48,12 @@ READ: frozenset[str] = frozenset({
     "list_dhcp_leases",
     "list_dhcp_reservations",
     "list_dhcp_exclusions",
+    # GPO reads
+    "list_gpos",
+    "get_gpo",
+    "get_gpo_report",
+    "list_gpo_links",
+    "get_gpo_inheritance",
 })
 
 WRITE: frozenset[str] = frozenset({
@@ -86,6 +92,15 @@ DESTRUCTIVE: frozenset[str] = frozenset({
     "remove_dhcp_reservation",
     "add_dhcp_exclusion",
     "remove_dhcp_exclusion",
+    # GPO writes -- linking/unlinking a GPO, changing its status, or toggling
+    # link enforcement can change policy for an entire OU (and everything
+    # under it) in one shot. None of these are classified as WRITE; all four
+    # always require human confirmation, per OVERNIGHT_PLAN.md 3.3's explicit
+    # safety stance.
+    "link_gpo",
+    "unlink_gpo",
+    "set_gpo_status",
+    "set_gpo_link_enforced",
 })
 
 ALL_ACTIONS: frozenset[str] = READ | WRITE | DESTRUCTIVE
@@ -122,6 +137,10 @@ REVERSIBLE: dict[str, bool] = {
     "remove_dhcp_reservation":    True,   # can be re-added, but device may pull a different lease in the meantime
     "add_dhcp_exclusion":         True,   # can be removed again
     "remove_dhcp_exclusion":      True,   # can be re-added, but devices may already have leased into the gap
+    "link_gpo":                   True,   # can be unlinked again
+    "unlink_gpo":                 True,   # can be re-linked, but policy is unenforced in the meantime
+    "set_gpo_status":              True,  # can be set back to the previous status
+    "set_gpo_link_enforced":       True,  # can be toggled back
 }
 
 

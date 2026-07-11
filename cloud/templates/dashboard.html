@@ -1412,14 +1412,47 @@
 
     <!-- ===== GROUP POLICY PAGE ===== -->
     <div class="page" id="page-gpo">
-      <div class="panel">
+      <div class="panel" id="gpo-list-panel">
         <div class="panel-header">
-          <span class="panel-title">Group Policy</span>
+          <span class="panel-title">Group Policy Objects</span>
+          <button class="btn btn-ghost" onclick="loadGpoList()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
         </div>
-        <div class="coming-online-panel">
-          <div class="coming-online-icon">🗂️</div>
-          <h3>Group Policy management is coming online</h3>
-          <p>GPO listing, links, and reports will appear here once this module ships. Your agent will report this capability automatically when it is ready.</p>
+        <div class="search-row">
+          <input class="search-input" id="gpo-search" type="search" placeholder="Search GPOs by name..." oninput="filterGpoList()" autocomplete="off" spellcheck="false"/>
+        </div>
+        <div id="gpo-list-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel" id="gpo-detail-panel" style="display:none;margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">GPO: <span id="gpo-detail-name"></span></span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" onclick="loadGpoDetail(_gpoCurrent)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+            <button class="btn btn-ghost" onclick="closeGpoDetail()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Close</button>
+          </div>
+        </div>
+        <div id="gpo-detail-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <div class="panel-title" style="margin-bottom:10px;">Status</div>
+          <div id="gpo-status-actions" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <div class="panel-title" style="margin-bottom:10px;">OU Links</div>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Enter an OU name or distinguished name to view its GPO links and inheritance, and to link or unlink this GPO.</p>
+          <div class="search-row">
+            <input class="search-input" id="gpo-ou-input" type="text" placeholder="e.g. Sales or OU=Sales,DC=corp,DC=local" autocomplete="off" spellcheck="false"/>
+            <button class="btn btn-ghost" onclick="loadGpoOuView()">Look up</button>
+            <button class="btn btn-primary" onclick="linkGpoToOu()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Link to OU</button>
+          </div>
+          <div id="gpo-ou-wrap">
+            <div class="empty">Look up an OU above to view its links.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -3516,6 +3549,227 @@
   }
 
   // =========================================================
+  // Group Policy (GPO)
+  // Follows the exact same shape as the DHCP tab above: dedicated /api/gpo/...
+  // routes queue commands and hand back a command_id, reused via
+  // gpoGet/gpoPost -> dnsGet/dnsPost -> pollResult()/showConfirmChallenge().
+  // Reads (list/report/links/inheritance) queue immediately. All four writes
+  // (link, unlink, status, enforce) are DESTRUCTIVE and always go through the
+  // 6-digit confirmation challenge -- see OVERNIGHT_PLAN.md 3.2/3.3.
+  // =========================================================
+
+  async function gpoGet(url)        { return dnsGet(url); }
+  async function gpoPost(url, body) { return dnsPost(url, body); }
+
+  let _gpoList    = [];
+  let _gpoCurrent = '';
+
+  function gpoStatusPill(status) {
+    const s = status || 'Unknown';
+    let cls = 'pill-gray';
+    if (s === 'AllSettingsEnabled') cls = 'pill-green';
+    else if (s === 'AllSettingsDisabled') cls = 'pill-red';
+    else if (s === 'ComputerSettingsDisabled' || s === 'UserSettingsDisabled') cls = 'pill-yellow';
+    return `<span class="pill ${cls}">${escHtml(s)}</span>`;
+  }
+
+  async function loadGpoList() {
+    document.getElementById('gpo-list-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const data = await gpoGet('/api/gpo/list');
+      _gpoList = Array.isArray(data) ? data : (data.gpos || []);
+      renderGpoList();
+    } catch (e) {
+      document.getElementById('gpo-list-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function filterGpoList() { renderGpoList(); }
+
+  function renderGpoList() {
+    const q = (document.getElementById('gpo-search').value || '').toLowerCase();
+    const rows = _gpoList.filter(g => !q || String(g.name || '').toLowerCase().includes(q));
+    if (!rows.length) {
+      document.getElementById('gpo-list-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No GPOs found.</div>`;
+      return;
+    }
+    let html = '<table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th>Modified</th><th></th></tr></thead><tbody>';
+    for (const g of rows) {
+      html += `<tr><td>${escHtml(g.name || '-')}</td>` +
+              `<td>${gpoStatusPill(g.status)}</td>` +
+              `<td style="font-size:12px;color:var(--muted)">${escHtml(String(g.created || '-'))}</td>` +
+              `<td style="font-size:12px;color:var(--muted)">${escHtml(String(g.modified || '-'))}</td>` +
+              `<td><button class="btn btn-ghost btn-sm" onclick="loadGpoDetail('${jsArg(g.name)}')">View</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('gpo-list-wrap').innerHTML = html;
+  }
+
+  function gpoExtSectionHtml(title, section) {
+    if (!section) return `<div><strong>${title}</strong>: no data</div>`;
+    const enabledLabel = section.enabled === true ? 'Enabled' : (section.enabled === false ? 'Disabled' : 'Unknown');
+    const enabledCls   = section.enabled === true ? 'pill-green' : (section.enabled === false ? 'pill-red' : 'pill-gray');
+    let html = `<div style="margin-bottom:14px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">` +
+               `<strong>${title}</strong><span class="pill ${enabledCls}">${enabledLabel}</span></div>`;
+    const exts = section.extensions || [];
+    if (!exts.length) {
+      html += '<div style="font-size:12px;color:var(--muted);">No extensions with settings.</div>';
+    } else {
+      html += '<table><thead><tr><th>Extension</th><th>Settings</th></tr></thead><tbody>';
+      for (const ext of exts) {
+        html += `<tr><td style="font-size:12px;">${escHtml(ext.name || 'Unknown')}</td><td style="font-size:12px;color:var(--muted)">${escHtml(String(ext.setting_count != null ? ext.setting_count : '-'))}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  async function loadGpoDetail(name) {
+    _gpoCurrent = name;
+    document.getElementById('gpo-detail-name').textContent = name;
+    document.getElementById('gpo-detail-panel').style.display = '';
+    document.getElementById('gpo-detail-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    document.getElementById('gpo-status-actions').innerHTML = '';
+    document.getElementById('gpo-ou-wrap').innerHTML = '<div class="empty">Look up an OU above to view its links.</div>';
+    document.getElementById('gpo-ou-input').value = '';
+    try {
+      const qs = new URLSearchParams({ gpo: name });
+      const report = await gpoGet('/api/gpo/report?' + qs.toString());
+      let html = '';
+      if (report && report.raw_available) {
+        html += gpoExtSectionHtml('Computer Configuration', report.computer);
+        html += gpoExtSectionHtml('User Configuration', report.user);
+      } else {
+        html = `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml((report && report.summary) || 'Report could not be parsed.')}</div>`;
+      }
+      document.getElementById('gpo-detail-wrap').innerHTML = html;
+
+      const current = _gpoList.find(g => g.name === name);
+      const status  = current ? current.status : null;
+      const statusOptions = ['AllSettingsEnabled', 'AllSettingsDisabled', 'ComputerSettingsDisabled', 'UserSettingsDisabled'];
+      let btnHtml = '';
+      for (const opt of statusOptions) {
+        const active = opt === status ? ' btn-primary' : ' btn-ghost';
+        btnHtml += `<button class="btn${active} btn-sm" ${opt === status ? 'disabled' : ''} onclick="setGpoStatus('${jsArg(opt)}')">${escHtml(opt)}</button>`;
+      }
+      document.getElementById('gpo-status-actions').innerHTML = btnHtml +
+        '<div style="font-size:12px;color:var(--muted);width:100%;margin-top:6px;">Changing status requires a 6-digit confirmation code.</div>';
+    } catch (e) {
+      document.getElementById('gpo-detail-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function closeGpoDetail() {
+    _gpoCurrent = '';
+    document.getElementById('gpo-detail-panel').style.display = 'none';
+  }
+
+  async function setGpoStatus(status) {
+    if (!_gpoCurrent) return;
+    if (!confirm(`Set GPO "${_gpoCurrent}" status to ${status}?`)) return;
+    toast(`Setting status to ${status}...`, 'info');
+    try {
+      await gpoPost('/api/gpo/status', { gpo: _gpoCurrent, status });
+      toast(`GPO status updated.`, 'success');
+      await loadGpoList();
+      await loadGpoDetail(_gpoCurrent);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  function gpoLinkRowsHtml(links, source) {
+    if (!links || !links.length) return '<div style="font-size:12px;color:var(--muted);">None.</div>';
+    let html = '<table><thead><tr><th>GPO</th><th>Order</th><th>Enabled</th><th>Enforced</th>' +
+               (source === 'direct' ? '<th></th>' : '') + '</tr></thead><tbody>';
+    for (const l of links) {
+      const name     = l.name || l.DisplayName || '-';
+      const order    = l.order != null ? l.order : l.Order;
+      const enabled  = (l.enabled != null ? l.enabled : l.Enabled) ? 'Yes' : 'No';
+      const enforced = (l.enforced != null ? l.enforced : l.Enforced) ? 'Yes' : 'No';
+      html += `<tr><td>${escHtml(name)}</td><td>${escHtml(String(order != null ? order : '-'))}</td>` +
+              `<td>${enabled}</td><td>${enforced}</td>`;
+      if (source === 'direct') {
+        const isThisGpo = name === _gpoCurrent;
+        html += `<td style="display:flex;gap:6px;">` +
+          (isThisGpo ? `<button class="btn btn-ghost btn-sm" onclick="toggleGpoEnforced(${enforced === 'Yes' ? 'false' : 'true'})">${enforced === 'Yes' ? 'Un-enforce' : 'Enforce'}</button>` +
+          `<button class="btn btn-danger btn-sm" onclick="unlinkGpoFromOu()">${ICON.trash} Unlink</button>` : '') +
+          `</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+
+  async function loadGpoOuView() {
+    const ou = document.getElementById('gpo-ou-input').value.trim();
+    if (!ou) { toast('Enter an OU name or distinguished name first.', 'error'); return; }
+    document.getElementById('gpo-ou-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const qs = new URLSearchParams({ ou });
+      const [links, inheritance] = await Promise.all([
+        gpoGet('/api/gpo/links?' + qs.toString()),
+        gpoGet('/api/gpo/inheritance?' + qs.toString()),
+      ]);
+      const inherited = (inheritance && inheritance.InheritedGpoLinks) || [];
+      let html = `<div style="margin-bottom:14px;"><div style="font-weight:600;margin-bottom:6px;">Directly linked to this OU</div>${gpoLinkRowsHtml(links, 'direct')}</div>`;
+      html += `<div><div style="font-weight:600;margin-bottom:6px;">Inherited from parent OUs</div>${gpoLinkRowsHtml(inherited, 'inherited')}</div>`;
+      if (inheritance && inheritance.GpoInheritanceBlocked) {
+        html = `<div class="pill pill-yellow" style="margin-bottom:10px;">Inheritance blocked on this OU</div>` + html;
+      }
+      document.getElementById('gpo-ou-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('gpo-ou-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  async function linkGpoToOu() {
+    if (!_gpoCurrent) return;
+    const ou = document.getElementById('gpo-ou-input').value.trim();
+    if (!ou) { toast('Enter an OU name or distinguished name first.', 'error'); return; }
+    if (!confirm(`Link GPO "${_gpoCurrent}" to OU "${ou}"? This requires a 6-digit confirmation code.`)) return;
+    toast(`Linking GPO to ${ou}...`, 'info');
+    try {
+      await gpoPost('/api/gpo/link', { gpo: _gpoCurrent, ou });
+      toast('GPO linked.', 'success');
+      loadGpoOuView();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function unlinkGpoFromOu() {
+    if (!_gpoCurrent) return;
+    const ou = document.getElementById('gpo-ou-input').value.trim();
+    if (!ou) return;
+    if (!confirm(`Unlink GPO "${_gpoCurrent}" from OU "${ou}"?`)) return;
+    toast(`Unlinking GPO from ${ou}...`, 'info');
+    try {
+      await gpoPost('/api/gpo/unlink', { gpo: _gpoCurrent, ou });
+      toast('GPO unlinked.', 'success');
+      loadGpoOuView();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function toggleGpoEnforced(enforced) {
+    if (!_gpoCurrent) return;
+    const ou = document.getElementById('gpo-ou-input').value.trim();
+    if (!ou) return;
+    if (!confirm(`Set enforcement of GPO "${_gpoCurrent}" on OU "${ou}" to ${enforced}?`)) return;
+    toast('Updating enforcement...', 'info');
+    try {
+      await gpoPost('/api/gpo/enforce', { gpo: _gpoCurrent, ou, enforced });
+      toast('Enforcement updated.', 'success');
+      loadGpoOuView();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
   // AD write operations
   // =========================================================
 
@@ -4822,6 +5076,7 @@
       if (name === 'expired')  loadExpired();
       if (name === 'dns')      loadDnsZones();
       if (name === 'dhcp')     loadDhcpScopes();
+      if (name === 'gpo')      loadGpoList();
       if (name === 'audit')    loadAudit();
       if (name === 'team')     loadTeam();
       if (name === 'tickets')  loadTickets();

@@ -50,8 +50,8 @@
 
 - [x] **3.1 `gpo_bridge.py` reads**: list_gpos (name, status, links, modified), get_gpo_report (XML→parsed summary of settings), list_links(ou), get_gpo_inheritance(ou). `GroupPolicy` PS module.
 - [x] **3.2 Writes (token-confirm only)**: link_gpo(gpo, ou), unlink_gpo, enable_gpo/disable_gpo, set_link_enforced. NO setting-level editing overnight; that's a future project.
-- [ ] **3.3 Cloud tab**: GPO list with link map (which OUs), status pills, drill-in report view rendered from the parsed XML.
-- [ ] **3.4 AI tools**: reads freely; every write action description explicitly instructs the model to route through human confirmation.
+- [x] **3.3 Cloud tab**: GPO list with link map (which OUs), status pills, drill-in report view rendered from the parsed XML.
+- [x] **3.4 AI tools**: reads freely; every write action description explicitly instructs the model to route through human confirmation.
 
 ## Phase 4 — Entra ID via Microsoft Graph
 

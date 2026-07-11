@@ -162,6 +162,16 @@ TIME_SAVED_MINUTES: dict[str, float] = {
     "list_dhcp_leases":           0.5,
     "list_dhcp_reservations":     0.5,
     "list_dhcp_exclusions":       0.5,
+    # GPO
+    "link_gpo":                   1.5,
+    "unlink_gpo":                 1.0,
+    "set_gpo_status":             1.0,
+    "set_gpo_link_enforced":      1.0,
+    "list_gpos":                  0.5,
+    "get_gpo":                    0.5,
+    "get_gpo_report":             1.0,
+    "list_gpo_links":             0.5,
+    "get_gpo_inheritance":        0.5,
 }
 
 
@@ -194,6 +204,14 @@ DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
     "remove_dhcp_reservation",
     "add_dhcp_exclusion",
     "remove_dhcp_exclusion",
+    # GPO: linking/unlinking a GPO, changing its status, or toggling link
+    # enforcement can change policy for an entire OU (and everything under
+    # it) at once, so all four require the confirmation challenge -- none
+    # of the GPO writes are in action_policy.WRITE.
+    "link_gpo",
+    "unlink_gpo",
+    "set_gpo_status",
+    "set_gpo_link_enforced",
 })
 
 _CONFIRM_TTL = 300                     # 5 minutes
@@ -1868,6 +1886,10 @@ def dashboard_exec():
                 "remove_dhcp_reservation":  f"Remove DHCP reservation for {args[1] if len(args)>1 else '?'} from scope {subject}",
                 "add_dhcp_exclusion":       f"Add DHCP exclusion range {args[1] if len(args)>1 else '?'}-{args[2] if len(args)>2 else '?'} to scope {subject}",
                 "remove_dhcp_exclusion":    f"Remove DHCP exclusion range {args[1] if len(args)>1 else '?'}-{args[2] if len(args)>2 else '?'} from scope {subject}",
+                "link_gpo":                 f"Link GPO '{subject}' to OU {args[1] if len(args)>1 else '?'}",
+                "unlink_gpo":               f"Unlink GPO '{subject}' from OU {args[1] if len(args)>1 else '?'}",
+                "set_gpo_status":           f"Set GPO '{subject}' status to {args[1] if len(args)>1 else '?'}",
+                "set_gpo_link_enforced":    f"Set enforcement of GPO '{subject}' link on OU {args[1] if len(args)>1 else '?'} to {args[2] if len(args)>2 else '?'}",
             }
             return jsonify({
                 "success":              False,
@@ -2349,6 +2371,219 @@ def api_dhcp_exclusions_delete():
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
 
+# ---------------------------------------------------------------------------
+# Dashboard API -- Group Policy (GPO)
+# Same shape as the DNS/DHCP routes above: thin, capability-gated wrappers
+# around queue_command / the confirm-token machinery. All reads (list, report,
+# links, inheritance) queue immediately. All four writes (link, unlink,
+# status, enforce) are in DESTRUCTIVE_ACTIONS -- none of them are in
+# action_policy.WRITE, per OVERNIGHT_PLAN.md 3.3's explicit safety stance --
+# so they always go through the same 6-digit challenge as disable_account.
+# ---------------------------------------------------------------------------
+
+def _require_gpo_capability() -> str | None:
+    """Return a friendly error message if this tenant's agent hasn't reported
+    the 'gpo' capability, else None."""
+    caps = db.get_tenant_capabilities(g.tenant_id)
+    if "gpo" not in caps:
+        return (
+            "Group Policy management isn't available yet. Your Windows agent hasn't "
+            "reported the GroupPolicy module as installed, or hasn't connected since it was added."
+        )
+    return None
+
+
+@app.route("/api/gpo/list", methods=["GET"])
+@require_dashboard_user
+def api_gpo_list():
+    """Queue a GPO list. Body: none. Returns { command_id }."""
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_gpos", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/gpo/report", methods=["GET"])
+@require_dashboard_user
+def api_gpo_report():
+    """Queue a GPO report fetch (parsed summary). Query: ?gpo=<name or GUID>."""
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    gpo = request.args.get("gpo", "").strip()
+    if not gpo:
+        return jsonify({"success": False, "message": "A GPO name or GUID is required."}), 400
+    command = db.queue_command(g.tenant_id, "get_gpo_report", [gpo])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/gpo/links", methods=["GET"])
+@require_dashboard_user
+def api_gpo_links():
+    """Queue a GPO link list for an OU. Query: ?ou=<name or DN>."""
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    ou = request.args.get("ou", "").strip()
+    if not ou:
+        return jsonify({"success": False, "message": "An OU name or distinguished name is required."}), 400
+    command = db.queue_command(g.tenant_id, "list_gpo_links", [ou])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/gpo/inheritance", methods=["GET"])
+@require_dashboard_user
+def api_gpo_inheritance():
+    """Queue a GPO inheritance lookup for an OU. Query: ?ou=<name or DN>."""
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    ou = request.args.get("ou", "").strip()
+    if not ou:
+        return jsonify({"success": False, "message": "An OU name or distinguished name is required."}), 400
+    command = db.queue_command(g.tenant_id, "get_gpo_inheritance", [ou])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+def _gpo_destructive_write(action: str, args: list, target: str, action_label: str, data: dict):
+    """Shared confirm-token flow for the four GPO write routes below. Returns
+    a Flask response tuple. `data` is the already-parsed request JSON body
+    (used only to read confirm_token, since args are otherwise fixed by the caller)."""
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    if not confirm_token:
+        ok, reason = action_policy.validate(action, source="human")
+        if not ok:
+            return jsonify({"success": False, "message": reason}), 403
+        code = _issue_confirm_token(g.tenant_id, action, args)
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          action_label,
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending:
+        return jsonify({
+            "success": False,
+            "message": "Invalid or expired confirmation code. Please try again.",
+        }), 403
+
+    action = pending["action"]
+    args   = pending["args"]
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, target, "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=target,
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/gpo/link", methods=["POST"])
+@require_dashboard_user
+def api_gpo_link():
+    """
+    Queue a GPO link to an OU. DESTRUCTIVE -- gated behind the same 6-digit
+    confirmation challenge as disable_account.
+    Body: { "gpo": "...", "ou": "...", "confirm_token": "" }
+    """
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data = request.get_json() or {}
+    gpo  = str(data.get("gpo", "")).strip()
+    ou   = str(data.get("ou", "")).strip()
+
+    if not str(data.get("confirm_token", "")).strip() and not (gpo and ou):
+        return jsonify({"success": False, "message": "GPO and OU are both required."}), 400
+
+    return _gpo_destructive_write(
+        "link_gpo", [gpo, ou], ou,
+        f"Link GPO '{gpo}' to OU {ou}", data,
+    )
+
+
+@app.route("/api/gpo/unlink", methods=["POST"])
+@require_dashboard_user
+def api_gpo_unlink():
+    """
+    Queue a GPO unlink from an OU. DESTRUCTIVE -- gated behind the same
+    6-digit confirmation challenge as disable_account.
+    Body: { "gpo": "...", "ou": "...", "confirm_token": "" }
+    """
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data = request.get_json() or {}
+    gpo  = str(data.get("gpo", "")).strip()
+    ou   = str(data.get("ou", "")).strip()
+
+    if not str(data.get("confirm_token", "")).strip() and not (gpo and ou):
+        return jsonify({"success": False, "message": "GPO and OU are both required."}), 400
+
+    return _gpo_destructive_write(
+        "unlink_gpo", [gpo, ou], ou,
+        f"Unlink GPO '{gpo}' from OU {ou}", data,
+    )
+
+
+@app.route("/api/gpo/status", methods=["POST"])
+@require_dashboard_user
+def api_gpo_status():
+    """
+    Queue a GPO status change (enable/disable computer/user settings).
+    DESTRUCTIVE -- gated behind the same 6-digit confirmation challenge as
+    disable_account.
+    Body: { "gpo": "...", "status": "AllSettingsEnabled", "confirm_token": "" }
+    """
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data   = request.get_json() or {}
+    gpo    = str(data.get("gpo", "")).strip()
+    status = str(data.get("status", "")).strip()
+
+    if not str(data.get("confirm_token", "")).strip() and not (gpo and status):
+        return jsonify({"success": False, "message": "GPO and status are both required."}), 400
+
+    return _gpo_destructive_write(
+        "set_gpo_status", [gpo, status], gpo,
+        f"Set GPO '{gpo}' status to {status}", data,
+    )
+
+
+@app.route("/api/gpo/enforce", methods=["POST"])
+@require_dashboard_user
+def api_gpo_enforce():
+    """
+    Queue a GPO link enforcement toggle for an OU. DESTRUCTIVE -- gated
+    behind the same 6-digit confirmation challenge as disable_account.
+    Body: { "gpo": "...", "ou": "...", "enforced": true, "confirm_token": "" }
+    """
+    block = _require_gpo_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data     = request.get_json() or {}
+    gpo      = str(data.get("gpo", "")).strip()
+    ou       = str(data.get("ou", "")).strip()
+    enforced = bool(data.get("enforced", False))
+
+    if not str(data.get("confirm_token", "")).strip() and not (gpo and ou):
+        return jsonify({"success": False, "message": "GPO and OU are both required."}), 400
+
+    return _gpo_destructive_write(
+        "set_gpo_link_enforced", [gpo, ou, enforced], ou,
+        f"Set enforcement of GPO '{gpo}' link on OU {ou} to {enforced}", data,
+    )
+
+
 def _run_chat(tenant_id: str, user_email: str, message: str,
               history: list = None, session_id: str = None) -> dict:
     """
@@ -2511,6 +2746,41 @@ Available AD actions (use exact action names):
   remove_dhcp_exclusion         args: [scope_id, start_ip, end_ip]              -- HIGH CAUTION. Frees a previously excluded range back into the pool; can hand
                                                                                     out addresses that were reserved for static infrastructure. Also gated behind a 6-digit code.
 
+  GROUP POLICY (GPO) (only offer these if the tenant's agent has the 'gpo' capability -- if a
+  GPO action fails with a capability error, tell the user Group Policy management isn't connected yet):
+  list_gpos                   args: []                                          -- LOW RISK, read-only. List all GPOs with status and dates.
+  get_gpo                     args: [name_or_guid]                              -- LOW RISK, read-only. Basic GPO details (owner, domain, WMI filter).
+  get_gpo_report               args: [name_or_guid]                             -- LOW RISK, read-only. Parsed report: Computer/User Configuration enabled
+                                                                                    state plus extensions with setting counts.
+  list_gpo_links               args: [ou_name_or_dn]                            -- LOW RISK, read-only. GPOs directly linked to an OU.
+  get_gpo_inheritance          args: [ou_name_or_dn]                            -- LOW RISK, read-only. Direct + inherited GPO links for an OU, plus whether
+                                                                                    inheritance is blocked.
+  link_gpo                     args: [name_or_guid, ou_name_or_dn]              -- DESTRUCTIVE. Links a GPO to an OU, applying its policy to every user/
+                                                                                    computer under that OU. This action ALWAYS requires human confirmation
+                                                                                    with a 6-digit token before it runs -- never auto-resolve it, and never
+                                                                                    tell the admin it has completed until they have confirmed the code.
+  unlink_gpo                   args: [name_or_guid, ou_name_or_dn]              -- DESTRUCTIVE. Removes a GPO's link from an OU, so its policy stops applying
+                                                                                    there. This action ALWAYS requires human confirmation with a 6-digit token
+                                                                                    before it runs -- never auto-resolve it, and never tell the admin it has
+                                                                                    completed until they have confirmed the code.
+  set_gpo_status                args: [name_or_guid, status]                    -- DESTRUCTIVE. Changes whether a GPO's Computer and/or User settings apply
+                                                                                    at all (status is one of AllSettingsEnabled, AllSettingsDisabled,
+                                                                                    ComputerSettingsDisabled, UserSettingsDisabled). This action ALWAYS
+                                                                                    requires human confirmation with a 6-digit token before it runs -- never
+                                                                                    auto-resolve it, and never tell the admin it has completed until they
+                                                                                    have confirmed the code.
+  set_gpo_link_enforced         args: [name_or_guid, ou_name_or_dn, true|false] -- DESTRUCTIVE. Toggles whether a GPO link overrides "Block Inheritance" on
+                                                                                    child OUs. This action ALWAYS requires human confirmation with a 6-digit
+                                                                                    token before it runs -- never auto-resolve it, and never tell the admin it
+                                                                                    has completed until they have confirmed the code.
+
+  GPO SAFETY RULE: every GPO write above (link_gpo, unlink_gpo, set_gpo_status,
+  set_gpo_link_enforced) can change policy for an entire OU -- and everything under
+  it -- in one action. Unlike the routine DNS/DHCP writes, none of these are ever
+  auto-resolved by you or queued as "already confirmed". Always queue them plainly
+  (the dashboard shows the 6-digit confirmation modal automatically) and say so in
+  your "message" field, e.g. "This will require you to confirm a 6-digit code before it runs."
+
 When you need to run an AD action, respond ONLY with this exact JSON (no preamble, no extra text):
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
@@ -2530,6 +2800,7 @@ CRITICAL RULES:
         'list_dns_zones', 'get_dns_zone', 'list_dns_records', 'get_dns_scavenging',
         'list_dhcp_scopes', 'get_dhcp_scope', 'get_dhcp_scope_stats',
         'list_dhcp_leases', 'list_dhcp_reservations', 'list_dhcp_exclusions',
+        'list_gpos', 'get_gpo', 'get_gpo_report', 'list_gpo_links', 'get_gpo_inheritance',
     }
 
     client   = anthropic.Anthropic(api_key=api_key)
