@@ -1082,6 +1082,16 @@
       <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
     </div>
     {% endif %}
+    {% if 'nps' in caps %}
+    <div class="nav-item" onclick="showPage('nps')">
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="10" rx="1.5"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><line x1="12" y1="13" x2="12" y2="15"/></svg></span> NPS
+    </div>
+    {% else %}
+    <div class="nav-item nav-item-disabled">
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="10" rx="1.5"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><line x1="12" y1="13" x2="12" y2="15"/></svg></span> NPS
+      <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
+    </div>
+    {% endif %}
     {% if entra_configured %}
     <div class="nav-item" onclick="showPage('entra')">
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span> Entra ID
@@ -1460,6 +1470,54 @@
           <div id="gpo-ou-wrap">
             <div class="empty">Look up an OU above to view its links.</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== NPS PAGE ===== -->
+    <div class="page" id="page-nps">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">NPS (RADIUS) management is read-only for now. This tab shows what's configured on your server; changes have to be made directly on the NPS console.</p>
+
+      <div class="stats" id="nps-summary-cards">
+        <div class="stat-card">
+          <div class="stat-label">RADIUS Clients</div>
+          <div class="stat-value" id="nps-stat-clients">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Network Policies</div>
+          <div class="stat-value" id="nps-stat-policies">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Connection Request Policies</div>
+          <div class="stat-value" id="nps-stat-crp">—</div>
+        </div>
+      </div>
+
+      <div class="panel" id="nps-clients-panel" style="margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">RADIUS Clients</span>
+          <button class="btn btn-ghost" onclick="loadNpsAll()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+        </div>
+        <div id="nps-clients-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel" id="nps-policies-panel" style="margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Network Policies</span>
+        </div>
+        <div id="nps-policies-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel" id="nps-crp-panel" style="margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Connection Request Policies</span>
+        </div>
+        <div id="nps-crp-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
         </div>
       </div>
     </div>
@@ -4067,6 +4125,103 @@
   }
 
   // =========================================================
+  // NPS (RADIUS) tab -- read-only, see OVERNIGHT_PLAN.md 5.1. Same
+  // queue-and-poll shape as DNS/DHCP/GPO, reused via gpoGet/dnsGet ->
+  // pollResult(). There are no write routes to wire up here.
+  // =========================================================
+
+  async function npsGet(url) { return dnsGet(url); }
+
+  function npsEnabledPill(enabled) {
+    return enabled
+      ? '<span class="pill pill-green">Enabled</span>'
+      : '<span class="pill pill-red">Disabled</span>';
+  }
+
+  async function loadNpsAll() {
+    await Promise.all([loadNpsSummary(), loadNpsClients(), loadNpsPolicies(), loadNpsConnectionPolicies()]);
+  }
+
+  async function loadNpsSummary() {
+    try {
+      const data = await npsGet('/api/nps/summary');
+      document.getElementById('nps-stat-clients').textContent  = data.radius_client_count != null ? data.radius_client_count : '—';
+      document.getElementById('nps-stat-policies').textContent = data.network_policy_count != null ? data.network_policy_count : '—';
+      document.getElementById('nps-stat-crp').textContent      = data.connection_request_policy_count != null ? data.connection_request_policy_count : '—';
+    } catch (e) {
+      document.getElementById('nps-stat-clients').textContent  = '—';
+      document.getElementById('nps-stat-policies').textContent = '—';
+      document.getElementById('nps-stat-crp').textContent      = '—';
+    }
+  }
+
+  async function loadNpsClients() {
+    document.getElementById('nps-clients-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const data = await npsGet('/api/nps/clients');
+      const rows = Array.isArray(data) ? data : (data.clients || []);
+      if (!rows.length) {
+        document.getElementById('nps-clients-wrap').innerHTML =
+          `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No RADIUS clients found.</div>`;
+        return;
+      }
+      let html = '<table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th>Enabled</th></tr></thead><tbody>';
+      for (const c of rows) {
+        html += `<tr><td>${escHtml(c.name || '-')}</td>` +
+                `<td style="font-family:monospace;font-size:12px;">${escHtml(c.address || '-')}</td>` +
+                `<td>${escHtml(c.vendor_name || '-')}</td>` +
+                `<td>${npsEnabledPill(c.enabled)}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('nps-clients-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('nps-clients-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function _npsPolicyTable(rows) {
+    if (!rows.length) {
+      return `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No policies found.</div>`;
+    }
+    let html = '<table><thead><tr><th>Name</th><th>Enabled</th><th>Processing Order</th></tr></thead><tbody>';
+    for (const p of rows) {
+      html += `<tr><td>${escHtml(p.name || '-')}</td>` +
+              `<td>${npsEnabledPill(p.enabled)}</td>` +
+              `<td>${escHtml(String(p.processing_order != null ? p.processing_order : '-'))}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+
+  async function loadNpsPolicies() {
+    document.getElementById('nps-policies-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const data = await npsGet('/api/nps/policies');
+      const rows = Array.isArray(data) ? data : (data.policies || []);
+      document.getElementById('nps-policies-wrap').innerHTML = _npsPolicyTable(rows);
+    } catch (e) {
+      document.getElementById('nps-policies-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  async function loadNpsConnectionPolicies() {
+    document.getElementById('nps-crp-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const data = await npsGet('/api/nps/connection-policies');
+      const rows = Array.isArray(data) ? data : (data.policies || []);
+      document.getElementById('nps-crp-wrap').innerHTML = _npsPolicyTable(rows);
+    } catch (e) {
+      document.getElementById('nps-crp-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  // =========================================================
   // AD write operations
   // =========================================================
 
@@ -5341,6 +5496,7 @@
     dns:      'DNS',
     dhcp:     'DHCP',
     gpo:      'Group Policy',
+    nps:      'NPS',
     entra:    'Entra ID',
     tickets:  'Tickets',
     chat:     'AI Assistant',
@@ -5374,6 +5530,7 @@
       if (name === 'dns')      loadDnsZones();
       if (name === 'dhcp')     loadDhcpScopes();
       if (name === 'gpo')      loadGpoList();
+      if (name === 'nps')      loadNpsAll();
       if (name === 'entra' && document.getElementById('entra-user-search')) { loadEntraUsers(); loadEntraGroups(); }
       if (name === 'audit')    loadAudit();
       if (name === 'team')     loadTeam();

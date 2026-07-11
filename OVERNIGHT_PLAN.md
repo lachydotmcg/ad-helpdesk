@@ -63,7 +63,7 @@
 
 ## Phase 5 — NPS (stretch, only if everything above is green)
 
-- [x] **5.1 Read-only**: list network policies, connection request policies, RADIUS clients (`Get-NpsRadiusClient` etc. or `netsh nps export` parse). Display-only tab. No writes overnight. — bridge done; display tab pending.
+- [x] **5.1 Read-only**: list network policies, connection request policies, RADIUS clients (`Get-NpsRadiusClient` etc. or `netsh nps export` parse). Display-only tab. No writes overnight. Done incl. display tab.
 
 ## Phase 6 — Motion graphics (prep only, no spend)
 
@@ -74,7 +74,7 @@
 
 ## Phase 7 — Polish + wrap-up
 
-- [ ] **7.1 Landing page**: add a "Full Windows Server management" section with the new tabs (DNS/DHCP/GPO/Entra) as feature cards. Update README feature table + roadmap checkboxes.
+- [ ] **7.1 Landing page**: add a "Full Windows Server management" section with the new tabs (DNS/DHCP/GPO/Entra) as feature cards. Update README feature table + roadmap checkboxes. README part done; landing.html has unrelated uncommitted user edits, so that half is deferred to morning.
 - [x] **7.2 Docs**: ARCHITECTURE.md gains the module registry + capability handshake; SECURITY.md gains the new safety-tier table.
 - [ ] **7.3 Full boot verification**, push everything green, write jarvis-log, leave a MORNING.md summarising: what shipped, what's half-done, what needs Lachy (Higgsfield spend, Entra app registration, live-DC testing checklist).
 

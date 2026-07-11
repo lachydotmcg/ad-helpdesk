@@ -24,7 +24,9 @@
 
 ## What is AID Helpdesk?
 
-AID Helpdesk is a multi-tenant SaaS that puts an AI layer in front of your Windows Server Active Directory. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **your AI assistant** (which you name, and which gets smarter about your organisation over time) analyses, triages, and resolves them automatically, then logs every action for your audit trail.
+AID Helpdesk is a multi-tenant SaaS that puts an AI layer in front of your Windows Server estate, not just Active Directory. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **your AI assistant** (which you name, and which gets smarter about your organisation over time) analyses, triages, and resolves them automatically, then logs every action for your audit trail.
+
+It started as an AD helpdesk and is growing into a full Windows Server management platform: Active Directory, DNS, DHCP, and Group Policy from one dashboard, NPS (RADIUS) visibility, plus Entra ID via Microsoft Graph with hybrid awareness, so synced users are always managed on the correct side automatically.
 
 No scripting. No clicking through MMC consoles. Just describe the problem and it gets handled.
 
@@ -126,6 +128,12 @@ Talk to your AI directly in plain English to manage your AD. It chains lookups a
 ### Auto-actions
 Unlock accounts, reset passwords, enable accounts, hands-free, without waiting for an admin to click approve. Every action is logged.
 
+### Windows Server management, not just AD
+Dedicated dashboard tabs for DNS (zones and records), DHCP (scopes, leases, reservations), and Group Policy (GPO list, reports, link map). Reads run freely; routine writes go through the same confirm flow as a password reset, and high blast radius changes (zone or scope deletes, GPO link/unlink) require a human-confirmed 6-digit token before anything runs. NPS (RADIUS) is read-only for now: RADIUS clients, network policies, and connection request policies, all visible from the dashboard.
+
+### Entra ID via Microsoft Graph
+Manage cloud users and groups straight from the dashboard, with per-tenant app registration credentials. AID is hybrid-aware: if a user is synced from on-prem AD, mutations are routed to your Windows agent instead of Graph, and the dashboard tells you so, so you're never editing the wrong copy of a user.
+
 ### Email ticket intake
 Point a Mailgun, SendGrid, or Postmark webhook at your dashboard and tickets flow in from email. Your AI sends the resolution back to the requester automatically.
 
@@ -167,6 +175,9 @@ AID Helpdesk is **completely free** right now. I'm trialling it out and gatherin
 | Email ticket intake | ✓ |
 | Zoho Desk sync | ✓ |
 | AI auto-actions | ✓ |
+| DNS / DHCP / Group Policy tabs | ✓ |
+| NPS (RADIUS) read-only view | ✓ |
+| Entra ID (Microsoft Graph) | ✓ |
 | Scheduled reports | ✓ |
 | Custom PowerShell scripts | ✓ (up to 3) |
 | Slack / Teams integration | ✓ |
@@ -194,6 +205,7 @@ AID Helpdesk is **completely free** right now. I'm trialling it out and gatherin
 - [x] v0.5-v0.9: Hosted SaaS, AI assistant, ticketing, threat scores, email intake, search chaining
 - [x] v1.0: Windows Service installer (.exe), scheduled reports, custom PS scripts, bulk AD ops
 - [ ] v1.1: Named AI persona, AI memory / organisational learning, Slack/Teams integration
+- [x] v1.2: Windows Server management tabs (DNS, DHCP, Group Policy with token-gated writes, NPS read-only), Entra ID via Microsoft Graph with hybrid on-prem/cloud routing
 
 ---
 

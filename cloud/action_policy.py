@@ -54,6 +54,11 @@ READ: frozenset[str] = frozenset({
     "get_gpo_report",
     "list_gpo_links",
     "get_gpo_inheritance",
+    # NPS reads (read-only for now, see OVERNIGHT_PLAN.md 5.1)
+    "list_nps_radius_clients",
+    "list_nps_network_policies",
+    "list_nps_connection_policies",
+    "get_nps_summary",
 })
 
 WRITE: frozenset[str] = frozenset({

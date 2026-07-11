@@ -2587,6 +2587,69 @@ def api_gpo_enforce():
 
 
 # ---------------------------------------------------------------------------
+# Dashboard API -- NPS (Network Policy Server / RADIUS)
+#
+# Read-only for now, per OVERNIGHT_PLAN.md 5.1 -- no write routes exist here.
+# Follows the exact same queue-and-poll shape as DNS/DHCP/GPO above.
+# ---------------------------------------------------------------------------
+
+def _require_nps_capability() -> str | None:
+    """Return a friendly error message if this tenant's agent hasn't reported
+    the 'nps' capability, else None."""
+    caps = db.get_tenant_capabilities(g.tenant_id)
+    if "nps" not in caps:
+        return (
+            "NPS (RADIUS) management isn't available yet. Your Windows agent hasn't "
+            "reported the Network Policy Server role as installed, or hasn't connected since it was added."
+        )
+    return None
+
+
+@app.route("/api/nps/summary", methods=["GET"])
+@require_dashboard_user
+def api_nps_summary():
+    """Queue an NPS configuration summary fetch. Body: none. Returns { command_id }."""
+    block = _require_nps_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "get_nps_summary", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/nps/clients", methods=["GET"])
+@require_dashboard_user
+def api_nps_clients():
+    """Queue an NPS RADIUS client list. Body: none. Returns { command_id }."""
+    block = _require_nps_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_nps_radius_clients", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/nps/policies", methods=["GET"])
+@require_dashboard_user
+def api_nps_policies():
+    """Queue an NPS network policy list. Body: none. Returns { command_id }."""
+    block = _require_nps_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_nps_network_policies", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/nps/connection-policies", methods=["GET"])
+@require_dashboard_user
+def api_nps_connection_policies():
+    """Queue an NPS connection request policy list. Body: none. Returns { command_id }."""
+    block = _require_nps_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_nps_connection_policies", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+# ---------------------------------------------------------------------------
 # Dashboard API -- Entra ID (Microsoft Graph)
 #
 # Unlike DNS/DHCP/GPO, these routes never go through db.queue_command -- there
@@ -3092,6 +3155,18 @@ Available AD actions (use exact action names):
   (the dashboard shows the 6-digit confirmation modal automatically) and say so in
   your "message" field, e.g. "This will require you to confirm a 6-digit code before it runs."
 
+  NPS (Network Policy Server / RADIUS) (only offer these if the tenant's agent has the 'nps'
+  capability -- if an NPS action fails with a capability error, tell the user NPS management
+  isn't connected yet). READ-ONLY: there are no NPS write actions, ever mention or invent one.
+  list_nps_radius_clients      args: []                                          -- LOW RISK, read-only. Lists configured RADIUS clients (name, address,
+                                                                                    vendor, enabled). Never includes shared secrets.
+  list_nps_network_policies    args: []                                          -- LOW RISK, read-only. Lists network policies with enabled state and
+                                                                                    processing order.
+  list_nps_connection_policies args: []                                          -- LOW RISK, read-only. Lists connection request policies with enabled
+                                                                                    state and processing order.
+  get_nps_summary              args: []                                          -- LOW RISK, read-only. Counts of RADIUS clients, network policies, and
+                                                                                    connection request policies for a quick overview.
+
   ENTRA ID (Microsoft Graph) (only offer these if the tenant has entered Entra credentials
   in Settings -- if an Entra action fails saying Entra isn't configured, tell the user to
   add their app registration details in Settings):
@@ -3140,6 +3215,7 @@ CRITICAL RULES:
         'list_dhcp_scopes', 'get_dhcp_scope', 'get_dhcp_scope_stats',
         'list_dhcp_leases', 'list_dhcp_reservations', 'list_dhcp_exclusions',
         'list_gpos', 'get_gpo', 'get_gpo_report', 'list_gpo_links', 'get_gpo_inheritance',
+        'list_nps_radius_clients', 'list_nps_network_policies', 'list_nps_connection_policies', 'get_nps_summary',
     }
 
     # Entra reads run inline via GraphClient (see the branch below), not via
