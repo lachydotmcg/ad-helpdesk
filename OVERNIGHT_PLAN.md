@@ -65,7 +65,7 @@
 
 - [x] **5.1 Read-only**: list network policies, connection request policies, RADIUS clients (`Get-NpsRadiusClient` etc. or `netsh nps export` parse). Display-only tab. No writes overnight. Done incl. display tab.
 
-## Phase 6 — Motion graphics (prep only, no spend)
+## Phase 6 — Motion graphics (SKIPPED: Lachy confirmed Higgsfield won't work; revisit later if desired)
 
 - [ ] **6.1 Storyboard** a 5s hero loop: the four-point AID star drifting over a dark indigo field, pulsing (the Gemini contract-bloom), particles condensing into a tick. Written as a shot list with timings.
 - [ ] **6.2 Exact Higgsfield prompt** (kling3_0_turbo, 5s) + negative prompt + reference image plan (use `cloud/static/Assistant.png` via media_upload). Save as `docs/higgsfield-hero.md`.
@@ -76,7 +76,7 @@
 
 - [ ] **7.1 Landing page**: add a "Full Windows Server management" section with the new tabs (DNS/DHCP/GPO/Entra) as feature cards. Update README feature table + roadmap checkboxes. README part done; landing.html has unrelated uncommitted user edits, so that half is deferred to morning.
 - [x] **7.2 Docs**: ARCHITECTURE.md gains the module registry + capability handshake; SECURITY.md gains the new safety-tier table.
-- [ ] **7.3 Full boot verification**, push everything green, write jarvis-log, leave a MORNING.md summarising: what shipped, what's half-done, what needs Lachy (Higgsfield spend, Entra app registration, live-DC testing checklist).
+- [x] **7.3 Full boot verification**, push everything green, write jarvis-log, leave a MORNING.md summarising: what shipped, what's half-done, what needs Lachy (Higgsfield spend, Entra app registration, live-DC testing checklist).
 
 ---
 
