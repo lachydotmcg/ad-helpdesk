@@ -57,9 +57,9 @@
 
 - [x] **4.1 `cloud/graph_client.py`**: MSAL client-credentials flow. Config vars `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` per tenant (stored encrypted in DB alongside other tenant settings, not global env). Token cache in memory.
 - [x] **4.2 Core operations**: list users, get user, list groups, group membership add/remove, revoke sessions, reset password (note: requires `UserAuthenticationMethod.ReadWrite.All` and the app needs Password Administrator role assignment; document this in the settings UI).
-- [ ] **4.3 Hybrid awareness**: flag `onPremisesSyncEnabled` users; when a user is AD-synced, route mutations to the on-prem agent instead of Graph and say so in the UI.
-- [ ] **4.4 Entra tab + settings page** for entering app registration details, with a step-by-step "create the app registration" guide (screenshots optional, copy exact portal steps).
-- [ ] **4.5 AI tools**: unified user lookup that searches both AD and Entra and labels the source.
+- [x] **4.3 Hybrid awareness**: flag `onPremisesSyncEnabled` users; when a user is AD-synced, route mutations to the on-prem agent instead of Graph and say so in the UI.
+- [x] **4.4 Entra tab + settings page** for entering app registration details, with a step-by-step "create the app registration" guide (screenshots optional, copy exact portal steps).
+- [x] **4.5 AI tools**: unified user lookup that searches both AD and Entra and labels the source.
 
 ## Phase 5 — NPS (stretch, only if everything above is green)
 

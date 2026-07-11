@@ -1406,6 +1406,14 @@ _SETTINGS_DEFAULTS = {
     "ticket_labels":      [],
     "slack_webhook_url":  "",
     "teams_webhook_url":  "",
+    # Entra ID (Microsoft Graph) app registration, per tenant. Stored in the
+    # same tenant_settings JSON blob as smtp_pass and the webhook URLs --
+    # this table has no column-level encryption anywhere in the schema, so
+    # graph_client_secret is plaintext at rest here, matching that existing
+    # pattern rather than introducing a new one for just this field.
+    "graph_tenant_id":    "",
+    "graph_client_id":    "",
+    "graph_client_secret": "",
 }
 
 

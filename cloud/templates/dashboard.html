@@ -1082,9 +1082,16 @@
       <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
     </div>
     {% endif %}
+    {% if entra_configured %}
     <div class="nav-item" onclick="showPage('entra')">
-      <span class="nav-icon">☁️</span> Entra ID
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span> Entra ID
     </div>
+    {% else %}
+    <div class="nav-item nav-item-disabled" onclick="showPage('entra')">
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span> Entra ID
+      <span class="nav-tooltip">Add your Entra credentials in Settings</span>
+    </div>
+    {% endif %}
     <div class="nav-section">Support</div>
     <div class="nav-item" onclick="showPage('tickets')">
       <span class="nav-icon">🎫</span> Tickets
@@ -1459,16 +1466,57 @@
 
     <!-- ===== ENTRA ID PAGE ===== -->
     <div class="page" id="page-entra">
+      {% if not entra_configured %}
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">Entra ID</span>
         </div>
         <div class="coming-online-panel">
-          <div class="coming-online-icon">☁️</div>
-          <h3>Entra ID integration is coming online</h3>
-          <p>Cloud user and group management via Microsoft Graph will appear here once this module ships. You will be able to enter your app registration details in Settings.</p>
+          <div class="coming-online-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:40px;height:40px;"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></div>
+          <h3>Entra ID is not configured yet</h3>
+          <p>Enter your Azure app registration details in Settings to manage cloud users and groups via Microsoft Graph.</p>
+          <button class="btn btn-primary" onclick="showPage('settings')" style="margin-top:10px;">Go to Settings</button>
         </div>
       </div>
+      {% else %}
+      <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-header">
+          <span class="panel-title">Entra ID Users</span>
+        </div>
+        <div style="padding:16px;">
+          <div class="search-row">
+            <input class="search-input" id="entra-user-search" type="text" placeholder="Search by display name or UPN..." autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')loadEntraUsers()"/>
+            <button class="btn btn-ghost" onclick="loadEntraUsers()">Search</button>
+          </div>
+          <div id="entra-users-wrap" style="margin-top:14px;">
+            <div class="empty">Search for a user, or click Search to list users.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="entra-user-detail-panel" style="display:none;">
+        <div class="panel-header">
+          <span class="panel-title" id="entra-user-detail-title">User</span>
+          <button class="btn btn-ghost" onclick="document.getElementById('entra-user-detail-panel').style.display='none'">Close</button>
+        </div>
+        <div style="padding:20px;" id="entra-user-detail-body"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Entra ID Groups</span>
+        </div>
+        <div style="padding:16px;">
+          <div class="search-row">
+            <input class="search-input" id="entra-group-search" type="text" placeholder="Search groups by name..." autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')loadEntraGroups()"/>
+            <button class="btn btn-ghost" onclick="loadEntraGroups()">Search</button>
+          </div>
+          <div id="entra-groups-wrap" style="margin-top:14px;">
+            <div class="empty">Search for a group, or click Search to list groups.</div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <!-- ===== TICKETS PAGE ===== -->
@@ -1949,6 +1997,51 @@
                 For Zoho: use <code style="font-size:10px;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;">smtp.zoho.eu</code> on port 587.
                 Changes take effect immediately — no redeploy needed.
               </div>
+            </div>
+
+            <!-- Entra ID (Azure AD) -->
+            <div class="settings-section">
+              <div class="settings-section-title">Entra ID (Azure AD)</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+                Connect an Entra ID app registration so the Entra ID tab and AI assistant can manage cloud users and groups via Microsoft Graph.
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="grid-column:1/-1;">
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Directory (tenant) ID</label>
+                  <input id="graph-tenant-id" class="search-input" placeholder="00000000-0000-0000-0000-000000000000" style="font-size:13px;width:100%;"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Application (client) ID</label>
+                  <input id="graph-client-id" class="search-input" placeholder="00000000-0000-0000-0000-000000000000" style="font-size:13px;width:100%;"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Client Secret</label>
+                  <input id="graph-client-secret" type="password" class="search-input" placeholder="Leave blank to keep existing" style="font-size:13px;width:100%;"/>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+                <button class="btn btn-ghost" style="font-size:12px;" onclick="testEntraConnection()">Test connection</button>
+                <span id="entra-test-result" style="font-size:12px;"></span>
+              </div>
+
+              <details style="margin-top:16px;">
+                <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text);">How to create the app registration</summary>
+                <ol style="font-size:12px;color:var(--muted);line-height:1.8;margin:10px 0 0;padding-left:20px;">
+                  <li>Sign in to <code style="font-size:11px;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;">portal.azure.com</code> and go to Microsoft Entra ID.</li>
+                  <li>In the left menu choose App registrations, then click New registration.</li>
+                  <li>Give it a name, for example AID Helpdesk Entra Bridge.</li>
+                  <li>Under Supported account types choose Accounts in this organizational directory only (Single tenant).</li>
+                  <li>Leave Redirect URI blank. Click Register.</li>
+                  <li>On the app's Overview page, copy the Application (client) ID and the Directory (tenant) ID into the fields above.</li>
+                  <li>Go to Certificates &amp; secrets, then Client secrets, then New client secret. Give it a description and an expiry, click Add, and copy the secret value immediately (it is not shown again). Paste it into Client Secret above.</li>
+                  <li>Go to API permissions, then Add a permission, then Microsoft Graph, then Application permissions (not delegated). Add User.Read.All, Group.ReadWrite.All, User.ReadWrite.All, and Directory.Read.All.</li>
+                  <li>Click Grant admin consent for your organization and confirm. Every permission should show a green check under Status once this is done.</li>
+                  <li>Click Save below, then Test connection to confirm it works.</li>
+                </ol>
+                <div style="font-size:11px;color:var(--muted);margin-top:10px;">
+                  Resetting passwords needs the User.ReadWrite.All permission above. If the target user holds a privileged directory role, the app registration itself needs an equal or higher directory role assigned to it, or Microsoft Graph will reject the request.
+                </div>
+              </details>
             </div>
 
             <!-- Billing -->
@@ -2643,6 +2736,210 @@
         resolve(null);
       };
     });
+  }
+
+  // =========================================================
+  // Entra ID (Microsoft Graph) tab
+  // These routes execute directly against Graph in the cloud backend --
+  // there's no agent involved, so no polling/queueing here, just a fetch.
+  // High-caution writes (group remove, revoke sessions, reset password) use
+  // the same 6-digit confirm-challenge dance as execCommand.
+  // =========================================================
+
+  async function _entraFetch(url, options, actionLabel) {
+    const res  = await fetch(url, options);
+    const json = await res.json();
+    if (json.requires_confirmation) {
+      const confirmed = await showConfirmChallenge(json.action_label || actionLabel, json.confirm_token);
+      if (!confirmed) throw new Error('Action cancelled.');
+      const body2 = { ...JSON.parse(options.body || '{}'), confirm_token: confirmed };
+      const res2  = await fetch(url, { ...options, body: JSON.stringify(body2) });
+      const json2 = await res2.json();
+      if (!json2.success) throw new Error(json2.message || 'Action failed.');
+      return json2;
+    }
+    if (!json.success) throw new Error(json.message || 'Action failed.');
+    return json;
+  }
+
+  function entraSyncBadge(user) {
+    if (!user || !user.onPremisesSyncEnabled) return '';
+    return '<span class="pill pill-yellow" title="Managed by on-prem AD">Synced from AD</span>';
+  }
+
+  function entraDisabledAttr(user) {
+    return (user && user.onPremisesSyncEnabled)
+      ? `disabled title="This user syncs from on-prem AD. Use the Active Directory tab so the change persists."`
+      : '';
+  }
+
+  async function loadEntraUsers() {
+    const wrap  = document.getElementById('entra-users-wrap');
+    const q     = document.getElementById('entra-user-search')?.value.trim() || '';
+    wrap.innerHTML = '<div class="empty">Loading...</div>';
+    try {
+      const res  = await fetch(`/api/entra/users?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      if (!json.success) { wrap.innerHTML = `<div class="empty">${escHtml(json.message || 'Failed to load users.')}</div>`; return; }
+      const users = json.data || [];
+      if (!users.length) { wrap.innerHTML = '<div class="empty">No users found.</div>'; return; }
+      wrap.innerHTML = `
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>UPN</th><th>Mail</th><th>Status</th><th>Type</th><th></th></tr></thead>
+          <tbody>
+            ${users.map(u => `
+              <tr style="cursor:pointer;" onclick="showEntraUserDetail('${escHtml(u.id)}')">
+                <td>${escHtml(u.displayName || '')} ${entraSyncBadge(u)}</td>
+                <td>${escHtml(u.userPrincipalName || '')}</td>
+                <td>${escHtml(u.mail || '')}</td>
+                <td>${u.accountEnabled ? '<span class="pill pill-green">Enabled</span>' : '<span class="pill pill-gray">Disabled</span>'}</td>
+                <td>${escHtml(u.userType || '')}</td>
+                <td><button class="btn btn-ghost" style="font-size:11px;" onclick="event.stopPropagation();showEntraUserDetail('${escHtml(u.id)}')">View</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty">Error: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  let _entraCurrentUser = null;
+
+  async function showEntraUserDetail(userId) {
+    const panel = document.getElementById('entra-user-detail-panel');
+    const body  = document.getElementById('entra-user-detail-body');
+    panel.style.display = 'block';
+    document.getElementById('entra-user-detail-title').textContent = 'Loading...';
+    body.innerHTML = '<div class="empty">Loading...</div>';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    try {
+      const res  = await fetch(`/api/entra/users/${encodeURIComponent(userId)}`);
+      const json = await res.json();
+      if (!json.success) { body.innerHTML = `<div class="empty">${escHtml(json.message || 'Failed to load user.')}</div>`; return; }
+      const u = json.data;
+      _entraCurrentUser = u;
+      document.getElementById('entra-user-detail-title').textContent = u.displayName || u.userPrincipalName;
+      const dis = entraDisabledAttr(u);
+      body.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+          ${entraSyncBadge(u)}
+          ${u.accountEnabled ? '<span class="pill pill-green">Enabled</span>' : '<span class="pill pill-gray">Disabled</span>'}
+          <span class="pill pill-gray">${escHtml(u.userType || 'Member')}</span>
+        </div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:18px;">
+          <div><strong style="color:var(--text);">UPN:</strong> ${escHtml(u.userPrincipalName || '')}</div>
+          <div><strong style="color:var(--text);">Mail:</strong> ${escHtml(u.mail || 'none')}</div>
+          <div><strong style="color:var(--text);">Object ID:</strong> ${escHtml(u.id || '')}</div>
+        </div>
+        ${u.onPremisesSyncEnabled ? `<div class="pill pill-yellow" style="margin-bottom:14px;">This user syncs from on-prem AD. Use the Active Directory tab so changes persist.</div>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-ghost" ${dis} onclick="entraRevokeSessions('${escHtml(u.id)}')">Revoke sessions</button>
+          <button class="btn btn-ghost" ${dis} onclick="entraResetPassword('${escHtml(u.id)}')">Reset password</button>
+        </div>
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <div class="panel-title" style="margin-bottom:8px;">Group membership</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Search a group below, then add or remove this user from it.</div>
+          <div class="search-row">
+            <input class="search-input" id="entra-detail-group-search" type="text" placeholder="Search groups..." onkeydown="if(event.key==='Enter')entraSearchGroupsForUser()"/>
+            <button class="btn btn-ghost" onclick="entraSearchGroupsForUser()">Search</button>
+          </div>
+          <div id="entra-detail-group-results" style="margin-top:10px;"></div>
+        </div>`;
+    } catch (e) {
+      body.innerHTML = `<div class="empty">Error: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  async function entraSearchGroupsForUser() {
+    const wrap = document.getElementById('entra-detail-group-results');
+    const q    = document.getElementById('entra-detail-group-search')?.value.trim() || '';
+    wrap.innerHTML = '<div class="empty">Searching...</div>';
+    try {
+      const res  = await fetch(`/api/entra/groups?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      if (!json.success) { wrap.innerHTML = `<div class="empty">${escHtml(json.message)}</div>`; return; }
+      const groups = json.data || [];
+      if (!groups.length) { wrap.innerHTML = '<div class="empty">No groups found.</div>'; return; }
+      const dis = entraDisabledAttr(_entraCurrentUser);
+      wrap.innerHTML = groups.map(g => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(45,43,78,0.3);">
+          <span style="flex:1;font-size:13px;">${escHtml(g.displayName || '')}</span>
+          <button class="btn btn-ghost" style="font-size:11px;" ${dis} onclick="entraAddToGroup('${escHtml(g.id)}')">+ Add</button>
+          <button class="btn btn-ghost" style="font-size:11px;color:var(--red);border-color:rgba(248,113,113,0.3);" ${dis} onclick="entraRemoveFromGroup('${escHtml(g.id)}')">Remove</button>
+        </div>`).join('');
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty">Error: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  async function entraAddToGroup(groupId) {
+    if (!_entraCurrentUser) return;
+    try {
+      await _entraFetch('/api/entra/groups/member', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: groupId, user_id: _entraCurrentUser.id })
+      }, 'Add user to group');
+      toast('Added to group.', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function entraRemoveFromGroup(groupId) {
+    if (!_entraCurrentUser) return;
+    try {
+      await _entraFetch('/api/entra/groups/member/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: groupId, user_id: _entraCurrentUser.id })
+      }, 'Remove user from group');
+      toast('Removed from group.', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function entraRevokeSessions(userId) {
+    try {
+      await _entraFetch('/api/entra/sessions/revoke', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
+      }, `Revoke sign-in sessions for this user`);
+      toast('Sessions revoked. The user will need to sign in again.', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function entraResetPassword(userId) {
+    try {
+      const json = await _entraFetch('/api/entra/password/reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
+      }, `Reset password for this user`);
+      const pw = json.data && json.data.temp_password;
+      toast(pw ? `Password reset. Temporary password: ${pw}` : 'Password reset.', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function loadEntraGroups() {
+    const wrap = document.getElementById('entra-groups-wrap');
+    const q    = document.getElementById('entra-group-search')?.value.trim() || '';
+    wrap.innerHTML = '<div class="empty">Loading...</div>';
+    try {
+      const res  = await fetch(`/api/entra/groups?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      if (!json.success) { wrap.innerHTML = `<div class="empty">${escHtml(json.message || 'Failed to load groups.')}</div>`; return; }
+      const groups = json.data || [];
+      if (!groups.length) { wrap.innerHTML = '<div class="empty">No groups found.</div>'; return; }
+      wrap.innerHTML = `
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Description</th><th>Type</th></tr></thead>
+          <tbody>
+            ${groups.map(g => `
+              <tr>
+                <td>${escHtml(g.displayName || '')}</td>
+                <td>${escHtml(g.description || '')}</td>
+                <td>${g.securityEnabled ? '<span class="pill pill-gray">Security</span>' : '<span class="pill pill-gray">Microsoft 365</span>'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty">Error: ${escHtml(e.message)}</div>`;
+    }
   }
 
   // Shown when a queued command can't run because the agent isn't polling.
@@ -5077,6 +5374,7 @@
       if (name === 'dns')      loadDnsZones();
       if (name === 'dhcp')     loadDhcpScopes();
       if (name === 'gpo')      loadGpoList();
+      if (name === 'entra' && document.getElementById('entra-user-search')) { loadEntraUsers(); loadEntraGroups(); }
       if (name === 'audit')    loadAudit();
       if (name === 'team')     loadTeam();
       if (name === 'tickets')  loadTickets();
@@ -5192,6 +5490,11 @@
         if (s.smtp_user) document.getElementById('smtp-user').value = s.smtp_user;
         if (s.smtp_from) document.getElementById('smtp-from').value = s.smtp_from;
         // smtp_pass intentionally not shown — leave placeholder text
+
+        // Entra ID
+        if (s.graph_tenant_id) document.getElementById('graph-tenant-id').value = s.graph_tenant_id;
+        if (s.graph_client_id) document.getElementById('graph-client-id').value = s.graph_client_id;
+        // graph_client_secret intentionally not shown, leave placeholder text
       }
 
       if (tJson.success) {
@@ -5208,6 +5511,29 @@
       markSettingsDirty();
     } catch (e) {
       toast('Could not load settings: ' + e.message, 'error');
+    }
+  }
+
+  async function testEntraConnection() {
+    const el = document.getElementById('entra-test-result');
+    el.textContent = 'Testing...';
+    el.style.color = 'var(--muted)';
+    try {
+      const res  = await fetch('/api/entra/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          graph_tenant_id:     document.getElementById('graph-tenant-id')?.value.trim() || '',
+          graph_client_id:     document.getElementById('graph-client-id')?.value.trim() || '',
+          graph_client_secret: document.getElementById('graph-client-secret')?.value || '',
+        })
+      });
+      const json = await res.json();
+      el.textContent = json.message || (json.success ? 'Connected.' : 'Connection failed.');
+      el.style.color = json.success ? 'var(--green)' : 'var(--red)';
+    } catch (e) {
+      el.textContent = 'Error: ' + e.message;
+      el.style.color = 'var(--red)';
     }
   }
 
@@ -5342,6 +5668,9 @@
       smtp_user:         el('smtp-user')?.value.trim(),
       smtp_from:         el('smtp-from')?.value.trim(),
       smtp_pass:         el('smtp-pass')?.value,
+      graph_tenant_id:   el('graph-tenant-id')?.value.trim(),
+      graph_client_id:   el('graph-client-id')?.value.trim(),
+      graph_client_secret: el('graph-client-secret')?.value,
     });
   }
 
@@ -5355,7 +5684,8 @@
 
   // Hook onto all settings inputs so dirty is detected immediately
   function _bindSettingsDirtyListeners() {
-    ['smtp-host','smtp-port','smtp-user','smtp-from','smtp-pass'].forEach(id => {
+    ['smtp-host','smtp-port','smtp-user','smtp-from','smtp-pass',
+     'graph-tenant-id','graph-client-id','graph-client-secret'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', markSettingsDirty);
     });
@@ -5374,6 +5704,9 @@
       smtp_user:          el('smtp-user')?.value.trim() || '',
       smtp_from:          el('smtp-from')?.value.trim() || '',
       ...(smtpPass ? { smtp_pass: smtpPass } : {}),
+      graph_tenant_id:    el('graph-tenant-id')?.value.trim() || '',
+      graph_client_id:    el('graph-client-id')?.value.trim() || '',
+      ...(el('graph-client-secret')?.value ? { graph_client_secret: el('graph-client-secret').value } : {}),
     };
 
     const btn = document.getElementById('settings-save-btn');
@@ -5390,7 +5723,14 @@
       if (json.success) {
         btn.textContent = 'Saved ✓';
         _settingsSnapshot = _captureSettingsSnapshot();
-        setTimeout(() => { btn.textContent = 'Save changes'; markSettingsDirty(); }, 2000);
+        // Entra credentials are read once at page render to decide whether the
+        // Entra ID nav item is enabled -- reload so that state picks up a
+        // freshly completed set of credentials.
+        if (payload.graph_tenant_id && payload.graph_client_id) {
+          setTimeout(() => location.reload(), 900);
+        } else {
+          setTimeout(() => { btn.textContent = 'Save changes'; markSettingsDirty(); }, 2000);
+        }
       } else {
         toast(json.message || 'Failed to save.', 'error');
         btn.textContent = 'Save changes';

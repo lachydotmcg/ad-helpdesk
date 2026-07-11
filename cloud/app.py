@@ -34,6 +34,7 @@ from flask import (
 from dotenv import load_dotenv
 import db
 import action_policy
+from graph_client import GraphClient, ACTIONS as GRAPH_ACTIONS
 
 load_dotenv()
 
@@ -1412,7 +1413,8 @@ def dashboard():
                            tenant_plan=plan,
                            tenant_limits=db.get_plan_limits(plan),
                            ai_name=_get_ai_name(settings),
-                           capabilities=capabilities)
+                           capabilities=capabilities,
+                           entra_configured=_entra_configured(g.tenant_id))
 
 
 @app.route("/billing")
@@ -2584,6 +2586,315 @@ def api_gpo_enforce():
     )
 
 
+# ---------------------------------------------------------------------------
+# Dashboard API -- Entra ID (Microsoft Graph)
+#
+# Unlike DNS/DHCP/GPO, these routes never go through db.queue_command -- there
+# is no agent involved. Entra ID is a cloud service, so the cloud backend talks
+# to Microsoft Graph directly via GraphClient using this tenant's stored app
+# registration credentials. That also means these actions never pass through
+# action_policy.validate() (that gate only applies to the agent action-name
+# queue); the equivalent safety tiering is enforced right here instead:
+#   - reads (list/get users, list/get groups, list group members) are free
+#   - add_group_member is routine (no confirm token)
+#   - remove_group_member, revoke_sessions, reset_password require the same
+#     6-digit human-confirm token flow as disable_account, validated the same
+#     way (db.issue_confirm_token / db.consume_confirm_token), just executed
+#     against GraphClient instead of queued for the Windows agent.
+# ---------------------------------------------------------------------------
+
+def _entra_settings(tenant_id: str) -> dict:
+    settings = db.get_settings(tenant_id)
+    return {
+        "tenant_id":    str(settings.get("graph_tenant_id") or "").strip(),
+        "client_id":    str(settings.get("graph_client_id") or "").strip(),
+        "client_secret": str(settings.get("graph_client_secret") or "").strip(),
+    }
+
+
+def _entra_configured(tenant_id: str) -> bool:
+    creds = _entra_settings(tenant_id)
+    return bool(creds["tenant_id"] and creds["client_id"] and creds["client_secret"])
+
+
+def _get_graph_client():
+    """Build a GraphClient for the current dashboard tenant, or return an
+    error message if credentials aren't configured. Every /api/entra/* route
+    should call this first so an unconfigured tenant gets a friendly 400
+    instead of an exception."""
+    creds = _entra_settings(g.tenant_id)
+    if not (creds["tenant_id"] and creds["client_id"] and creds["client_secret"]):
+        return None, "Entra ID is not configured. Add your Entra credentials in Settings."
+    return GraphClient(creds["tenant_id"], creds["client_id"], creds["client_secret"]), None
+
+
+def _generate_temp_password() -> str:
+    """Generate a secure temporary password: uppercase + lowercase + numbers +
+    symbol, 12+ chars. Mirrors how the AD side generates reset passwords."""
+    alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits
+    symbols  = "!@#$%^&*"
+    chars = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice(symbols),
+    ]
+    chars += [secrets.choice(alphabet + symbols) for _ in range(8)]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
+@app.route("/api/entra/users", methods=["GET"])
+@require_dashboard_user
+def api_entra_users():
+    """List Entra users, optionally filtered by ?q= search term."""
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+    search = request.args.get("q", "").strip()
+    result = client.list_users(search=search, top=100)
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/users/<user_id>", methods=["GET"])
+@require_dashboard_user
+def api_entra_user_detail(user_id):
+    """Get a single Entra user by id or userPrincipalName."""
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+    result = client.get_user(user_id)
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/groups", methods=["GET"])
+@require_dashboard_user
+def api_entra_groups():
+    """List Entra groups, optionally filtered by ?q= search term."""
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+    search = request.args.get("q", "").strip()
+    result = client.list_groups(search=search, top=100)
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/groups/<group_id>/members", methods=["GET"])
+@require_dashboard_user
+def api_entra_group_members(group_id):
+    """List the direct members of an Entra group."""
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+    result = client.get_group_members(group_id)
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+def _entra_sync_guard(client, user_id):
+    """Return a friendly error message if the target user is synced from
+    on-prem AD, else None. Entra mutations (group changes, password reset,
+    session revoke) must not run against synced identities -- those attributes
+    are owned by AD and Graph writes to them are rejected or silently
+    overwritten on the next sync. Routes must use the AD tab instead."""
+    lookup = client.get_user(user_id)
+    if not lookup["success"]:
+        return None  # let the real operation surface the Graph error
+    data = lookup.get("data") or {}
+    if data.get("onPremisesSyncEnabled"):
+        return (
+            "This user syncs from on-prem AD. Use the Active Directory tab so the change persists."
+        )
+    return None
+
+
+@app.route("/api/entra/groups/member", methods=["POST"])
+@require_dashboard_user
+def api_entra_group_member_add():
+    """Add a user to an Entra group. ROUTINE write -- no confirm token needed.
+    Body: { "group_id": "...", "user_id": "..." }"""
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+
+    data     = request.get_json() or {}
+    group_id = str(data.get("group_id", "")).strip()
+    user_id  = str(data.get("user_id", "")).strip()
+    if not group_id or not user_id:
+        return jsonify({"success": False, "message": "group_id and user_id are both required."}), 400
+
+    sync_block = _entra_sync_guard(client, user_id)
+    if sync_block:
+        return jsonify({"success": False, "message": sync_block}), 403
+
+    result = client.add_group_member(group_id, user_id)
+    if result["success"]:
+        db.log_audit(g.tenant_id, g.user_email, "add_entra_group_member", f"{user_id}->{group_id}", "done")
+        db.log_activity(g.tenant_id, "entra_action", g.user_email, target=user_id,
+                        detail=f"Added to Entra group {group_id}")
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/groups/member/delete", methods=["POST"])
+@require_dashboard_user
+def api_entra_group_member_remove():
+    """
+    Remove a user from an Entra group. HIGH CAUTION -- gated behind the same
+    6-digit confirmation challenge as disable_account.
+    Body: { "group_id": "...", "user_id": "...", "confirm_token": "" }
+    """
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+
+    data          = request.get_json() or {}
+    group_id      = str(data.get("group_id", "")).strip()
+    user_id       = str(data.get("user_id", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    if not confirm_token:
+        if not (group_id and user_id):
+            return jsonify({"success": False, "message": "group_id and user_id are both required."}), 400
+        sync_block = _entra_sync_guard(client, user_id)
+        if sync_block:
+            return jsonify({"success": False, "message": sync_block}), 403
+        code = _issue_confirm_token(g.tenant_id, "remove_entra_group_member", [group_id, user_id])
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Remove user '{user_id}' from Entra group '{group_id}'",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending or pending["action"] != "remove_entra_group_member":
+        return jsonify({"success": False, "message": "Invalid or expired confirmation code. Please try again."}), 403
+
+    group_id, user_id = pending["args"]
+    result = client.remove_group_member(group_id, user_id)
+    if result["success"]:
+        db.log_audit(g.tenant_id, g.user_email, "remove_entra_group_member", f"{user_id}->{group_id}", "done")
+        db.log_activity(g.tenant_id, "entra_action", g.user_email, target=user_id,
+                        detail=f"Removed from Entra group {group_id}")
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/sessions/revoke", methods=["POST"])
+@require_dashboard_user
+def api_entra_revoke_sessions():
+    """
+    Revoke all sign-in sessions for an Entra user. HIGH CAUTION -- gated
+    behind the same 6-digit confirmation challenge as disable_account.
+    Body: { "user_id": "...", "confirm_token": "" }
+    """
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+
+    data          = request.get_json() or {}
+    user_id       = str(data.get("user_id", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    if not confirm_token:
+        if not user_id:
+            return jsonify({"success": False, "message": "user_id is required."}), 400
+        sync_block = _entra_sync_guard(client, user_id)
+        if sync_block:
+            return jsonify({"success": False, "message": sync_block}), 403
+        code = _issue_confirm_token(g.tenant_id, "revoke_entra_sessions", [user_id])
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Revoke all sign-in sessions for '{user_id}'",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending or pending["action"] != "revoke_entra_sessions":
+        return jsonify({"success": False, "message": "Invalid or expired confirmation code. Please try again."}), 403
+
+    (user_id,) = pending["args"]
+    result = client.revoke_sessions(user_id)
+    if result["success"]:
+        db.log_audit(g.tenant_id, g.user_email, "revoke_entra_sessions", user_id, "done")
+        db.log_activity(g.tenant_id, "entra_action", g.user_email, target=user_id,
+                        detail="Revoked Entra sign-in sessions")
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/password/reset", methods=["POST"])
+@require_dashboard_user
+def api_entra_password_reset():
+    """
+    Reset an Entra user's password to a freshly generated temporary password
+    (forceChangePasswordNextSignIn). HIGH CAUTION -- gated behind the same
+    6-digit confirmation challenge as disable_account. The temp password is
+    generated server-side, right before the confirmed write, so it never sits
+    around in a pending confirm-token row.
+    Body: { "user_id": "...", "confirm_token": "" }
+    """
+    client, err = _get_graph_client()
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+
+    data          = request.get_json() or {}
+    user_id       = str(data.get("user_id", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    if not confirm_token:
+        if not user_id:
+            return jsonify({"success": False, "message": "user_id is required."}), 400
+        sync_block = _entra_sync_guard(client, user_id)
+        if sync_block:
+            return jsonify({"success": False, "message": sync_block}), 403
+        code = _issue_confirm_token(g.tenant_id, "reset_entra_password", [user_id])
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Reset password for '{user_id}'",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending or pending["action"] != "reset_entra_password":
+        return jsonify({"success": False, "message": "Invalid or expired confirmation code. Please try again."}), 403
+
+    (user_id,) = pending["args"]
+    new_password = _generate_temp_password()
+    result = client.reset_password(user_id, new_password, force_change=True)
+    if result["success"]:
+        result["data"] = {"temp_password": new_password}
+        db.log_audit(g.tenant_id, g.user_email, "reset_entra_password", user_id, "done")
+        db.log_activity(g.tenant_id, "entra_action", g.user_email, target=user_id,
+                        detail="Reset Entra password")
+    return jsonify(result), (200 if result["success"] else 502)
+
+
+@app.route("/api/entra/test", methods=["POST"])
+@require_dashboard_user
+def api_entra_test_connection():
+    """
+    Test Entra credentials without saving them first (used by the Settings
+    page's "Test connection" button). Body may supply tenant_id/client_id/
+    client_secret directly (e.g. before Save is clicked); falls back to the
+    tenant's saved settings for any field left blank.
+    """
+    data  = request.get_json() or {}
+    saved = _entra_settings(g.tenant_id)
+    tenant_id     = str(data.get("graph_tenant_id") or "").strip() or saved["tenant_id"]
+    client_id     = str(data.get("graph_client_id") or "").strip() or saved["client_id"]
+    client_secret = str(data.get("graph_client_secret") or "").strip() or saved["client_secret"]
+
+    if not (tenant_id and client_id and client_secret):
+        return jsonify({"success": False, "message": "Tenant ID, Client ID, and Client Secret are all required."}), 400
+
+    client = GraphClient(tenant_id, client_id, client_secret)
+    result = client.test_connection()
+    return jsonify(result), (200 if result["success"] else 502)
+
+
 def _run_chat(tenant_id: str, user_email: str, message: str,
               history: list = None, session_id: str = None) -> dict:
     """
@@ -2781,6 +3092,34 @@ Available AD actions (use exact action names):
   (the dashboard shows the 6-digit confirmation modal automatically) and say so in
   your "message" field, e.g. "This will require you to confirm a 6-digit code before it runs."
 
+  ENTRA ID (Microsoft Graph) (only offer these if the tenant has entered Entra credentials
+  in Settings -- if an Entra action fails saying Entra isn't configured, tell the user to
+  add their app registration details in Settings):
+  list_entra_users             args: [search_term_or_""]                        -- LOW RISK, read-only. Lists cloud (Entra) users, optionally filtered by
+                                                                                    display name or UPN. Runs directly against Microsoft Graph, not the
+                                                                                    on-prem agent -- results are cloud identities, separate from AD ones.
+  get_entra_user                args: [upn_or_id]                               -- LOW RISK, read-only. Full Entra user details including onPremisesSyncEnabled.
+  list_entra_groups             args: [search_term_or_""]                       -- LOW RISK, read-only. Lists Entra (cloud) security/Microsoft 365 groups.
+  get_entra_group_members       args: [group_id]                                -- LOW RISK, read-only. Members of an Entra group.
+
+  These four reads execute inline against Microsoft Graph (no agent involved, no
+  queueing delay). Every other Entra operation -- add/remove group membership,
+  revoke sign-in sessions, reset password -- is only available from the Entra ID
+  tab in the dashboard, not through chat, because those go through a human
+  confirmation challenge in the UI.
+
+  HYBRID IDENTITY ROUTING RULE: a user can exist in AD, in Entra, or both (a
+  "synced" identity). When a user's Entra record has onPremisesSyncEnabled = true,
+  that user is managed by on-prem AD and synced up to Entra -- any write made in
+  Entra for that user is either rejected by Microsoft Graph or silently overwritten
+  on the next sync cycle. If the admin asks you to change something (group
+  membership, password, sessions) for a user who turns out to be synced from AD,
+  tell them to use the Active Directory tab/actions instead of Entra, and do NOT
+  attempt or recommend the Entra write action for that user. Only cloud-only
+  users (onPremisesSyncEnabled = false or absent) can be safely mutated via Entra.
+  When you look up a user (in AD or Entra) and report back, say which system the
+  data came from (AD or Entra ID) so the admin knows which one they are looking at.
+
 When you need to run an AD action, respond ONLY with this exact JSON (no preamble, no extra text):
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
@@ -2802,6 +3141,14 @@ CRITICAL RULES:
         'list_dhcp_leases', 'list_dhcp_reservations', 'list_dhcp_exclusions',
         'list_gpos', 'get_gpo', 'get_gpo_report', 'list_gpo_links', 'get_gpo_inheritance',
     }
+
+    # Entra reads run inline via GraphClient (see the branch below), not via
+    # db.queue_command -- there is no agent involved for a cloud service. They
+    # still count as "lookups" for the single-hop follow-up chain below.
+    ENTRA_LOOKUP_ACTIONS = {
+        'list_entra_users', 'get_entra_user', 'list_entra_groups', 'get_entra_group_members',
+    }
+    LOOKUP_ACTIONS |= ENTRA_LOOKUP_ACTIONS
 
     client   = anthropic.Anthropic(api_key=api_key)
     messages = []
@@ -2844,73 +3191,99 @@ CRITICAL RULES:
             args       = [script["ps_content"]] + list(args[1:])
             intent_msg = intent_msg or f"Running custom script: {script['name']}"
 
-        policy_ok, policy_reason = action_policy.validate(action, source="ai_chat")
-        if not policy_ok:
-            db.log_activity(tenant_id, "security_flag", user_email,
-                            detail=f"Chat policy blocked '{action}': {policy_reason}")
-            return {"success": True, "reply": f"I can't run that action: {policy_reason}", "action_taken": None}
-
-        if _is_ad_mutation(action):
-            if not _rate_limit(f"ai_writes:{tenant_id}", 20, 3600):
-                return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
-
-        if action in DESTRUCTIVE_ACTIONS:
-            code = _issue_confirm_token(tenant_id, action, args)
-            return {
-                "success": True,
-                "reply": f"{intent_msg}\n\nThis action requires confirmation before it is queued.",
-                "requires_confirmation": True,
-                "confirm_token": code,
-                "action_label": f"{action} {args}",
-                "pending_action": {"action": action, "args": args},
-                "action_taken": None,
-                "session_id": session_id,
-            }
-
-        queue_args = _queue_args_with_ad_budget(tenant_id, action, args)
-
-        # Monthly plan-quota enforcement. The dashboard (/dashboard/api/exec) and
-        # the public API (/api/v1/actions) both hard-block write/destructive
-        # actions once the tenant hits its ad_commands cap; without the same gate
-        # here the limit could be bypassed simply by routing the action through
-        # AI chat. Reads stay uncapped.
-        if _is_ad_mutation(action):
-            limit_block = _ad_usage_limit_block(tenant_id, action, args)
-            if limit_block:
+        # Entra reads bypass action_policy entirely -- that gate is for the
+        # agent action-name queue, and Entra actions never touch the agent.
+        # They execute inline against Microsoft Graph right here.
+        if action in ENTRA_LOOKUP_ACTIONS:
+            if not _entra_configured(tenant_id):
                 return {
                     "success": True,
-                    "reply": (
-                        f"{limit_block['message']} Upgrade to Pro for "
-                        f"{db.PLAN_LIMITS['pro']['ad_commands']} AD actions/month to continue."
-                    ),
+                    "reply": "Entra ID is not configured. Add your Entra credentials in Settings to look up cloud users and groups.",
                     "action_taken": None,
                 }
+            creds       = _entra_settings(tenant_id)
+            graph       = GraphClient(creds["tenant_id"], creds["client_id"], creds["client_secret"])
+            graph_method = GRAPH_ACTIONS[action]
+            try:
+                result_data = getattr(graph, graph_method)(*args)
+            except TypeError:
+                result_data = {"success": False, "message": f"Invalid arguments for {action}.", "data": None}
+            command_id = None
+        else:
+            policy_ok, policy_reason = action_policy.validate(action, source="ai_chat")
+            if not policy_ok:
+                db.log_activity(tenant_id, "security_flag", user_email,
+                                detail=f"Chat policy blocked '{action}': {policy_reason}")
+                return {"success": True, "reply": f"I can't run that action: {policy_reason}", "action_taken": None}
 
-        if _is_ad_mutation(action):
-            target = args[0] if args else ""
-            db.log_audit(tenant_id, user_email, action, target, "queued")
-            _charge_ad_usage(tenant_id, action, args)
+            if _is_ad_mutation(action):
+                if not _rate_limit(f"ai_writes:{tenant_id}", 20, 3600):
+                    return {"success": True, "reply": "Rate limit reached (20 write actions/hour). Please wait.", "action_taken": None}
 
-        command    = db.queue_command(tenant_id, action, queue_args)
-        command_id = command["id"]
+            if action in DESTRUCTIVE_ACTIONS:
+                code = _issue_confirm_token(tenant_id, action, args)
+                return {
+                    "success": True,
+                    "reply": f"{intent_msg}\n\nThis action requires confirmation before it is queued.",
+                    "requires_confirmation": True,
+                    "confirm_token": code,
+                    "action_label": f"{action} {args}",
+                    "pending_action": {"action": action, "args": args},
+                    "action_taken": None,
+                    "session_id": session_id,
+                }
 
-        result_data = None
-        deadline    = time.time() + 25
-        while time.time() < deadline:
-            time.sleep(0.6)
-            result = db.get_command_result(command_id, tenant_id)
-            if result:
-                result_data = result
-                break
+            queue_args = _queue_args_with_ad_budget(tenant_id, action, args)
 
-        if not result_data:
-            return {"success": True, "reply": f"{intent_msg}\n\nAgent did not respond in time. Is it running?", "action_taken": action}
+            # Monthly plan-quota enforcement. The dashboard (/dashboard/api/exec) and
+            # the public API (/api/v1/actions) both hard-block write/destructive
+            # actions once the tenant hits its ad_commands cap; without the same gate
+            # here the limit could be bypassed simply by routing the action through
+            # AI chat. Reads stay uncapped.
+            if _is_ad_mutation(action):
+                limit_block = _ad_usage_limit_block(tenant_id, action, args)
+                if limit_block:
+                    return {
+                        "success": True,
+                        "reply": (
+                            f"{limit_block['message']} Upgrade to Pro for "
+                            f"{db.PLAN_LIMITS['pro']['ad_commands']} AD actions/month to continue."
+                        ),
+                        "action_taken": None,
+                    }
+
+            if _is_ad_mutation(action):
+                target = args[0] if args else ""
+                db.log_audit(tenant_id, user_email, action, target, "queued")
+                _charge_ad_usage(tenant_id, action, args)
+
+            command    = db.queue_command(tenant_id, action, queue_args)
+            command_id = command["id"]
+
+            result_data = None
+            deadline    = time.time() + 25
+            while time.time() < deadline:
+                time.sleep(0.6)
+                result = db.get_command_result(command_id, tenant_id)
+                if result:
+                    result_data = result
+                    break
+
+            if not result_data:
+                return {"success": True, "reply": f"{intent_msg}\n\nAgent did not respond in time. Is it running?", "action_taken": action}
+
+        # Label lookup results with their source system so the model (and the
+        # admin, via its reply) can tell AD data from Entra data apart.
+        if result_data is not None and result_data.get("success"):
+            result_data = dict(result_data)
+            result_data["source"] = "Entra ID (Microsoft Graph)" if action in ENTRA_LOOKUP_ACTIONS else "Active Directory"
 
         if action in LOOKUP_ACTIONS and result_data.get("success"):
             chain_prompt = f"""You are {ai_name}. The user originally asked: "{message}"
-To prepare, you first ran: {action} {args}
+To prepare, you first ran: {action} {args} (source: {result_data.get('source', 'Active Directory')})
 The lookup returned: {json.dumps(result_data.get('data', {}))[:1400]}
 
+Mention the source system (AD or Entra ID) in your reply so the admin knows which directory this data came from.
 Now complete the user's original request using the exact names/values from the lookup result above.
 If the original request is fully answered by the lookup, reply conversationally.
 If a follow-up write action is needed, output ONLY the JSON command.
@@ -3280,6 +3653,8 @@ def dashboard_get_settings():
     safe = dict(settings)
     if safe.get("smtp_pass"):
         safe["smtp_pass"] = ""   # client shows placeholder text instead
+    if safe.get("graph_client_secret"):
+        safe["graph_client_secret"] = ""   # never echo the secret back; client shows placeholder text
     return jsonify({"success": True, "data": safe})
 
 
@@ -3298,7 +3673,8 @@ def dashboard_update_settings():
                "ai_context", "ai_name",
                "report_enabled", "report_frequency", "report_day",
                "report_hour", "report_recipients", "last_report_sent",
-               "slack_webhook_url", "teams_webhook_url"}
+               "slack_webhook_url", "teams_webhook_url",
+               "graph_tenant_id", "graph_client_id", "graph_client_secret"}
     _, limits = _tenant_plan_limits(g.tenant_id)
     if data.get("janus_auto_actions") and not limits.get("auto_actions"):
         return jsonify({
@@ -3321,8 +3697,9 @@ def dashboard_update_settings():
         }), 403
     for k, v in data.items():
         if k in allowed:
-            # Never overwrite smtp_pass with an empty string (blank = "keep existing")
-            if k == "smtp_pass" and v == "":
+            # Never overwrite smtp_pass / graph_client_secret with an empty
+            # string (blank = "keep existing")
+            if k in ("smtp_pass", "graph_client_secret") and v == "":
                 continue
             if k == "ai_name":
                 v = str(v or "").strip() or DEFAULT_AI_NAME
