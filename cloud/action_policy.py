@@ -41,6 +41,13 @@ READ: frozenset[str] = frozenset({
     "get_dns_zone",
     "list_dns_records",
     "get_dns_scavenging",
+    # DHCP reads
+    "list_dhcp_scopes",
+    "get_dhcp_scope",
+    "get_dhcp_scope_stats",
+    "list_dhcp_leases",
+    "list_dhcp_reservations",
+    "list_dhcp_exclusions",
 })
 
 WRITE: frozenset[str] = frozenset({
@@ -56,6 +63,9 @@ WRITE: frozenset[str] = frozenset({
     # gated behind a 6-digit confirmation token.
     "add_dns_record",
     "update_dns_record",
+    # DHCP routine write -- adding a reservation for a known device, same
+    # tier as a password reset. Reviewed by the admin, no confirm token.
+    "add_dhcp_reservation",
 })
 
 # These can never be auto-resolved by the AI assistant. A human must always confirm them.
@@ -70,6 +80,12 @@ DESTRUCTIVE: frozenset[str] = frozenset({
     # break name resolution for a whole zone; always require human confirmation.
     "remove_dns_record",
     "set_dns_scavenging",
+    # DHCP high-caution ops -- removing a reservation drops a device back
+    # into the general pool, and exclusion changes can knock devices off
+    # the network entirely; always require human confirmation.
+    "remove_dhcp_reservation",
+    "add_dhcp_exclusion",
+    "remove_dhcp_exclusion",
 })
 
 ALL_ACTIONS: frozenset[str] = READ | WRITE | DESTRUCTIVE
@@ -102,6 +118,10 @@ REVERSIBLE: dict[str, bool] = {
     "update_dns_record":          True,   # old value can be restored
     "remove_dns_record":          True,   # can be re-added, but breaks resolution until it is
     "set_dns_scavenging":         True,   # can be toggled back
+    "add_dhcp_reservation":       True,   # can be removed again
+    "remove_dhcp_reservation":    True,   # can be re-added, but device may pull a different lease in the meantime
+    "add_dhcp_exclusion":         True,   # can be removed again
+    "remove_dhcp_exclusion":      True,   # can be re-added, but devices may already have leased into the gap
 }
 
 

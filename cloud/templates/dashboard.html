@@ -170,6 +170,41 @@
     .coming-online-panel h3 { color: var(--text); font-size: 17px; margin-bottom: 8px; }
     .coming-online-panel p { font-size: 13px; max-width: 420px; margin: 0 auto; }
 
+    .icon      { display: inline-block; vertical-align: -3px; }
+    .icon-sm   { width: 14px; height: 14px; }
+    .icon-md   { width: 18px; height: 18px; }
+    .icon-lg   { width: 36px; height: 36px; margin-bottom: 12px; color: var(--muted); }
+
+    .scope-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px;
+      padding: 16px;
+    }
+    .scope-card {
+      background: var(--panel2, rgba(99,102,241,0.04));
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color .15s ease, transform .15s ease;
+    }
+    .scope-card:hover  { border-color: var(--accent2); transform: translateY(-1px); }
+    .scope-card.active { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
+    .scope-card .scope-name  { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .scope-card .scope-id    { font-size: 11px; color: var(--muted); font-family: monospace; margin-bottom: 10px; }
+    .scope-card .scope-range { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .util-bar-track {
+      width: 100%; height: 7px; border-radius: 4px;
+      background: rgba(148,163,184,0.15);
+      overflow: hidden; margin-bottom: 6px;
+    }
+    .util-bar-fill { height: 100%; border-radius: 4px; transition: width .25s ease; }
+    .util-bar-fill.util-green  { background: var(--green); }
+    .util-bar-fill.util-amber  { background: var(--yellow); }
+    .util-bar-fill.util-red    { background: var(--red); }
+    .util-label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+
     .sidebar-legal {
       padding: 16px 20px 0;
       margin-top: 12px;
@@ -1029,11 +1064,11 @@
     {% endif %}
     {% if 'dhcp' in caps %}
     <div class="nav-item" onclick="showPage('dhcp')">
-      <span class="nav-icon">📡</span> DHCP
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="6" rx="1.5"/><rect x="2" y="14" width="20" height="6" rx="1.5"/><line x1="6" y1="7" x2="6" y2="7.01"/><line x1="6" y1="17" x2="6" y2="17.01"/><line x1="10" y1="7" x2="14" y2="7"/><line x1="10" y1="17" x2="14" y2="17"/></svg></span> DHCP
     </div>
     {% else %}
     <div class="nav-item nav-item-disabled">
-      <span class="nav-icon">📡</span> DHCP
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="6" rx="1.5"/><rect x="2" y="14" width="20" height="6" rx="1.5"/><line x1="6" y1="7" x2="6" y2="7.01"/><line x1="6" y1="17" x2="6" y2="17.01"/><line x1="10" y1="7" x2="14" y2="7"/><line x1="10" y1="17" x2="14" y2="17"/></svg></span> DHCP
       <span class="nav-tooltip">Your agent doesn't expose this service yet</span>
     </div>
     {% endif %}
@@ -1325,14 +1360,52 @@
 
     <!-- ===== DHCP PAGE ===== -->
     <div class="page" id="page-dhcp">
-      <div class="panel">
+      <div class="panel" id="dhcp-scopes-panel">
         <div class="panel-header">
-          <span class="panel-title">DHCP</span>
+          <span class="panel-title">DHCP Scopes</span>
+          <button class="btn btn-ghost" onclick="loadDhcpScopes()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
         </div>
-        <div class="coming-online-panel">
-          <div class="coming-online-icon">📡</div>
-          <h3>DHCP management is coming online</h3>
-          <p>Scope, lease, and reservation management will appear here once this module ships. Your agent will report this capability automatically when it is ready.</p>
+        <div id="dhcp-scopes-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel" id="dhcp-leases-panel" style="display:none;margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Leases: <span id="dhcp-current-scope-label"></span></span>
+          <button class="btn btn-ghost" onclick="loadDhcpLeases(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="dhcp-lease-search" type="search" placeholder="Search by IP, MAC, or hostname..." oninput="filterDhcpLeases()" autocomplete="off" spellcheck="false"/>
+        </div>
+        <div id="dhcp-leases-wrap">
+          <div class="empty"><div class="empty-icon"><svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>Select a scope above to view its leases.</div>
+        </div>
+      </div>
+
+      <div class="panel" id="dhcp-reservations-panel" style="display:none;margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Reservations</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="openAddDhcpReservation()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Reservation</button>
+            <button class="btn btn-ghost" onclick="loadDhcpReservations(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
+        </div>
+        <div id="dhcp-reservations-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel" id="dhcp-exclusions-panel" style="display:none;margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Exclusion Ranges</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" onclick="openAddDhcpExclusion()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Exclusion</button>
+            <button class="btn btn-ghost" onclick="loadDhcpExclusions(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
+        </div>
+        <div id="dhcp-exclusions-wrap">
+          <div class="loading"><span class="spinner"></span>Loading...</div>
         </div>
       </div>
     </div>
@@ -2225,6 +2298,58 @@
   </div>
 </div>
 
+<!-- Add DHCP reservation modal -->
+<div class="modal-overlay" id="modal-dhcp-reservation">
+  <div class="modal">
+    <h2>Add DHCP Reservation</h2>
+    <p>Pin an IP address to a MAC address in scope <strong id="dhcp-res-scope-label"></strong>.</p>
+    <div class="field">
+      <label>IP address</label>
+      <input type="text" id="dhcp-res-ip" placeholder="10.0.0.50"/>
+    </div>
+    <div class="field">
+      <label>MAC address</label>
+      <input type="text" id="dhcp-res-mac" placeholder="AA-BB-CC-DD-EE-FF"/>
+    </div>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="dhcp-res-name" placeholder="printer-3f"/>
+    </div>
+    <div class="field">
+      <label>Description (optional)</label>
+      <input type="text" id="dhcp-res-description" placeholder="3rd floor colour printer"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-dhcp-reservation')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddDhcpReservation()">Add Reservation</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add DHCP exclusion modal -->
+<div class="modal-overlay" id="modal-dhcp-exclusion">
+  <div class="modal">
+    <h2>Add DHCP Exclusion Range</h2>
+    <p>Remove a range of addresses from the assignable pool in scope <strong id="dhcp-excl-scope-label"></strong>.</p>
+    <div class="field">
+      <label>Start IP</label>
+      <input type="text" id="dhcp-excl-start" placeholder="10.0.0.200"/>
+    </div>
+    <div class="field">
+      <label>End IP</label>
+      <input type="text" id="dhcp-excl-end" placeholder="10.0.0.210"/>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:16px;">
+      This will require a 6-digit confirmation code before it runs -- excluding a range that
+      overlaps active leases can knock devices off the network.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-dhcp-exclusion')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddDhcpExclusion()">Add Exclusion</button>
+    </div>
+  </div>
+</div>
+
 <!-- Reset password modal -->
 <div class="modal-overlay" id="modal-reset">
   <div class="modal">
@@ -2424,8 +2549,16 @@
   const DESTRUCTIVE_ACTIONS = new Set([
     'disable_account', 'remove_from_group', 'move_user', 'create_user',
     'create_ou', 'bulk_move_users', 'reset_password', 'set_password_never_expires',
-    'remove_dns_record', 'set_dns_scavenging'
+    'remove_dns_record', 'set_dns_scavenging',
+    'remove_dhcp_reservation', 'add_dhcp_exclusion', 'remove_dhcp_exclusion'
   ]);
+
+  // Small inline icon set used throughout the DHCP tab (rule 6b: SVG, not emoji).
+  const ICON = {
+    warning:  '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    pin:      '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+    trash:    '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  };
 
   async function execCommand(action, args = [], target = '') {
     const res = await fetch('/dashboard/api/exec', {
@@ -2543,6 +2676,10 @@
     if (!json.success) throw new Error(json.message || 'Request failed');
     return await pollResult(json.command_id);
   }
+
+  // DHCP routes follow the exact same shape as the DNS ones above.
+  async function dhcpGet(url)        { return dnsGet(url); }
+  async function dhcpPost(url, body) { return dnsPost(url, body); }
 
   async function run(action, args = [], target = '', useCache = false) {
     if (useCache) {
@@ -3093,6 +3230,288 @@
       await dnsPost('/api/dns/records/delete', { zone: _dnsCurrentZone, name, type, value });
       toast(`${type} record '${name}' removed.`, 'success');
       loadDnsRecords(_dnsCurrentZone);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
+  // DHCP
+  // =========================================================
+
+  let _dhcpScopes      = [];
+  let _dhcpStatsById    = {};
+  let _dhcpCurrentScope = '';
+  let _dhcpLeases       = [];
+  let _dhcpReservations = [];
+  let _dhcpExclusions   = [];
+
+  function utilTier(pct) {
+    if (pct >= 90) return 'util-red';
+    if (pct >= 70) return 'util-amber';
+    return 'util-green';
+  }
+
+  async function loadDhcpScopes() {
+    document.getElementById('dhcp-scopes-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    document.getElementById('dhcp-leases-panel').style.display = 'none';
+    document.getElementById('dhcp-reservations-panel').style.display = 'none';
+    document.getElementById('dhcp-exclusions-panel').style.display = 'none';
+    try {
+      const [scopesData, statsData] = await Promise.all([
+        dhcpGet('/api/dhcp/scopes'),
+        dhcpGet('/api/dhcp/scopes/stats'),
+      ]);
+      _dhcpScopes = Array.isArray(scopesData) ? scopesData : (scopesData.scopes || []);
+      const statsList = Array.isArray(statsData) ? statsData : (statsData.stats || []);
+      _dhcpStatsById = {};
+      for (const s of statsList) _dhcpStatsById[s.ScopeId] = s;
+
+      if (!_dhcpScopes.length) {
+        document.getElementById('dhcp-scopes-wrap').innerHTML =
+          `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No DHCP scopes found.</div>`;
+        return;
+      }
+      let html = '<div class="scope-grid">';
+      for (const sc of _dhcpScopes) {
+        const stats = _dhcpStatsById[sc.scope_id] || {};
+        const pct   = stats.PercentageInUse != null ? Math.round(stats.PercentageInUse) : 0;
+        const tier  = utilTier(pct);
+        const active = sc.scope_id === _dhcpCurrentScope ? ' active' : '';
+        html += `<div class="scope-card${active}" onclick="selectDhcpScope('${jsArg(sc.scope_id)}','${jsArg(sc.name || sc.scope_id)}')">` +
+                `<div class="scope-name">${escHtml(sc.name || sc.scope_id)}</div>` +
+                `<div class="scope-id">${escHtml(sc.scope_id)} &middot; ${escHtml(sc.state || '-')}</div>` +
+                `<div class="scope-range">${escHtml(sc.start_range || '?')} &ndash; ${escHtml(sc.end_range || '?')}</div>` +
+                `<div class="util-bar-track"><div class="util-bar-fill ${tier}" style="width:${pct}%"></div></div>` +
+                `<div class="util-label"><span>${pct}% in use</span><span>${stats.Free != null ? stats.Free : '?'} free</span></div>` +
+                `</div>`;
+      }
+      html += '</div>';
+      document.getElementById('dhcp-scopes-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('dhcp-scopes-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function selectDhcpScope(scopeId, scopeName) {
+    _dhcpCurrentScope = scopeId;
+    document.getElementById('dhcp-current-scope-label').textContent = scopeName;
+    document.getElementById('dhcp-leases-panel').style.display = '';
+    document.getElementById('dhcp-reservations-panel').style.display = '';
+    document.getElementById('dhcp-exclusions-panel').style.display = '';
+    document.getElementById('dhcp-lease-search').value = '';
+    // Re-render scope cards so the active border follows the selection.
+    if (_dhcpScopes.length) loadDhcpScopesQuiet();
+    loadDhcpLeases(scopeId);
+    loadDhcpReservations(scopeId);
+    loadDhcpExclusions(scopeId);
+  }
+
+  function loadDhcpScopesQuiet() {
+    // Re-render the already-fetched scope list to update the active card
+    // border, without a network round trip.
+    let html = '<div class="scope-grid">';
+    for (const sc of _dhcpScopes) {
+      const stats = _dhcpStatsById[sc.scope_id] || {};
+      const pct   = stats.PercentageInUse != null ? Math.round(stats.PercentageInUse) : 0;
+      const tier  = utilTier(pct);
+      const active = sc.scope_id === _dhcpCurrentScope ? ' active' : '';
+      html += `<div class="scope-card${active}" onclick="selectDhcpScope('${jsArg(sc.scope_id)}','${jsArg(sc.name || sc.scope_id)}')">` +
+              `<div class="scope-name">${escHtml(sc.name || sc.scope_id)}</div>` +
+              `<div class="scope-id">${escHtml(sc.scope_id)} &middot; ${escHtml(sc.state || '-')}</div>` +
+              `<div class="scope-range">${escHtml(sc.start_range || '?')} &ndash; ${escHtml(sc.end_range || '?')}</div>` +
+              `<div class="util-bar-track"><div class="util-bar-fill ${tier}" style="width:${pct}%"></div></div>` +
+              `<div class="util-label"><span>${pct}% in use</span><span>${stats.Free != null ? stats.Free : '?'} free</span></div>` +
+              `</div>`;
+    }
+    html += '</div>';
+    document.getElementById('dhcp-scopes-wrap').innerHTML = html;
+  }
+
+  async function loadDhcpLeases(scopeId) {
+    if (!scopeId) return;
+    document.getElementById('dhcp-leases-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const qs = new URLSearchParams({ scope: scopeId });
+      const data = await dhcpGet('/api/dhcp/leases?' + qs.toString());
+      _dhcpLeases = Array.isArray(data) ? data : (data.leases || []);
+      renderDhcpLeases();
+    } catch (e) {
+      document.getElementById('dhcp-leases-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderDhcpLeases() {
+    const q = (document.getElementById('dhcp-lease-search').value || '').toLowerCase();
+    const rows = _dhcpLeases.filter(l => {
+      if (!q) return true;
+      return String(l.IPAddress || '').toLowerCase().includes(q) ||
+             String(l.ClientId || '').toLowerCase().includes(q) ||
+             String(l.HostName || '').toLowerCase().includes(q);
+    });
+    if (!rows.length) {
+      document.getElementById('dhcp-leases-wrap').innerHTML =
+        '<div class="empty"><div class="empty-icon">' +
+        '<svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>' +
+        '</div>No matching leases.</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>State</th><th>Expiry</th><th></th></tr></thead><tbody>';
+    for (const l of rows) {
+      const ip     = l.IPAddress || '-';
+      const mac    = l.ClientId || '-';
+      const host   = l.HostName || '-';
+      const state  = l.AddressState || '-';
+      const expiry = l.LeaseExpiryTime || '-';
+      html += `<tr><td><code style="font-size:12px;color:var(--accent2)">${escHtml(ip)}</code></td>` +
+              `<td style="font-size:12px;">${escHtml(mac)}</td>` +
+              `<td style="font-size:12px;">${escHtml(host)}</td>` +
+              `<td style="font-size:12px;color:var(--muted)">${escHtml(state)}</td>` +
+              `<td style="font-size:12px;color:var(--muted)">${escHtml(String(expiry))}</td>` +
+              `<td><button class="btn btn-ghost btn-sm" onclick="reserveLease('${jsArg(ip)}','${jsArg(mac)}','${jsArg(host)}')">${ICON.pin} Reserve</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('dhcp-leases-wrap').innerHTML = html;
+  }
+
+  function filterDhcpLeases() { renderDhcpLeases(); }
+
+  async function loadDhcpReservations(scopeId) {
+    if (!scopeId) return;
+    document.getElementById('dhcp-reservations-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const qs = new URLSearchParams({ scope: scopeId });
+      const data = await dhcpGet('/api/dhcp/reservations?' + qs.toString());
+      _dhcpReservations = Array.isArray(data) ? data : (data.reservations || []);
+      if (!_dhcpReservations.length) {
+        document.getElementById('dhcp-reservations-wrap').innerHTML =
+          '<div class="empty">No reservations in this scope yet.</div>';
+        return;
+      }
+      let html = '<table><thead><tr><th>IP</th><th>MAC</th><th>Name</th><th>Description</th><th></th></tr></thead><tbody>';
+      for (const r of _dhcpReservations) {
+        html += `<tr><td><code style="font-size:12px;color:var(--accent2)">${escHtml(r.IPAddress || '-')}</code></td>` +
+                `<td style="font-size:12px;">${escHtml(r.ClientId || '-')}</td>` +
+                `<td style="font-size:12px;">${escHtml(r.Name || '-')}</td>` +
+                `<td style="font-size:12px;color:var(--muted)">${escHtml(r.Description || '-')}</td>` +
+                `<td><button class="btn btn-danger btn-sm" onclick="deleteDhcpReservation('${jsArg(r.IPAddress || '')}')">${ICON.trash} Delete</button></td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('dhcp-reservations-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('dhcp-reservations-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function openAddDhcpReservation() {
+    if (!_dhcpCurrentScope) { toast('Select a scope first.', 'error'); return; }
+    document.getElementById('dhcp-res-scope-label').textContent = _dhcpCurrentScope;
+    document.getElementById('dhcp-res-ip').value = '';
+    document.getElementById('dhcp-res-mac').value = '';
+    document.getElementById('dhcp-res-name').value = '';
+    document.getElementById('dhcp-res-description').value = '';
+    openModal('modal-dhcp-reservation');
+  }
+
+  // Pre-fills the reservation modal from an existing lease row so a lease
+  // can be converted to a reservation in one click.
+  function reserveLease(ip, mac, hostname) {
+    if (!_dhcpCurrentScope) { toast('Select a scope first.', 'error'); return; }
+    document.getElementById('dhcp-res-scope-label').textContent = _dhcpCurrentScope;
+    document.getElementById('dhcp-res-ip').value = ip;
+    document.getElementById('dhcp-res-mac').value = mac;
+    document.getElementById('dhcp-res-name').value = (hostname && hostname !== '-') ? hostname : '';
+    document.getElementById('dhcp-res-description').value = '';
+    openModal('modal-dhcp-reservation');
+  }
+
+  async function submitAddDhcpReservation() {
+    const ip          = document.getElementById('dhcp-res-ip').value.trim();
+    const mac         = document.getElementById('dhcp-res-mac').value.trim();
+    const name        = document.getElementById('dhcp-res-name').value.trim();
+    const description = document.getElementById('dhcp-res-description').value.trim();
+    if (!ip || !mac || !name) { toast('IP, MAC, and name are required.', 'error'); return; }
+    closeModal('modal-dhcp-reservation');
+    toast(`Adding reservation for ${ip}...`, 'info');
+    try {
+      await dhcpPost('/api/dhcp/reservations', { scope: _dhcpCurrentScope, ip, mac, name, description });
+      toast(`Reservation for ${ip} added.`, 'success');
+      loadDhcpReservations(_dhcpCurrentScope);
+      loadDhcpLeases(_dhcpCurrentScope);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function deleteDhcpReservation(ip) {
+    if (!confirm(`Remove the reservation for ${ip}? The device will drop back into the general lease pool.`)) return;
+    toast(`Removing reservation for ${ip}...`, 'info');
+    try {
+      await dhcpPost('/api/dhcp/reservations/delete', { scope: _dhcpCurrentScope, ip });
+      toast(`Reservation for ${ip} removed.`, 'success');
+      loadDhcpReservations(_dhcpCurrentScope);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function loadDhcpExclusions(scopeId) {
+    if (!scopeId) return;
+    document.getElementById('dhcp-exclusions-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const qs = new URLSearchParams({ scope: scopeId });
+      const data = await dhcpGet('/api/dhcp/exclusions?' + qs.toString());
+      _dhcpExclusions = Array.isArray(data) ? data : (data.exclusions || []);
+      if (!_dhcpExclusions.length) {
+        document.getElementById('dhcp-exclusions-wrap').innerHTML =
+          '<div class="empty">No exclusion ranges in this scope.</div>';
+        return;
+      }
+      let html = '<table><thead><tr><th>Start</th><th>End</th><th></th></tr></thead><tbody>';
+      for (const x of _dhcpExclusions) {
+        html += `<tr><td><code style="font-size:12px;color:var(--accent2)">${escHtml(x.StartRange || '-')}</code></td>` +
+                `<td><code style="font-size:12px;color:var(--accent2)">${escHtml(x.EndRange || '-')}</code></td>` +
+                `<td><button class="btn btn-danger btn-sm" onclick="deleteDhcpExclusion('${jsArg(x.StartRange || '')}','${jsArg(x.EndRange || '')}')">${ICON.trash} Delete</button></td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('dhcp-exclusions-wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('dhcp-exclusions-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function openAddDhcpExclusion() {
+    if (!_dhcpCurrentScope) { toast('Select a scope first.', 'error'); return; }
+    document.getElementById('dhcp-excl-scope-label').textContent = _dhcpCurrentScope;
+    document.getElementById('dhcp-excl-start').value = '';
+    document.getElementById('dhcp-excl-end').value = '';
+    openModal('modal-dhcp-exclusion');
+  }
+
+  async function submitAddDhcpExclusion() {
+    const start = document.getElementById('dhcp-excl-start').value.trim();
+    const end   = document.getElementById('dhcp-excl-end').value.trim();
+    if (!start || !end) { toast('Start and end IPs are required.', 'error'); return; }
+    closeModal('modal-dhcp-exclusion');
+    toast(`Adding exclusion range ${start}-${end}...`, 'info');
+    try {
+      await dhcpPost('/api/dhcp/exclusions', { scope: _dhcpCurrentScope, start, end });
+      toast(`Exclusion range ${start}-${end} added.`, 'success');
+      loadDhcpExclusions(_dhcpCurrentScope);
+      loadDhcpScopes();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function deleteDhcpExclusion(start, end) {
+    if (!confirm(`Remove exclusion range ${start}-${end}? Those addresses become assignable again.`)) return;
+    toast(`Removing exclusion range ${start}-${end}...`, 'info');
+    try {
+      await dhcpPost('/api/dhcp/exclusions/delete', { scope: _dhcpCurrentScope, start, end });
+      toast(`Exclusion range ${start}-${end} removed.`, 'success');
+      loadDhcpExclusions(_dhcpCurrentScope);
+      loadDhcpScopes();
     } catch (e) { toast(e.message, 'error'); }
   }
 
@@ -4402,6 +4821,7 @@
       if (name === 'locked')   loadLocked();
       if (name === 'expired')  loadExpired();
       if (name === 'dns')      loadDnsZones();
+      if (name === 'dhcp')     loadDhcpScopes();
       if (name === 'audit')    loadAudit();
       if (name === 'team')     loadTeam();
       if (name === 'tickets')  loadTickets();

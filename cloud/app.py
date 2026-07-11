@@ -151,6 +151,17 @@ TIME_SAVED_MINUTES: dict[str, float] = {
     "list_dns_records":           0.5,
     "get_dns_zone":               0.5,
     "get_dns_scavenging":         0.5,
+    # DHCP
+    "add_dhcp_reservation":       1.5,
+    "remove_dhcp_reservation":    1.0,
+    "add_dhcp_exclusion":         1.0,
+    "remove_dhcp_exclusion":      1.0,
+    "list_dhcp_scopes":           0.5,
+    "get_dhcp_scope":             0.5,
+    "get_dhcp_scope_stats":       0.5,
+    "list_dhcp_leases":           0.5,
+    "list_dhcp_reservations":     0.5,
+    "list_dhcp_exclusions":       0.5,
 }
 
 
@@ -178,6 +189,11 @@ DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
     # for a whole zone, so both require the 6-digit confirmation challenge.
     "remove_dns_record",
     "set_dns_scavenging",
+    # DHCP: removing a reservation or changing an exclusion range can knock
+    # a device off the network, so all three require the confirmation challenge.
+    "remove_dhcp_reservation",
+    "add_dhcp_exclusion",
+    "remove_dhcp_exclusion",
 })
 
 _CONFIRM_TTL = 300                     # 5 minutes
@@ -1849,6 +1865,9 @@ def dashboard_exec():
                 "bulk_move_users":          "Bulk move users — review the rules carefully before confirming",
                 "remove_dns_record":        f"Remove DNS record '{args[1] if len(args)>1 else '?'}' ({args[2] if len(args)>2 else '?'}) from zone {subject}",
                 "set_dns_scavenging":       "Change DNS scavenging state",
+                "remove_dhcp_reservation":  f"Remove DHCP reservation for {args[1] if len(args)>1 else '?'} from scope {subject}",
+                "add_dhcp_exclusion":       f"Add DHCP exclusion range {args[1] if len(args)>1 else '?'}-{args[2] if len(args)>2 else '?'} to scope {subject}",
+                "remove_dhcp_exclusion":    f"Remove DHCP exclusion range {args[1] if len(args)>1 else '?'}-{args[2] if len(args)>2 else '?'} from scope {subject}",
             }
             return jsonify({
                 "success":              False,
@@ -2044,6 +2063,292 @@ def api_dns_records_delete():
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
 
+# ---------------------------------------------------------------------------
+# Dashboard API -- DHCP
+# Same shape as the DNS routes above: thin, capability-gated wrappers around
+# queue_command / the confirm-token flow. Reads and add_dhcp_reservation
+# queue immediately; remove_dhcp_reservation, add_dhcp_exclusion, and
+# remove_dhcp_exclusion (all in DESTRUCTIVE_ACTIONS) go through the same
+# 6-digit challenge as disable_account.
+# ---------------------------------------------------------------------------
+
+def _require_dhcp_capability() -> str | None:
+    """Return a friendly error message if this tenant's agent hasn't reported
+    the 'dhcp' capability, else None."""
+    caps = db.get_tenant_capabilities(g.tenant_id)
+    if "dhcp" not in caps:
+        return (
+            "DHCP management isn't available yet. Your Windows agent hasn't reported "
+            "the DHCP Server role as installed, or hasn't connected since it was added."
+        )
+    return None
+
+
+@app.route("/api/dhcp/scopes", methods=["GET"])
+@require_dashboard_user
+def api_dhcp_scopes():
+    """Queue a DHCP scope list. Body: none. Returns { command_id }."""
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_dhcp_scopes", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/scopes/stats", methods=["GET"])
+@require_dashboard_user
+def api_dhcp_scopes_stats():
+    """Queue utilisation stats for every scope (Free/InUse/PercentageInUse).
+    The dashboard merges this with /api/dhcp/scopes by scope_id."""
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "get_dhcp_scope_stats", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/leases", methods=["GET"])
+@require_dashboard_user
+def api_dhcp_leases():
+    """Queue a lease list for a scope. Query: ?scope=<scope_id>."""
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    scope = request.args.get("scope", "").strip()
+    if not scope:
+        return jsonify({"success": False, "message": "A scope ID is required."}), 400
+    command = db.queue_command(g.tenant_id, "list_dhcp_leases", [scope])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/reservations", methods=["GET"])
+@require_dashboard_user
+def api_dhcp_reservations_list():
+    """Queue a reservation list for a scope. Query: ?scope=<scope_id>."""
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    scope = request.args.get("scope", "").strip()
+    if not scope:
+        return jsonify({"success": False, "message": "A scope ID is required."}), 400
+    command = db.queue_command(g.tenant_id, "list_dhcp_reservations", [scope])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/exclusions", methods=["GET"])
+@require_dashboard_user
+def api_dhcp_exclusions_list():
+    """Queue an exclusion-range list for a scope. Query: ?scope=<scope_id>."""
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    scope = request.args.get("scope", "").strip()
+    if not scope:
+        return jsonify({"success": False, "message": "A scope ID is required."}), 400
+    command = db.queue_command(g.tenant_id, "list_dhcp_exclusions", [scope])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/reservations", methods=["POST"])
+@require_dashboard_user
+def api_dhcp_reservations_add():
+    """
+    Queue a DHCP reservation add (routine write, no confirmation token).
+    Also used to convert a lease to a reservation -- the dashboard pre-fills
+    ip/mac/hostname from the lease row before calling this.
+    Body: { "scope": "...", "ip": "...", "mac": "...", "name": "...", "description": "" }
+    """
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data        = request.get_json() or {}
+    scope       = str(data.get("scope", "")).strip()
+    ip          = str(data.get("ip", "")).strip()
+    mac         = str(data.get("mac", "")).strip()
+    name        = str(data.get("name", "")).strip()
+    description = str(data.get("description", "")).strip()
+
+    if not (scope and ip and mac and name):
+        return jsonify({"success": False, "message": "Scope, IP, MAC, and name are all required."}), 400
+
+    action = "add_dhcp_reservation"
+    args   = [scope, ip, mac, name, description]
+
+    ok, reason = action_policy.validate(action, source="human")
+    if not ok:
+        return jsonify({"success": False, "message": reason}), 403
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, ip, "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=ip,
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/reservations/delete", methods=["POST"])
+@require_dashboard_user
+def api_dhcp_reservations_delete():
+    """
+    Queue a DHCP reservation removal. High-caution -- gated behind the same
+    6-digit confirmation challenge as disable_account (remove_dhcp_reservation
+    is in DESTRUCTIVE_ACTIONS).
+    Body: { "scope": "...", "ip": "...", "confirm_token": "" }
+    """
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data          = request.get_json() or {}
+    scope         = str(data.get("scope", "")).strip()
+    ip            = str(data.get("ip", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    action = "remove_dhcp_reservation"
+    args   = [scope, ip]
+
+    if not confirm_token:
+        if not (scope and ip):
+            return jsonify({"success": False, "message": "Scope and IP are required."}), 400
+        ok, reason = action_policy.validate(action, source="human")
+        if not ok:
+            return jsonify({"success": False, "message": reason}), 403
+        code = _issue_confirm_token(g.tenant_id, action, args)
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Remove DHCP reservation for {ip} from scope {scope}",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending:
+        return jsonify({
+            "success": False,
+            "message": "Invalid or expired confirmation code. Please try again.",
+        }), 403
+
+    action = pending["action"]
+    args   = pending["args"]
+    scope, ip = (args[0], args[1]) if len(args) >= 2 else (scope, ip)
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, ip, "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=ip,
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/exclusions", methods=["POST"])
+@require_dashboard_user
+def api_dhcp_exclusions_add():
+    """
+    Queue a DHCP exclusion range add. High-caution -- can knock devices off
+    the network if it overlaps an active lease, so it is gated behind the
+    same 6-digit confirmation challenge as disable_account.
+    Body: { "scope": "...", "start": "...", "end": "...", "confirm_token": "" }
+    """
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data          = request.get_json() or {}
+    scope         = str(data.get("scope", "")).strip()
+    start         = str(data.get("start", "")).strip()
+    end           = str(data.get("end", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    action = "add_dhcp_exclusion"
+    args   = [scope, start, end]
+
+    if not confirm_token:
+        if not (scope and start and end):
+            return jsonify({"success": False, "message": "Scope, start, and end are all required."}), 400
+        ok, reason = action_policy.validate(action, source="human")
+        if not ok:
+            return jsonify({"success": False, "message": reason}), 403
+        code = _issue_confirm_token(g.tenant_id, action, args)
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Add DHCP exclusion range {start}-{end} to scope {scope}",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending:
+        return jsonify({
+            "success": False,
+            "message": "Invalid or expired confirmation code. Please try again.",
+        }), 403
+
+    action = pending["action"]
+    args   = pending["args"]
+    scope, start, end = (args[0], args[1], args[2]) if len(args) >= 3 else (scope, start, end)
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, f"{start}-{end}", "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=f"{start}-{end}",
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/exclusions/delete", methods=["POST"])
+@require_dashboard_user
+def api_dhcp_exclusions_delete():
+    """
+    Queue a DHCP exclusion range removal. High-caution -- gated behind the
+    same 6-digit confirmation challenge as disable_account.
+    Body: { "scope": "...", "start": "...", "end": "...", "confirm_token": "" }
+    """
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data          = request.get_json() or {}
+    scope         = str(data.get("scope", "")).strip()
+    start         = str(data.get("start", "")).strip()
+    end           = str(data.get("end", "")).strip()
+    confirm_token = str(data.get("confirm_token", "")).strip()
+
+    action = "remove_dhcp_exclusion"
+    args   = [scope, start, end]
+
+    if not confirm_token:
+        if not (scope and start and end):
+            return jsonify({"success": False, "message": "Scope, start, and end are all required."}), 400
+        ok, reason = action_policy.validate(action, source="human")
+        if not ok:
+            return jsonify({"success": False, "message": reason}), 403
+        code = _issue_confirm_token(g.tenant_id, action, args)
+        return jsonify({
+            "success":               False,
+            "requires_confirmation": True,
+            "confirm_token":         code,
+            "action_label":          f"Remove DHCP exclusion range {start}-{end} from scope {scope}",
+            "message":               "This action requires confirmation.",
+        }), 202
+
+    pending = _consume_confirm_token(g.tenant_id, confirm_token)
+    if not pending:
+        return jsonify({
+            "success": False,
+            "message": "Invalid or expired confirmation code. Please try again.",
+        }), 403
+
+    action = pending["action"]
+    args   = pending["args"]
+    scope, start, end = (args[0], args[1], args[2]) if len(args) >= 3 else (scope, start, end)
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, f"{start}-{end}", "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=f"{start}-{end}",
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
 def _run_chat(tenant_id: str, user_email: str, message: str,
               history: list = None, session_id: str = None) -> dict:
     """
@@ -2189,6 +2494,23 @@ Available AD actions (use exact action names):
   "message" field so the admin sees the warning before confirming, e.g.
   "Warning: this is the zone apex record -- changing it affects the whole domain."
 
+  DHCP (only offer these if the tenant's agent has the 'dhcp' capability -- if a DHCP
+  action fails with a capability error, tell the user DHCP management isn't connected yet):
+  list_dhcp_scopes            args: []                                          -- LOW RISK, read-only. List all DHCP scopes.
+  get_dhcp_scope              args: [scope_id]                                  -- LOW RISK, read-only. Scope details plus utilisation stats.
+  get_dhcp_scope_stats        args: []                                          -- LOW RISK, read-only. Utilisation (Free/InUse/PercentageInUse) for every scope.
+  list_dhcp_leases            args: [scope_id]                                  -- LOW RISK, read-only. Active leases in a scope.
+  list_dhcp_reservations       args: [scope_id]                                 -- LOW RISK, read-only. Reservations in a scope.
+  list_dhcp_exclusions         args: [scope_id]                                 -- LOW RISK, read-only. Excluded address ranges in a scope.
+  add_dhcp_reservation          args: [scope_id, ip, mac, name, description]    -- ROUTINE WRITE. Pins an IP to a MAC (e.g. converting a lease). description can be "".
+  remove_dhcp_reservation       args: [scope_id, ip]                            -- HIGH CAUTION. Drops the device back into the general lease pool. The dashboard
+                                                                                    always makes the admin confirm this with a 6-digit code before it runs --
+                                                                                    you do not need to ask for extra confirmation yourself, just queue it plainly.
+  add_dhcp_exclusion            args: [scope_id, start_ip, end_ip]              -- HIGH CAUTION. Removes an address range from the assignable pool; can starve
+                                                                                    the scope or clash with existing leases. Also gated behind a 6-digit code.
+  remove_dhcp_exclusion         args: [scope_id, start_ip, end_ip]              -- HIGH CAUTION. Frees a previously excluded range back into the pool; can hand
+                                                                                    out addresses that were reserved for static infrastructure. Also gated behind a 6-digit code.
+
 When you need to run an AD action, respond ONLY with this exact JSON (no preamble, no extra text):
 {{"action": "action_name", "args": ["arg1", "arg2"], "message": "One sentence describing what you're doing"}}
 
@@ -2206,6 +2528,8 @@ CRITICAL RULES:
         'list_expired_passwords', 'get_stats', 'list_group_memberships',
         'get_group_members',
         'list_dns_zones', 'get_dns_zone', 'list_dns_records', 'get_dns_scavenging',
+        'list_dhcp_scopes', 'get_dhcp_scope', 'get_dhcp_scope_stats',
+        'list_dhcp_leases', 'list_dhcp_reservations', 'list_dhcp_exclusions',
     }
 
     client   = anthropic.Anthropic(api_key=api_key)
