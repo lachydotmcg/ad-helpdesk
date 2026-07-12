@@ -249,6 +249,15 @@
     .nav-group.collapsed .nav-group-body { display: none; }
     /* Items nested inside a group sit slightly indented from the group header */
     .nav-group-body .nav-item { padding-left: 30px; }
+    /* Sub-view items (NPS / Entra) are a level deeper and lighter */
+    .nav-group-body .nav-subitem {
+      padding-left: 44px; font-size: 12.5px; color: var(--muted); position: relative;
+    }
+    .nav-group-body .nav-subitem::before {
+      content: ""; position: absolute; left: 30px; top: 50%; width: 5px; height: 5px;
+      border-radius: 50%; background: currentColor; opacity: 0.5; transform: translateY(-50%);
+    }
+    .nav-group-body .nav-subitem.active { color: var(--text); }
 
     /* ---- Content ---- */
     .content {
@@ -1210,8 +1219,16 @@
     </div>
     {% endif %}
     {% if 'nps' in caps %}
-    <div class="nav-item" onclick="showPage('nps')">
-      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="10" rx="1.5"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><line x1="12" y1="13" x2="12" y2="15"/></svg></span> NPS
+    <div class="nav-group collapsed" id="grp-nps">
+      <div class="nav-group-header" onclick="toggleNavGroup('grp-nps')">
+        <span class="nav-group-title"><span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="10" rx="1.5"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><line x1="12" y1="13" x2="12" y2="15"/></svg></span> NPS</span>
+        <svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="nav-group-body">
+        <div class="nav-item nav-subitem" data-svc="nps" data-view="overview" onclick="showServiceView('nps','overview')">Overview</div>
+        <div class="nav-item nav-subitem" data-svc="nps" data-view="clients" onclick="showServiceView('nps','clients')">Clients</div>
+        <div class="nav-item nav-subitem" data-svc="nps" data-view="policies" onclick="showServiceView('nps','policies')">Policies</div>
+      </div>
     </div>
     {% else %}
     <div class="nav-item nav-item-disabled">
@@ -1221,8 +1238,15 @@
     {% endif %}
     {# Temporary: always show Entra ID enabled so the panel is reachable. #}
     {% if true %}
-    <div class="nav-item" onclick="showPage('entra')">
-      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span> Entra ID
+    <div class="nav-group collapsed" id="grp-entra">
+      <div class="nav-group-header" onclick="toggleNavGroup('grp-entra')">
+        <span class="nav-group-title"><span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span> Entra ID</span>
+        <svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div class="nav-group-body">
+        <div class="nav-item nav-subitem" data-svc="entra" data-view="users" onclick="showServiceView('entra','users')">Users</div>
+        <div class="nav-item nav-subitem" data-svc="entra" data-view="groups" onclick="showServiceView('entra','groups')">Groups</div>
+      </div>
     </div>
     {% else %}
     <div class="nav-item nav-item-disabled">
@@ -1468,14 +1492,14 @@
           </div>
           <div class="home-tile-desc">Policies, links, and inheritance.</div>
         </div>
-        <div class="home-tile" onclick="showPage('nps')">
+        <div class="home-tile" onclick="showServiceView('nps','overview')">
           <div class="home-tile-top">
             <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="10" rx="1.5"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><line x1="12" y1="13" x2="12" y2="15"/></svg></span>
             <span class="home-tile-name">NPS</span>
           </div>
           <div class="home-tile-desc">RADIUS clients and network policies.</div>
         </div>
-        <div class="home-tile" onclick="showPage('entra')">
+        <div class="home-tile" onclick="showServiceView('entra','users')">
           <div class="home-tile-top">
             <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span>
             <span class="home-tile-name">Entra ID</span>
@@ -1698,6 +1722,7 @@
     <div class="page" id="page-nps">
       <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">NPS (RADIUS) management is read-only for now. This tab shows what's configured on your server; changes have to be made directly on the NPS console.</p>
 
+      <div class="svc-view" data-svc="nps" data-view="overview">
       <div class="stats" id="nps-summary-cards">
         <div class="stat-card">
           <div class="stat-label">RADIUS Clients</div>
@@ -1713,6 +1738,8 @@
         </div>
       </div>
 
+      </div>
+      <div class="svc-view" data-svc="nps" data-view="clients" style="display:none;">
       <div class="panel" id="nps-clients-panel" style="margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">RADIUS Clients</span>
@@ -1723,6 +1750,8 @@
         </div>
       </div>
 
+      </div>
+      <div class="svc-view" data-svc="nps" data-view="policies" style="display:none;">
       <div class="panel" id="nps-policies-panel" style="margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Network Policies</span>
@@ -1739,6 +1768,7 @@
         <div id="nps-crp-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -1757,6 +1787,7 @@
         </div>
       </div>
       {% else %}
+      <div class="svc-view" data-svc="entra" data-view="users">
       <div class="panel" style="margin-bottom:18px;">
         <div class="panel-header">
           <span class="panel-title">Entra ID Users</span>
@@ -1780,6 +1811,8 @@
         <div style="padding:20px;" id="entra-user-detail-body"></div>
       </div>
 
+      </div>
+      <div class="svc-view" data-svc="entra" data-view="groups" style="display:none;">
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">Entra ID Groups</span>
@@ -1793,6 +1826,7 @@
             <div class="empty">Search for a group, or click Search to list groups.</div>
           </div>
         </div>
+      </div>
       </div>
       {% endif %}
     </div>
@@ -5772,10 +5806,22 @@
     setNavGroup(id, grp.classList.contains('collapsed'));
   }
   (function restoreNavGroups() {
-    ['grp-ad', 'grp-activity', 'grp-settings'].forEach(id => {
-      try { if (localStorage.getItem('aid_nav_' + id) === 'closed') setNavGroup(id, false); } catch {}
+    ['grp-ad', 'grp-activity', 'grp-settings', 'grp-nps', 'grp-entra'].forEach(id => {
+      try {
+        const s = localStorage.getItem('aid_nav_' + id);
+        if (s === 'closed') setNavGroup(id, false);
+        else if (s === 'open') setNavGroup(id, true);
+      } catch {}
     });
   })();
+
+  // Service pages (NPS, Entra) have in-page sub-views switched from the sidebar.
+  function showServiceView(page, view) {
+    document.querySelectorAll('.svc-view[data-svc="' + page + '"]').forEach(v => {
+      v.style.display = (v.dataset.view === view) ? '' : 'none';
+    });
+    showPage(page);
+  }
 
   function showPage(name, el) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -5789,10 +5835,23 @@
     let activeNav = null;
     if (navEl && navEl.classList && navEl.classList.contains('nav-item')) { navEl.classList.add('active'); activeNav = navEl; }
     else {
-      // Try to find nav item matching the page
-      document.querySelectorAll('.nav-item').forEach(n => {
+      // Match a top-level nav item for this page (skip sub-items; those are
+      // handled by the service-view block below so we don't light up all of them).
+      document.querySelectorAll('.nav-item:not(.nav-subitem)').forEach(n => {
         if (n.getAttribute('onclick') && n.getAttribute('onclick').includes(`'${name}'`)) { n.classList.add('active'); activeNav = n; }
       });
+    }
+    // Service pages: make sure exactly one sub-view is visible, highlight its
+    // sub-item, and expand the group.
+    const svcViews = document.querySelectorAll('#page-' + name + ' .svc-view');
+    if (svcViews.length) {
+      let vis = [...svcViews].find(v => v.style.display !== 'none') || svcViews[0];
+      vis.style.display = '';
+      document.querySelectorAll('.nav-subitem[data-svc="' + name + '"]').forEach(s => {
+        s.classList.toggle('active', s.dataset.view === vis.dataset.view);
+      });
+      const gid = 'grp-' + name;
+      if (document.getElementById(gid)) setNavGroup(gid, true);
     }
     // If the active item lives in a collapsed group, expand that group so it's visible.
     if (activeNav) {
