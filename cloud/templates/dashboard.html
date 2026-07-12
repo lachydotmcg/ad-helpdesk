@@ -5506,11 +5506,31 @@
   function closeCmdK() { document.getElementById('cmdk').classList.remove('open'); }
 
   function cmdkFilter() {
-    const q = document.getElementById('cmdk-input').value.trim().toLowerCase();
+    const raw = document.getElementById('cmdk-input').value.trim();
+    const q = raw.toLowerCase();
     const all = cmdkCommands();
-    _cmdkItems = q
+    const matched = q
       ? all.filter(c => (c.label + ' ' + c.hint + ' ' + c.section).toLowerCase().includes(q))
       : all;
+    // If the query looks like a question / has no strong page match, offer to ask
+    // the assistant directly. This bridges the palette and the AI chat.
+    _cmdkItems = matched.slice();
+    if (raw.length >= 3) {
+      const aiName = getAiName();
+      // Appended last so exact page matches keep Enter priority; when nothing
+      // else matches, this becomes the primary (and active) result.
+      _cmdkItems.push({
+        label: `Ask ${aiName}: "${raw}"`,
+        hint: 'Assistant', section: 'Ask', icon: _CMDK_STAR_ICO,
+        run: () => {
+          showPage('chat');
+          setTimeout(() => {
+            const inp = document.getElementById('chat-input');
+            if (inp) { inp.value = raw; if (typeof sendChat === 'function') sendChat(); }
+          }, 120);
+        },
+      });
+    }
     _cmdkActive = 0;
     cmdkRender();
   }
