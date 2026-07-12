@@ -1745,6 +1745,58 @@
           </div>
         </div>
       </div>
+
+      <!-- Deploy an application to an OU (startup-script GPO) -->
+      <div class="panel" id="deploy-panel" style="margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Deploy Application</span>
+          <button class="btn btn-ghost" onclick="loadDeployPanel()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+        </div>
+        <div style="padding:20px;">
+          <p style="font-size:12px;color:var(--muted);margin:0 0 16px;line-height:1.6;">
+            Push a silent installer to every machine in an OU. The installer must already sit on your
+            software share (configured in the agent). This creates a Group Policy startup script that
+            installs it at next boot. Rolling software out to a whole OU always needs a 6-digit confirmation.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Installer on share</label>
+              <select class="search-input" id="deploy-package" style="width:100%;" onchange="deployPackagePicked()">
+                <option value="">Loading packages...</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">App name <span style="font-weight:400;">(labels the deployment)</span></label>
+              <input class="search-input" id="deploy-appname" placeholder="e.g. 7-Zip" style="width:100%;"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Target OU</label>
+              <input class="search-input" id="deploy-ou" placeholder="e.g. Workstations or OU=Workstations,DC=corp,DC=local" style="width:100%;"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Install type</label>
+              <select class="search-input" id="deploy-type" style="width:100%;" onchange="deployTypeChanged()">
+                <option value="msi">MSI (silent by default)</option>
+                <option value="exe">EXE (needs silent switches)</option>
+              </select>
+            </div>
+            <div id="deploy-args-row" style="grid-column:1/-1;display:none;">
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Silent-install arguments</label>
+              <input class="search-input" id="deploy-args" placeholder="e.g. /S  or  /qn /norestart" style="width:100%;font-family:'Courier New',monospace;font-size:12px;"/>
+            </div>
+          </div>
+          <div style="margin-top:14px;">
+            <button class="btn btn-primary" id="deploy-btn" onclick="doDeploy()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Deploy to OU</button>
+          </div>
+
+          <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--border);">
+            <div class="panel-title" style="margin-bottom:10px;">Active Deployments</div>
+            <div id="deploy-list-wrap">
+              <div class="empty">No deployments loaded yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ===== NPS PAGE ===== -->
@@ -4440,6 +4492,101 @@
   }
 
   // =========================================================
+  // Deploy Application (startup-script GPO). Reuses dnsGet/dnsPost
+  // (queue -> confirm -> pollResult) since the routes share that shape.
+  // =========================================================
+
+  async function loadDeployPanel() {
+    const sel  = document.getElementById('deploy-package');
+    const list = document.getElementById('deploy-list-wrap');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Loading packages...</option>';
+    list.innerHTML = '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    // Packages on the share
+    try {
+      const pkgs = await dnsGet('/api/deploy/packages');
+      const arr  = Array.isArray(pkgs) ? pkgs : (pkgs ? [pkgs] : []);
+      if (!arr.length) {
+        sel.innerHTML = '<option value="">No installers found on the share</option>';
+      } else {
+        sel.innerHTML = '<option value="">Select an installer...</option>' + arr.map(p =>
+          `<option value="${escHtml(p.Name)}" data-type="${(p.Type||'msi')}">${escHtml(p.Name)} (${p.SizeMB||'?'} MB)</option>`
+        ).join('');
+      }
+    } catch (e) {
+      sel.innerHTML = `<option value="">${escHtml(e.message)}</option>`;
+    }
+    // Active deployments
+    try {
+      const deps = await dnsGet('/api/deploy/list');
+      const arr  = Array.isArray(deps) ? deps : (deps ? [deps] : []);
+      if (!arr.length) {
+        list.innerHTML = '<div class="empty">No applications deployed via AID yet.</div>';
+      } else {
+        list.innerHTML = arr.map(d => {
+          const links = (d.links && d.links.length) ? d.links.join(', ') : 'not linked';
+          const name  = (d.name || '').replace('AID Deploy - ', '');
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+            <div><div style="font-size:13px;font-weight:600;">${escHtml(name)}</div>
+            <div style="font-size:11px;color:var(--muted);">Linked to: ${escHtml(links)}</div></div>
+            <button class="btn btn-ghost" style="font-size:12px;" onclick="removeDeployment('${escHtml(d.name)}')">Remove</button>
+          </div>`;
+        }).join('');
+      }
+    } catch (e) {
+      list.innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function deployPackagePicked() {
+    const sel = document.getElementById('deploy-package');
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    // Auto-fill app name from the file name (strip extension + version-ish noise)
+    const nameEl = document.getElementById('deploy-appname');
+    if (nameEl && !nameEl.value.trim()) {
+      nameEl.value = opt.value.replace(/\.(msi|exe)$/i, '').replace(/[_\-]+/g, ' ').trim();
+    }
+    // Set install type from the package extension
+    const type = opt.getAttribute('data-type') || (/\.exe$/i.test(opt.value) ? 'exe' : 'msi');
+    document.getElementById('deploy-type').value = type;
+    deployTypeChanged();
+  }
+
+  function deployTypeChanged() {
+    const type = document.getElementById('deploy-type').value;
+    document.getElementById('deploy-args-row').style.display = (type === 'exe') ? 'block' : 'none';
+  }
+
+  async function doDeploy() {
+    const pkg  = document.getElementById('deploy-package').value.trim();
+    const name = document.getElementById('deploy-appname').value.trim();
+    const ou   = document.getElementById('deploy-ou').value.trim();
+    const type = document.getElementById('deploy-type').value;
+    const args = document.getElementById('deploy-args').value.trim();
+    if (!pkg)  { toast('Pick an installer from the share.', 'error'); return; }
+    if (!name) { toast('Enter an app name.', 'error'); return; }
+    if (!ou)   { toast('Enter a target OU.', 'error'); return; }
+    if (type === 'exe' && !args) { toast('EXE installs need silent-install switches (e.g. /S).', 'error'); return; }
+    toast(`Preparing to deploy ${name} to ${ou}...`, 'info');
+    try {
+      await dnsPost('/api/deploy', { app_name: name, package: pkg, ou, install_type: type, silent_args: args });
+      toast(`${name} deployment created. Machines in ${ou} will install it at next boot.`, 'success');
+      loadDeployPanel();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function removeDeployment(fullName) {
+    if (!confirm(`Remove deployment "${fullName}"? This unlinks and deletes the GPO. Machines that already installed the app keep it.`)) return;
+    toast('Removing deployment...', 'info');
+    try {
+      await dnsPost('/api/deploy/remove', { name: fullName });
+      toast('Deployment removed.', 'success');
+      loadDeployPanel();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // =========================================================
   // NPS (RADIUS) tab -- read-only, see OVERNIGHT_PLAN.md 5.1. Same
   // queue-and-poll shape as DNS/DHCP/GPO, reused via gpoGet/dnsGet ->
   // pollResult(). There are no write routes to wire up here.
@@ -5894,7 +6041,7 @@
       if (name === 'expired')  loadExpired();
       if (name === 'dns')      loadDnsZones();
       if (name === 'dhcp')     loadDhcpScopes();
-      if (name === 'gpo')      loadGpoList();
+      if (name === 'gpo')      { loadGpoList(); loadDeployPanel(); }
       if (name === 'nps')      loadNpsAll();
       if (name === 'entra' && document.getElementById('entra-user-search')) { loadEntraUsers(); loadEntraGroups(); }
       if (name === 'audit')    loadAudit();

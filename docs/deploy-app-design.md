@@ -1,6 +1,10 @@
 # Design sketch: `deploy_app` (push applications via Group Policy)
 
-Status: design only, not implemented. This is the plan for letting an admin roll an
+Status: **phases 1-3 built** (deploy_bridge.py, action tiers + AI tools, cloud routes +
+Group Policy "Deploy Application" UI). Not yet validated against a live domain
+controller - see the LIVE-DC note in deploy_bridge.py about the startup-script CSE /
+version-bump plumbing. Remaining: EXE `stage_package` (agent-fetch-from-URL) and the
+SELF_HOSTING doc for creating the share. This is the plan for letting an admin roll an
 application out to an OU from AID Helpdesk.
 
 ## The core problem, and the key decision
@@ -126,9 +130,12 @@ feature as "quick silent rollout to an OU," and be upfront about the constraints
 
 ## Rough build order
 
-1. `deploy_bridge.py`: `list_deploy_packages` + `deploy_app` (MSI startup-script path),
-   offline-testable script builders. Agent auto-registers it (`deploy` capability).
-2. `action_policy.py` tiers + AI tool schema entries (reads free, writes token-gated).
-3. Cloud routes + Group Policy "Deploy App" UI + confirm flow.
-4. EXE support + `stage_package` (agent-fetch-from-URL) + `remove_deployment`.
-5. Docs: SECURITY.md (new tier), a short SELF_HOSTING note on creating the share.
+1. [x] `deploy_bridge.py`: `list_deploy_packages`, `deploy_app` (MSI + EXE startup-script
+   path), `list_deployments`, `remove_deployment`, offline-testable script builders.
+   Agent auto-registers it (`deploy` capability) and injects the share config.
+2. [x] `action_policy.py` tiers + AI tool schema entries (reads free, writes token-gated).
+3. [x] Cloud routes (`/api/deploy/*`) + Group Policy "Deploy Application" UI + confirm flow.
+4. [ ] `stage_package` (agent-fetch-from-URL) so admins can point at a URL instead of
+   pre-staging on the share.
+5. [ ] Docs: SECURITY.md (new tier), a short SELF_HOSTING note on creating the share, and
+   live-DC validation of the startup-script CSE registration + version bump.

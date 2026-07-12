@@ -40,7 +40,7 @@ def load_config() -> dict:
 # Merge action registries from every available bridge module. Each module
 # exposes ACTIONS (flat name -> callable taking an args list) and CAPABILITY.
 _BRIDGE_MODULES = [ad_bridge]
-for _name in ("dns_bridge", "dhcp_bridge", "gpo_bridge", "nps_bridge"):
+for _name in ("dns_bridge", "dhcp_bridge", "gpo_bridge", "nps_bridge", "deploy_bridge"):
     try:
         _BRIDGE_MODULES.append(__import__(_name))
     except ImportError:
@@ -84,6 +84,13 @@ def main():
     ]:
         if config.get(key):
             os.environ.setdefault(env, config[key])
+
+    # Optional: software-deployment share for the deploy_app action (deploy_bridge).
+    _deploy = config.get("software_deploy", {})
+    if _deploy.get("share_unc"):
+        os.environ.setdefault("AID_DEPLOY_SHARE_UNC", _deploy["share_unc"])
+    if _deploy.get("share_local"):
+        os.environ.setdefault("AID_DEPLOY_SHARE_LOCAL", _deploy["share_local"])
 
     print("\n AD Helpdesk -- Cloud Agent")
     print(" --------------------------------")

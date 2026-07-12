@@ -59,6 +59,9 @@ READ: frozenset[str] = frozenset({
     "list_nps_network_policies",
     "list_nps_connection_policies",
     "get_nps_summary",
+    # App-deployment reads (see docs/deploy-app-design.md)
+    "list_deploy_packages",
+    "list_deployments",
 })
 
 WRITE: frozenset[str] = frozenset({
@@ -106,6 +109,12 @@ DESTRUCTIVE: frozenset[str] = frozenset({
     "unlink_gpo",
     "set_gpo_status",
     "set_gpo_link_enforced",
+    # App deployment -- deploy_app pushes software to every machine in an OU, and
+    # remove_deployment unlinks/deletes a deployment GPO. Both are high blast-radius
+    # and always require the 6-digit human-confirm token. The AI may recommend a
+    # deployment but must never auto-resolve one. See docs/deploy-app-design.md.
+    "deploy_app",
+    "remove_deployment",
 })
 
 ALL_ACTIONS: frozenset[str] = READ | WRITE | DESTRUCTIVE
@@ -146,6 +155,9 @@ REVERSIBLE: dict[str, bool] = {
     "unlink_gpo":                 True,   # can be re-linked, but policy is unenforced in the meantime
     "set_gpo_status":              True,  # can be set back to the previous status
     "set_gpo_link_enforced":       True,  # can be toggled back
+    "deploy_app":                  False, # the deployment GPO can be removed, but any
+                                          # machine that already installed the app keeps it
+    "remove_deployment":           True,  # the deployment GPO can be recreated
 }
 
 

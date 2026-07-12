@@ -204,6 +204,11 @@ TIME_SAVED_MINUTES: dict[str, float] = {
     "get_gpo_report":             1.0,
     "list_gpo_links":             0.5,
     "get_gpo_inheritance":        0.5,
+    # Deployment -- one GPO rollout replaces manually installing on each machine
+    "deploy_app":                15.0,
+    "remove_deployment":          2.0,
+    "list_deploy_packages":       0.5,
+    "list_deployments":           0.5,
 }
 
 
@@ -244,6 +249,11 @@ DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
     "unlink_gpo",
     "set_gpo_status",
     "set_gpo_link_enforced",
+    # Deployment: deploy_app pushes software to every machine in an OU, and
+    # remove_deployment deletes a deployment GPO. Both require the confirmation
+    # challenge. See docs/deploy-app-design.md.
+    "deploy_app",
+    "remove_deployment",
 })
 
 _CONFIRM_TTL = 300                     # 5 minutes
@@ -2618,6 +2628,97 @@ def api_gpo_enforce():
 
 
 # ---------------------------------------------------------------------------
+# Dashboard API -- Application deployment (deploy_app via GPO startup script)
+#
+# Reads (packages, deployments) auto-execute. Writes (deploy_app,
+# remove_deployment) are in DESTRUCTIVE_ACTIONS and go through the same 6-digit
+# confirmation challenge as disable_account. See docs/deploy-app-design.md.
+# ---------------------------------------------------------------------------
+
+def _require_deploy_capability() -> str | None:
+    caps = db.get_tenant_capabilities(g.tenant_id)
+    if "deploy" not in caps:
+        return (
+            "Application deployment isn't available yet. Your Windows agent hasn't reported "
+            "the deployment module, or hasn't connected since it was added. It also needs a "
+            "software share configured in agent-config.json."
+        )
+    return None
+
+
+@app.route("/api/deploy/packages", methods=["GET"])
+@require_dashboard_user
+def api_deploy_packages():
+    """Queue a listing of installers available on the tenant's software share."""
+    block = _require_deploy_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_deploy_packages", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/deploy/list", methods=["GET"])
+@require_dashboard_user
+def api_deploy_list():
+    """Queue a listing of the deployments (GPOs) AID has created."""
+    block = _require_deploy_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "list_deployments", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/deploy", methods=["POST"])
+@require_dashboard_user
+def api_deploy_app():
+    """
+    Deploy an app to an OU. DESTRUCTIVE -- gated behind the 6-digit confirmation
+    challenge. Body: { app_name, package, ou, install_type, silent_args, confirm_token }
+    """
+    block = _require_deploy_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data        = request.get_json() or {}
+    app_name    = str(data.get("app_name", "")).strip()
+    package     = str(data.get("package", "")).strip()
+    ou          = str(data.get("ou", "")).strip()
+    install_type = str(data.get("install_type", "msi")).strip().lower()
+    silent_args = str(data.get("silent_args", "")).strip()
+
+    if not str(data.get("confirm_token", "")).strip() and not (app_name and package and ou):
+        return jsonify({"success": False, "message": "App name, package, and target OU are all required."}), 400
+
+    return _gpo_destructive_write(
+        "deploy_app", [app_name, package, ou, install_type, silent_args], ou,
+        f"Deploy '{app_name}' ({package}) to every machine in OU {ou}", data,
+    )
+
+
+@app.route("/api/deploy/remove", methods=["POST"])
+@require_dashboard_user
+def api_deploy_remove():
+    """
+    Remove a deployment GPO. DESTRUCTIVE -- gated behind the 6-digit confirmation
+    challenge. Body: { name, confirm_token }
+    """
+    block = _require_deploy_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data = request.get_json() or {}
+    name = str(data.get("name", "")).strip()
+
+    if not str(data.get("confirm_token", "")).strip() and not name:
+        return jsonify({"success": False, "message": "A deployment name is required."}), 400
+
+    return _gpo_destructive_write(
+        "remove_deployment", [name], name,
+        f"Remove deployment '{name}' (unlink + delete the GPO)", data,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dashboard API -- NPS (Network Policy Server / RADIUS)
 #
 # Read-only for now, per OVERNIGHT_PLAN.md 5.1 -- no write routes exist here.
@@ -3201,6 +3302,28 @@ Available AD actions (use exact action names):
   get_nps_summary              args: []                                          -- LOW RISK, read-only. Counts of RADIUS clients, network policies, and
                                                                                     connection request policies for a quick overview.
 
+  APP DEPLOYMENT (push software to an OU via a Group Policy startup script; only offer these
+  if the tenant's agent has the 'deploy' capability -- if a deploy action fails saying it isn't
+  available, tell the user their agent needs a software share configured in agent-config.json):
+  list_deploy_packages         args: []                                          -- LOW RISK, read-only. Lists installers (.msi/.exe) available on the
+                                                                                    tenant's software share, with size and type.
+  list_deployments             args: []                                          -- LOW RISK, read-only. Lists the app deployments AID has created and
+                                                                                    which OUs they are linked to.
+  deploy_app                   args: [app_name, package, target_ou, install_type, silent_args]
+                                                                                 -- HIGH CAUTION. Pushes an app to EVERY machine in the OU at next boot.
+                                                                                    install_type is "msi" or "exe"; for exe, silent_args must be the
+                                                                                    installer's silent switches (e.g. "/S"). ALWAYS requires the user to
+                                                                                    confirm a 6-digit code before it runs -- never auto-resolve it, and
+                                                                                    never tell the user it is done until they have confirmed the code.
+  remove_deployment            args: [deployment_name]                           -- HIGH CAUTION. Unlinks and deletes a deployment GPO (does NOT uninstall
+                                                                                    the app from machines that already have it). Always requires the
+                                                                                    6-digit confirmation; never auto-resolve.
+
+  DEPLOYMENT SAFETY RULE: deploy_app and remove_deployment change software on every machine in
+  an OU. Like the GPO writes, they are never auto-resolved or queued as "already confirmed" --
+  always queue them plainly (the dashboard shows the 6-digit confirmation modal automatically)
+  and say so in your "message" field.
+
   ENTRA ID (Microsoft Graph) (only offer these if the tenant has entered Entra credentials
   in Settings -- if an Entra action fails saying Entra isn't configured, tell the user to
   add their app registration details in Settings):
@@ -3250,6 +3373,7 @@ CRITICAL RULES:
         'list_dhcp_leases', 'list_dhcp_reservations', 'list_dhcp_exclusions',
         'list_gpos', 'get_gpo', 'get_gpo_report', 'list_gpo_links', 'get_gpo_inheritance',
         'list_nps_radius_clients', 'list_nps_network_policies', 'list_nps_connection_policies', 'get_nps_summary',
+        'list_deploy_packages', 'list_deployments',
     }
 
     # Entra reads run inline via GraphClient (see the branch below), not via
