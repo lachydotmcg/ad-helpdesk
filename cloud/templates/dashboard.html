@@ -344,6 +344,33 @@
     .home-tile-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .home-tile-meta { font-size: 11px; color: var(--accent2); font-weight: 600; margin-top: auto; }
 
+    /* ---- Home activity chart ---- */
+    .home-chart-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px 20px; margin-bottom: 26px;
+    }
+    .home-chart-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    .home-chart-title { font-size: 14px; font-weight: 700; color: var(--text); }
+    .home-chart-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .home-chart-total { font-size: 20px; font-weight: 800; color: var(--accent2); }
+    .home-chart-total-label { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .home-chart { display: flex; align-items: flex-end; gap: 10px; height: 96px; }
+    .home-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+    .home-bar-track { width: 100%; flex: 1; display: flex; align-items: flex-end; }
+    .home-bar {
+      width: 100%; border-radius: 6px 6px 3px 3px; min-height: 3px;
+      background: linear-gradient(180deg, var(--accent2), var(--accent));
+      transition: height 0.5s cubic-bezier(0.16,1,0.3,1); position: relative;
+    }
+    .home-bar.today { background: linear-gradient(180deg, var(--accent3), var(--accent2)); }
+    .home-bar:hover::after {
+      content: attr(data-count); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      margin-bottom: 5px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text);
+      font-size: 11px; padding: 2px 7px; border-radius: 6px; white-space: nowrap; pointer-events: none;
+    }
+    .home-bar-label { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+    .home-bar-col.today .home-bar-label { color: var(--accent2); }
+
     /* ---- Stats row ---- */
     .stats {
       display: grid;
@@ -1538,6 +1565,18 @@
           </div>
           <button class="btn btn-ghost" style="font-size:11px;flex-shrink:0;padding:4px 8px;" onclick="document.getElementById('janus-insight-card').style.display='none';document.getElementById('janus-insight-btn').style.display='inline-block';">✕</button>
         </div>
+      </div>
+
+      <!-- Activity over the last 7 days -->
+      <div class="home-chart-card" id="home-chart-card">
+        <div class="home-chart-head">
+          <div>
+            <div class="home-chart-title">Activity</div>
+            <div class="home-chart-sub">Last 7 days</div>
+          </div>
+          <div class="home-chart-total"><span id="home-chart-total">—</span> <span class="home-chart-total-label">events</span></div>
+        </div>
+        <div class="home-chart" id="home-chart"></div>
       </div>
 
       <!-- Windows Server module tiles -->
@@ -3654,6 +3693,47 @@
     } catch (e) {
       console.warn('Time saved fetch failed:', e.message);
     }
+  }
+
+  // Home: activity over the last 7 days, bucketed from the activity feed.
+  async function loadHomeChart() {
+    const wrap = document.getElementById('home-chart');
+    if (!wrap) return;
+    let feed = [];
+    try {
+      const res  = await fetch('/dashboard/api/activity?limit=500');
+      const json = await res.json();
+      feed = json.data || [];
+    } catch { /* leave empty */ }
+
+    // Build 7 day buckets ending today (local time).
+    const days = [];
+    const now  = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      days.push({ date: d, count: 0, label: d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2) });
+    }
+    const startMs = days[0].date.getTime();
+    feed.forEach(e => {
+      if (!e.created_at) return;
+      const t = new Date(e.created_at.replace(' ', 'T'));
+      if (isNaN(t) || t.getTime() < startMs) return;
+      const idx = Math.floor((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - days[0].date) / 86400000);
+      if (idx >= 0 && idx < 7) days[idx].count++;
+    });
+
+    const total = days.reduce((s, d) => s + d.count, 0);
+    const max   = Math.max(1, ...days.map(d => d.count));
+    document.getElementById('home-chart-total').textContent = total;
+
+    wrap.innerHTML = days.map((d, i) => {
+      const pct = Math.round((d.count / max) * 100);
+      const isToday = i === 6;
+      return `<div class="home-bar-col${isToday ? ' today' : ''}">
+        <div class="home-bar-track"><div class="home-bar${isToday ? ' today' : ''}" style="height:${d.count ? Math.max(pct, 4) : 2}%" data-count="${d.count} event${d.count === 1 ? '' : 's'}"></div></div>
+        <div class="home-bar-label">${d.label}</div>
+      </div>`;
+    }).join('');
   }
 
   async function loadUsageBar() {
@@ -6876,8 +6956,9 @@
         if (tt) tt.textContent = open;
       }).catch(() => {});
 
-    // 4. Load usage bar (non-blocking). AI insight is on-demand to save tokens.
+    // 4. Load usage bar + home activity chart (non-blocking). AI insight is on-demand.
     loadUsageBar();
+    loadHomeChart();
 
     // 5. Auto-refresh stats every 2 minutes (uses cache so no extra AD hit)
     setInterval(() => {
