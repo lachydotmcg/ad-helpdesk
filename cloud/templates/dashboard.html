@@ -260,6 +260,52 @@
     .page { display: none; }
     .page.active { display: block; }
 
+    /* ---- Home hero ---- */
+    .home-hero {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 20px; flex-wrap: wrap; margin-bottom: 24px;
+    }
+    .home-greeting {
+      font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+      font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--text);
+    }
+    .home-greeting .accent { color: var(--accent2); }
+    .home-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .home-agent {
+      display: inline-flex; align-items: center; gap: 9px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 999px; padding: 8px 16px; font-size: 13px; color: var(--text);
+    }
+    .home-section-label {
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px;
+      color: var(--muted); margin: 26px 0 12px;
+    }
+    /* ---- Service tiles ---- */
+    .home-tiles {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 14px;
+    }
+    .home-tile {
+      display: flex; flex-direction: column; gap: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px; cursor: pointer;
+      transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+    }
+    .home-tile:hover {
+      border-color: var(--border2); transform: translateY(-2px);
+      box-shadow: 0 12px 30px -16px rgba(99,102,241,0.5);
+    }
+    .home-tile-top { display: flex; align-items: center; gap: 10px; }
+    .home-tile-ico {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+      display: grid; place-items: center; color: var(--accent2);
+      background: linear-gradient(135deg, rgba(99,102,241,0.16), rgba(129,140,248,0.06));
+      border: 1px solid var(--border);
+    }
+    .home-tile-ico img { width: 22px; height: 22px; object-fit: contain; }
+    .home-tile-name { font-size: 14.5px; font-weight: 700; color: var(--text); }
+    .home-tile-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .home-tile-meta { font-size: 11px; color: var(--accent2); font-weight: 600; margin-top: auto; }
+
     /* ---- Stats row ---- */
     .stats {
       display: grid;
@@ -1107,6 +1153,9 @@
 <div class="main">
   <!-- Sidebar -->
   <aside>
+    <div class="nav-item active" onclick="showPage('home')" style="margin-top:8px;">
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span> Home
+    </div>
     <div class="nav-section">Windows Server</div>
     <div class="nav-group" id="grp-ad">
       <div class="nav-group-header" onclick="toggleNavGroup('grp-ad')">
@@ -1114,7 +1163,7 @@
         <svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </div>
       <div class="nav-group-body">
-    <div class="nav-item active" onclick="showPage('users')">
+    <div class="nav-item" onclick="showPage('users')">
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> All Users
     </div>
     <div class="nav-item" onclick="showPage('locked')">
@@ -1232,8 +1281,19 @@
   <!-- Content -->
   <div class="content">
 
-    <!-- ===== USERS PAGE ===== -->
-    <div class="page active" id="page-users">
+    <!-- ===== HOME PAGE ===== -->
+    <div class="page active" id="page-home">
+
+      <div class="home-hero">
+        <div>
+          <h1 class="home-greeting">Welcome back, <span class="accent">{{ tenant_name }}</span></h1>
+          <p class="home-sub" id="home-date"></p>
+        </div>
+        <div class="home-agent">
+          <span class="status-dot" id="home-agent-dot"></span>
+          <span id="home-agent-text">Checking agent...</span>
+        </div>
+      </div>
 
       <!-- Onboarding — step-by-step guided setup -->
       <div id="onboarding-panel" style="display:none;background:var(--surface);border:1px solid rgba(99,102,241,0.3);border-radius:14px;padding:0;margin-bottom:20px;overflow:hidden;">
@@ -1376,6 +1436,73 @@
         </div>
       </div>
 
+      <!-- Windows Server module tiles -->
+      <div class="home-section-label">Windows Server</div>
+      <div class="home-tiles">
+        <div class="home-tile" onclick="showPage('users')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/></svg></span>
+            <span class="home-tile-name">Active Directory</span>
+          </div>
+          <div class="home-tile-desc">Users, lockouts, groups, and OUs.</div>
+          <div class="home-tile-meta"><span id="tile-ad-count">—</span> users</div>
+        </div>
+        <div class="home-tile" onclick="showPage('dns')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></svg></span>
+            <span class="home-tile-name">DNS</span>
+          </div>
+          <div class="home-tile-desc">Zones, records, and scavenging.</div>
+        </div>
+        <div class="home-tile" onclick="showPage('dhcp')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="6" rx="1.5"/><rect x="2" y="14" width="20" height="6" rx="1.5"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/><line x1="10" y1="7" x2="14" y2="7"/><line x1="10" y1="17" x2="14" y2="17"/></svg></span>
+            <span class="home-tile-name">DHCP</span>
+          </div>
+          <div class="home-tile-desc">Scopes, leases, and reservations.</div>
+        </div>
+        <div class="home-tile" onclick="showPage('gpo')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            <span class="home-tile-name">Group Policy</span>
+          </div>
+          <div class="home-tile-desc">Policies, links, and inheritance.</div>
+        </div>
+        <div class="home-tile" onclick="showPage('nps')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="10" rx="1.5"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><line x1="12" y1="13" x2="12" y2="15"/></svg></span>
+            <span class="home-tile-name">NPS</span>
+          </div>
+          <div class="home-tile-desc">RADIUS clients and network policies.</div>
+        </div>
+        <div class="home-tile" onclick="showPage('entra')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg></span>
+            <span class="home-tile-name">Entra ID</span>
+          </div>
+          <div class="home-tile-desc">Cloud users and groups via Graph.</div>
+        </div>
+        <div class="home-tile" onclick="showPage('chat')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><img src="/static/Assistant.png" alt="" /></span>
+            <span class="home-tile-name" id="tile-ai-name">AI Assistant</span>
+          </div>
+          <div class="home-tile-desc">Manage everything in plain English.</div>
+        </div>
+        <div class="home-tile" onclick="showPage('tickets')">
+          <div class="home-tile-top">
+            <span class="home-tile-ico"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4z"/><path d="M13 7v10"/></svg></span>
+            <span class="home-tile-name">Tickets</span>
+          </div>
+          <div class="home-tile-desc">Plain-English support requests.</div>
+          <div class="home-tile-meta"><span id="tile-tickets-count">—</span> open</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===== USERS PAGE ===== -->
+    <div class="page" id="page-users">
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">Users</span>
@@ -3227,6 +3354,11 @@
     const label = document.getElementById('agent-label');
     if (dot)   { dot.className = cls; dot.title = tip; }
     if (label) { label.textContent = text; label.title = tip; }
+    // Home hero pill
+    const hdot  = document.getElementById('home-agent-dot');
+    const htext = document.getElementById('home-agent-text');
+    if (hdot)  { hdot.className = cls; hdot.title = tip; }
+    if (htext) { htext.textContent = text; htext.title = tip; }
     // Settings page dot (may not exist yet)
     const sdot   = document.getElementById('settings-agent-dot');
     const slabel = document.getElementById('settings-agent-label');
@@ -3291,6 +3423,8 @@
       document.getElementById('stat-locked').textContent   = locked;
       document.getElementById('stat-disabled').textContent = disabled;
       document.getElementById('stat-expired').textContent  = expired;
+      const adTile = document.getElementById('tile-ad-count');
+      if (adTile) adTile.textContent = total;
       const lc = parseInt(locked) || 0;
       const ec = parseInt(expired) || 0;
       const badge = document.getElementById('locked-badge');
@@ -5608,6 +5742,7 @@
   let _chatSessionId = null;
 
   const _pageTitles = {
+    home:     'Home',
     users:    'All Users',
     locked:   'Locked Accounts',
     expired:  'Expired Passwords',
@@ -6260,6 +6395,7 @@
       'usage-ai-label':     name,
       'ticket-ai-sender':   name,
       'ai-insight-title':   name + ' Insight',
+      'tile-ai-name':       name,
     };
     Object.entries(ids).forEach(([id, text]) => {
       const el = document.getElementById(id);
@@ -6290,7 +6426,15 @@
     .catch(() => {});
 
   (async () => {
+    pageLoaded['home']  = true;
     pageLoaded['users'] = true;
+
+    // Home hero: date + assistant name on the AI tile
+    try {
+      const d = new Date();
+      const el = document.getElementById('home-date');
+      if (el) el.textContent = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    } catch {}
 
     // 1. Check agent status via dedicated endpoint (not reliant on AD being reachable)
     await pollAgentStatus();
@@ -6317,6 +6461,8 @@
           badge.style.color   = hasUrgent ? 'var(--red)' : 'var(--yellow)';
           badge.title         = hasUrgent ? `${open} open - urgent/high priority!` : `${open} open tickets`;
         }
+        const tt = document.getElementById('tile-tickets-count');
+        if (tt) tt.textContent = open;
       }).catch(() => {});
 
     // 4. Load usage bar (non-blocking). AI insight is on-demand to save tokens.
