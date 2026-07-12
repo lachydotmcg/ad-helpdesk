@@ -5509,9 +5509,19 @@
     const raw = document.getElementById('cmdk-input').value.trim();
     const q = raw.toLowerCase();
     const all = cmdkCommands();
-    const matched = q
-      ? all.filter(c => (c.label + ' ' + c.hint + ' ' + c.section).toLowerCase().includes(q))
-      : all;
+    let matched;
+    if (q) {
+      matched = all.filter(c => (c.label + ' ' + c.hint + ' ' + c.section).toLowerCase().includes(q));
+    } else {
+      // No query: surface recently-used commands first, then everything.
+      let recentLabels = [];
+      try { recentLabels = JSON.parse(localStorage.getItem('aid_cmdk_recent') || '[]'); } catch {}
+      const recent = recentLabels
+        .map(lbl => all.find(c => c.label === lbl))
+        .filter(Boolean)
+        .map(c => ({ ...c, section: 'Recent' }));
+      matched = recent.concat(all);
+    }
     // If the query looks like a question / has no strong page match, offer to ask
     // the assistant directly. This bridges the palette and the AI chat.
     _cmdkItems = matched.slice();
@@ -5558,9 +5568,19 @@
 
   function cmdkSetActive(i) { if (i !== _cmdkActive) { _cmdkActive = i; cmdkRender(); } }
 
+  function cmdkRecordRecent(label) {
+    if (!label || label.startsWith('Ask ')) return;   // don't remember dynamic ask items
+    try {
+      let r = JSON.parse(localStorage.getItem('aid_cmdk_recent') || '[]');
+      r = [label, ...r.filter(x => x !== label)].slice(0, 4);
+      localStorage.setItem('aid_cmdk_recent', JSON.stringify(r));
+    } catch {}
+  }
+
   function cmdkRun(i) {
     const c = _cmdkItems[i];
     if (!c) return;
+    cmdkRecordRecent(c.label);
     closeCmdK();
     try { c.run(); } catch (e) { toast(e.message, 'error'); }
   }
