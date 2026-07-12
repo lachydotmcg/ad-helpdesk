@@ -47,7 +47,8 @@
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
     }
@@ -121,7 +122,35 @@
       border-right: 1px solid var(--border);
       padding: 20px 0;
       flex-shrink: 0;
+      overflow-y: auto;
     }
+
+    /* ================= Custom scrollbar =================
+       Designed for the sidebar and reused across the whole app: a slim,
+       floating indigo-to-violet pill on a transparent track. The transparent
+       border + background-clip:padding-box gives the thumb even breathing room
+       on any background (surface, bg, modals) without matching each one. */
+    * { scrollbar-width: thin; scrollbar-color: var(--accent) transparent; }
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, var(--accent), var(--accent3));
+      border-radius: 99px;
+      border: 3px solid transparent;
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, var(--accent2), var(--accent3));
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:active {
+      background: var(--accent2);
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    /* The sidebar keeps its thumb tucked in tighter so it reads as "its own" */
+    aside::-webkit-scrollbar { width: 9px; }
+    aside::-webkit-scrollbar-thumb { border-width: 2.5px; }
 
     .nav-item {
       display: flex;
