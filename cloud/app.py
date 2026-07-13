@@ -111,6 +111,73 @@ def _ai_cost(tenant_id):
     return int(math.ceil(AI_MODELS[_ai_tier(tenant_id)]["cost"]))
 
 
+# ---------------------------------------------------------------------------
+# AI provider abstraction -- cloud (Anthropic) or fully local (Ollama).
+#
+# Set AI_PROVIDER=ollama to run the whole assistant against a local model with
+# no Anthropic key and no per-call cost. OLLAMA_URL points at the Ollama server
+# (default localhost, but it can be any machine on your network running Ollama).
+# _get_ai_client() returns either the real Anthropic client or a thin shim that
+# speaks the same .messages.create(...).content[0].text interface, so every
+# existing call site keeps working unchanged.
+# ---------------------------------------------------------------------------
+AI_PROVIDER  = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
+OLLAMA_URL   = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+
+
+class _OllamaBlock:
+    __slots__ = ("text",)
+    def __init__(self, text): self.text = text
+
+
+class _OllamaResponse:
+    __slots__ = ("content",)
+    def __init__(self, text): self.content = [_OllamaBlock(text)]
+
+
+class _OllamaMessages:
+    def create(self, model=None, max_tokens=512, system=None, messages=None, **kwargs):
+        import requests
+        msgs = ([{"role": "system", "content": system}] if system else []) + (messages or [])
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={"model": OLLAMA_MODEL, "messages": msgs, "stream": False,
+                  "options": {"num_predict": max_tokens}},
+            timeout=180,
+        )
+        resp.raise_for_status()
+        text = ((resp.json() or {}).get("message") or {}).get("content", "")
+        return _OllamaResponse(text.strip())
+
+
+class _OllamaClient:
+    """Minimal Anthropic-shaped client backed by a local Ollama server."""
+    def __init__(self):
+        self.messages = _OllamaMessages()
+
+
+def ai_enabled() -> bool:
+    """Whether the configured AI provider is usable at all."""
+    if AI_PROVIDER == "ollama":
+        return True
+    return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+
+
+def ai_unavailable_message() -> str:
+    if AI_PROVIDER == "ollama":
+        return f"The local AI model isn't reachable. Check that Ollama is running at {OLLAMA_URL}."
+    return "ANTHROPIC_API_KEY not set in environment."
+
+
+def _get_ai_client():
+    """Return an Anthropic client, or an Ollama-backed shim, per AI_PROVIDER."""
+    if AI_PROVIDER == "ollama":
+        return _OllamaClient()
+    import anthropic
+    return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+
+
 # Standard security headers applied to every response.
 @app.after_request
 def _security_headers(resp):
@@ -126,6 +193,41 @@ def _security_headers(resp):
 
 db.init_db()
 db.migrate_db()
+
+
+# ---------------------------------------------------------------------------
+# Local self-host bootstrap.
+#
+# Set AID_LOCAL_MODE=1 to run AID Helpdesk as a single-organisation, on-prem
+# install: on first start it provisions one tenant + admin login so you can run
+# the whole stack yourself with no cloud account, no billing, and (paired with
+# AI_PROVIDER=ollama) no Anthropic key. Credentials come from AID_LOCAL_ADMIN_EMAIL
+# / AID_LOCAL_ADMIN_PASSWORD (sensible defaults if unset). Idempotent: does
+# nothing once a tenant exists.
+# ---------------------------------------------------------------------------
+AID_LOCAL_MODE = os.getenv("AID_LOCAL_MODE", "").strip().lower() in ("1", "true", "yes")
+
+def _bootstrap_local_mode():
+    try:
+        if db.list_all_tenants():
+            return  # already provisioned
+    except Exception:
+        return
+    name  = os.getenv("AID_LOCAL_ORG", "My Organisation")
+    email = os.getenv("AID_LOCAL_ADMIN_EMAIL", "admin@local")
+    pw    = os.getenv("AID_LOCAL_ADMIN_PASSWORD", "changeme")
+    tenant = db.create_tenant(name)
+    db.create_tenant_user(tenant["id"], email, pw, role="admin")
+    print("\n AID Helpdesk -- local mode")
+    print(" ----------------------------")
+    print(f" Organisation: {name}")
+    print(f" Sign in at /login with:  {email} / {pw}")
+    print(f" Agent API key:           {tenant['api_key']}")
+    print(f" AI provider:             {AI_PROVIDER}" + (f" ({OLLAMA_URL})" if AI_PROVIDER == 'ollama' else ""))
+    print(" Change the admin password in Settings after first sign-in.\n")
+
+if AID_LOCAL_MODE:
+    _bootstrap_local_mode()
 
 
 # ---------------------------------------------------------------------------
@@ -634,12 +736,10 @@ def _run_reflection_pass(tenant_id: str, ai_name: str, user_message: str,
     After a meaningful action, ask Claude to extract any org-specific facts worth remembering.
     Runs in a background thread so it never blocks the chat response.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key or not result_success:
+    if not ai_enabled() or not result_success:
         return
     try:
-        import anthropic as _ant
-        client = _ant.Anthropic(api_key=api_key)
+        client = _get_ai_client()
         prompt = f"""An IT admin asked their AI assistant ("{ai_name}") to: "{user_message}"
 The action taken was: {action} with args {args}
 The action succeeded.
@@ -3100,14 +3200,8 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
     Returns a plain dict (suitable for jsonify). Never raises — errors are
     returned as {"success": False, "message": "..."}.
     """
-    try:
-        import anthropic
-    except ImportError:
-        return {"success": False, "message": "anthropic package not installed."}
-
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return {"success": False, "message": "ANTHROPIC_API_KEY not set in environment."}
+    if not ai_enabled():
+        return {"success": False, "message": ai_unavailable_message()}
 
     history = history or []
 
@@ -3384,7 +3478,7 @@ CRITICAL RULES:
     }
     LOOKUP_ACTIONS |= ENTRA_LOOKUP_ACTIONS
 
-    client   = anthropic.Anthropic(api_key=api_key)
+    client   = _get_ai_client()
     messages = []
     for h in history[-10:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):
@@ -4103,8 +4197,6 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
     Returns a dict with keys: parsed, auto_resolved (bool), error (str or None).
     Silently skips if API key is missing, plan limit hit, or the AI assistant is disabled.
     """
-    import anthropic as _anthropic
-    api_key  = os.getenv("ANTHROPIC_API_KEY", "")
     settings = db.get_settings(tenant_id)
     ai_name  = _get_ai_name(settings)
     ai_actor = ai_name
@@ -4114,11 +4206,11 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
     janus_cap   = limits["janus_calls"]
     janus_ok    = janus_cap is None or janus_used < janus_cap
 
-    if not api_key or not settings.get("janus_enabled", True) or not janus_ok:
+    if not ai_enabled() or not settings.get("janus_enabled", True) or not janus_ok:
         return {"parsed": None, "auto_resolved": False, "error": None}
 
     try:
-        client = _anthropic.Anthropic(api_key=api_key)
+        client = _get_ai_client()
 
         configured_roles = settings.get("roles", [])
         roles_context = ""
@@ -4744,11 +4836,9 @@ def chat_session_messages(session_id):
 def dashboard_insights():
     """Return an AI health summary of recent AD stats + tickets."""
     try:
-        import anthropic
-        api_key  = os.getenv("ANTHROPIC_API_KEY", "")
         settings = db.get_settings(g.tenant_id)
         ai_name  = _get_ai_name(settings)
-        if not api_key or not settings.get("janus_enabled", True):
+        if not ai_enabled() or not settings.get("janus_enabled", True):
             return jsonify({"success": True, "data": {"message": None}})
         plan, limits = _tenant_plan_limits(g.tenant_id)
         usage = db.get_usage(g.tenant_id) or {}
@@ -4773,7 +4863,7 @@ def dashboard_insights():
             f"recent activity: {recent_desc}. "
             f"Highlight the most important thing the admin should do or note right now."
         )
-        client   = anthropic.Anthropic(api_key=api_key)
+        client   = _get_ai_client()
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=80,
