@@ -1061,8 +1061,7 @@ def email_intake(api_key):
     tenant_name = tenant.get("name", "")
 
     # Check plan allows email intake
-    plan   = db.get_tenant_plan(tenant_id)
-    limits = db.get_plan_limits(plan)
+    plan, limits = _tenant_plan_limits(tenant_id)
     if not limits.get("email_intake"):
         return jsonify({"success": False,
                         "message": f"Email intake is not available on the {limits['label']} plan. Upgrade to Pro."}), 403
@@ -1234,8 +1233,7 @@ def zoho_intake(api_key):
     tenant_id   = tenant["id"]
     tenant_name = tenant.get("name", "")
 
-    plan   = db.get_tenant_plan(tenant_id)
-    limits = db.get_plan_limits(plan)
+    plan, limits = _tenant_plan_limits(tenant_id)
     if not limits.get("integrations"):
         return jsonify({"success": False,
                         "message": f"Integrations are not available on the {limits['label']} plan."}), 403
@@ -1381,7 +1379,7 @@ def api_v1_status():
     return jsonify({
         "success": True,
         "tenant":  tenant.get("name", ""),
-        "plan":    db.get_tenant_plan(tenant["id"]),
+        "plan":    _tenant_plan_limits(tenant["id"])[0],
         "agent":   "online" if online else "offline",
     })
 
@@ -3737,22 +3735,25 @@ def _feedback_email(tenant_id: str, user_email: str, message: str,
 @require_dashboard_user
 def dashboard_usage():
     """Return this tenant's usage, plan, and limits for the current month."""
-    plan    = db.get_tenant_plan(g.tenant_id)
-    limits  = db.get_plan_limits(plan)
+    plan, limits = _tenant_plan_limits(g.tenant_id)
     usage   = db.get_usage(g.tenant_id) or {}
     history = db.get_usage_history(g.tenant_id)
-    billing = db.get_billing_subscription(g.tenant_id) or {}
-    return jsonify({"success": True, "data": {
+    data = {
         "current": usage,
         "history": history,
         "plan":    plan,
         "limits":  limits,
-        "billing": {
+    }
+    # Billing is a hosted-service concept. A self-hosted install has no
+    # subscription to report, so the key is omitted rather than sent as "none".
+    if not AID_LOCAL_MODE:
+        billing = db.get_billing_subscription(g.tenant_id) or {}
+        data["billing"] = {
             "status": billing.get("status", "none"),
             "current_period_end": billing.get("current_period_end"),
             "portal_available": bool(db.get_billing_customer(g.tenant_id)),
-        },
-    }})
+        }
+    return jsonify({"success": True, "data": data})
 
 
 @app.route("/dashboard/api/time-saved")
@@ -4743,8 +4744,7 @@ def create_ticket():
         return jsonify({"success": False, "message": "title and description are required."}), 400
 
     # Enforce ticket count plan limit
-    plan   = db.get_tenant_plan(g.tenant_id)
-    limits = db.get_plan_limits(plan)
+    plan, limits = _tenant_plan_limits(g.tenant_id)
     cap    = limits.get("tickets")
     if cap is not None:
         existing = db.list_tickets(g.tenant_id, limit=cap + 1)
@@ -4868,8 +4868,7 @@ def rerun_janus_analysis(ticket_id):
     ticket = db.get_ticket(ticket_id, g.tenant_id)
     if not ticket:
         return jsonify({"success": False, "message": "Ticket not found."}), 404
-    plan   = db.get_tenant_plan(g.tenant_id)
-    limits = db.get_plan_limits(plan)
+    plan, limits = _tenant_plan_limits(g.tenant_id)
     tenant = db.get_tenant_by_id(g.tenant_id)
     result = _run_janus_analysis(
         tenant_id      = g.tenant_id,
@@ -5174,8 +5173,7 @@ def dashboard_create_user():
         return jsonify({"success": False, "message": "role must be admin or viewer."}), 400
 
     # Enforce team member plan limit
-    plan    = db.get_tenant_plan(g.tenant_id)
-    limits  = db.get_plan_limits(plan)
+    plan, limits = _tenant_plan_limits(g.tenant_id)
     current = db.list_tenant_users(g.tenant_id)
     cap     = limits["team_members"]
     if cap is not None and len(current) >= cap:

@@ -1548,13 +1548,20 @@
             <span id="usage-janus" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span>
             <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-janus-limit"></span>
             <div style="font-size:11px;color:var(--muted);margin-top:2px;"><span id="usage-ai-label">AI</span> scans</div>
+            {# Quota meters are a hosted-plan concept. A self-hosted install is
+               unmetered, so a progress bar here is permanently empty and reads
+               as though something is being counted against you. #}
+            {% if not local_mode %}
             <div style="margin-top:4px;background:var(--surface2);border-radius:99px;height:3px;width:80px;overflow:hidden;"><div id="usage-janus-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width 0.4s;"></div></div>
+            {% endif %}
           </div>
           <div>
             <span id="usage-commands" style="font-size:18px;font-weight:800;color:var(--accent2);">—</span>
             <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-commands-limit"></span>
             <div style="font-size:11px;color:var(--muted);margin-top:2px;">AD actions</div>
+            {% if not local_mode %}
             <div style="margin-top:4px;background:var(--surface2);border-radius:99px;height:3px;width:80px;overflow:hidden;"><div id="usage-commands-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width 0.4s;"></div></div>
+            {% endif %}
           </div>
           <div>
             <span id="usage-tickets" style="font-size:18px;font-weight:800;color:var(--text);">—</span>
@@ -4019,10 +4026,11 @@
       document.getElementById('usage-commands-limit').textContent  = fmt(usedC, limC);
       document.getElementById('usage-tickets').textContent         = tickets.length;
       document.getElementById('usage-tickets-limit').textContent   = fmt(tickets.length, limT);
-      document.getElementById('usage-janus-bar').style.width       = pctJ + '%';
-      document.getElementById('usage-janus-bar').style.background  = barColor(pctJ);
-      document.getElementById('usage-commands-bar').style.width    = pctC + '%';
-      document.getElementById('usage-commands-bar').style.background = barColor(pctC);
+      // Absent in local mode, where there is nothing to meter.
+      const jBar = document.getElementById('usage-janus-bar');
+      if (jBar) { jBar.style.width = pctJ + '%'; jBar.style.background = barColor(pctJ); }
+      const cBar = document.getElementById('usage-commands-bar');
+      if (cBar) { cBar.style.width = pctC + '%'; cBar.style.background = barColor(pctC); }
       const planLabels = { free: 'Free plan', pro: 'Pro', enterprise: 'Enterprise' };
       const planBadge = document.getElementById('usage-plan-badge');   // absent in local mode
       if (planBadge) planBadge.textContent = planLabels[plan] || plan;
