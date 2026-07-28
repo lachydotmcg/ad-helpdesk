@@ -304,21 +304,6 @@ if AID_LOCAL_MODE:
     _bootstrap_local_mode()
 
 
-def cloud_only(fn):
-    """Disable a commercial (hosted-SaaS) route when running the local edition.
-
-    The local edition is self-hosted and unlimited, so billing, checkout, plan
-    management, and public sign-up have no meaning there. Those routes 404 in
-    local mode instead of existing as dead ends."""
-    from functools import wraps as _wraps
-    @_wraps(fn)
-    def _wrapped(*a, **kw):
-        if AID_LOCAL_MODE:
-            abort(404)
-        return fn(*a, **kw)
-    return _wrapped
-
-
 # ---------------------------------------------------------------------------
 # Rate limiting (DB-backed — shared across dynos, survives deploys)
 # ---------------------------------------------------------------------------
@@ -1005,9 +990,10 @@ def logo():
 
 @app.route("/")
 def index():
+    """Self-hosted edition has no public marketing page: go straight to the app."""
     if "tenant_id" in session:
         return redirect(url_for("dashboard"))
-    return render_template("landing.html")
+    return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1291,53 +1277,6 @@ def zoho_intake(api_key):
     return jsonify({"success": True, "ticket_id": ticket["id"]}), 201
 
 
-@app.route("/signup", methods=["GET", "POST"])
-@cloud_only
-def signup():
-    if "tenant_id" in session:
-        return redirect(url_for("dashboard"))
-
-    error = None
-    if request.method == "POST":
-        ip       = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
-        if not _rate_limit(f"signup:{ip}", max_calls=5, window_seconds=3600):
-            error = "Too many sign-up attempts. Please try again in an hour."
-            return render_template("signup.html", error=error), 429
-
-        company  = request.form.get("company", "").strip()
-        email    = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        confirm  = request.form.get("confirm", "")
-
-        if not company or not email or not password:
-            error = "All fields are required."
-        elif len(password) < 8:
-            error = "Password must be at least 8 characters."
-        elif password != confirm:
-            error = "Passwords do not match."
-        else:
-            try:
-                tenant = db.create_tenant(company)
-                user   = db.create_tenant_user(tenant["id"], email, password, role="admin")
-                # Seed settings with trial start date
-                import datetime as _dt
-                db.update_settings(tenant["id"], {
-                    **db._SETTINGS_DEFAULTS,
-                    "trial_started_at": _dt.datetime.utcnow().isoformat(),
-                })
-                db.log_activity(tenant["id"], "tenant_created", email,
-                                detail=f"New tenant: {company}")
-                # Auto-login
-                session.permanent = True
-                session["tenant_id"]   = tenant["id"]
-                session["user_email"]  = email
-                session["user_role"]   = "admin"
-                session["tenant_name"] = company
-                return redirect(url_for("dashboard"))
-            except Exception:
-                error = "An account with that email already exists."
-
-    return render_template("signup.html", error=error)
 
 
 @app.route("/logout")
@@ -1346,69 +1285,8 @@ def logout():
     return redirect(url_for("login"))
 
 
-@app.route("/forgot-password", methods=["GET", "POST"])
-def forgot_password():
-    """Show forgot-password form and send a reset email if SMTP is configured."""
-    error   = None
-    success = None
-    if request.method == "POST":
-        email  = request.form.get("email", "").strip().lower()
-        if not email:
-            error = "Please enter your email address."
-        else:
-            # Look up user across all tenants
-            tenant = db.get_tenant_by_user_email(email)
-            if tenant:
-                user = db.get_tenant_user_by_email(tenant["id"], email)
-                if user:
-                    token = db.create_password_reset_token(user["id"], tenant["id"])
-                    reset_url = request.host_url.rstrip("/") + f"/reset-password/{token}"
-                    send_email(
-                        to_email=email,
-                        subject="Reset your AID Helpdesk password",
-                        body_text=(
-                            f"You requested a password reset for your AID Helpdesk account.\n\n"
-                            f"Click the link below to set a new password. This link expires in 1 hour.\n\n"
-                            f"{reset_url}\n\n"
-                            f"If you didn't request this, you can safely ignore this email."
-                        ),
-                        body_html=(
-                            f"<!DOCTYPE html><html><body style='font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e;padding:20px;'>"
-                            f"<div style='background:#1a1830;border-radius:12px;padding:20px 24px;margin-bottom:20px;'>"
-                            f"<span style='color:#818cf8;font-size:18px;font-weight:700;'>AID</span>"
-                            f"<span style='color:#e2e8f0;font-size:18px;'> Helpdesk</span></div>"
-                            f"<p>Hi,</p>"
-                            f"<p>You requested a password reset for your <strong>AID Helpdesk</strong> account.</p>"
-                            f"<p><a href='{reset_url}' style='background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block;'>Reset Password</a></p>"
-                            f"<p style='color:#64748b;font-size:13px;'>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>"
-                            f"</body></html>"
-                        )
-                    )
-            # Always show success to prevent email enumeration
-            success = "If that email is registered, you'll receive a reset link shortly."
-    return render_template("forgot_password.html", error=error, success=success)
 
 
-@app.route("/reset-password/<token>", methods=["GET", "POST"])
-def reset_password(token):
-    """Allow user to set a new password using a valid reset token."""
-    error   = None
-    success = None
-    if request.method == "POST":
-        pw      = request.form.get("password", "")
-        pw_conf = request.form.get("confirm", "")
-        if len(pw) < 8:
-            error = "Password must be at least 8 characters."
-        elif pw != pw_conf:
-            error = "Passwords do not match."
-        else:
-            result = db.consume_password_reset_token(token)
-            if not result:
-                error = "This reset link is invalid or has expired. Please request a new one."
-            else:
-                db.update_user_password_by_id(result["user_id"], pw)
-                success = "Password updated! You can now sign in."
-    return render_template("reset_password.html", token=token, error=error, success=success)
 
 
 # ---------------------------------------------------------------------------
@@ -1662,75 +1540,13 @@ def dashboard():
                            entra_configured=_entra_configured(g.tenant_id))
 
 
-@app.route("/billing")
-@cloud_only
-@require_dashboard_user
-def billing():
-    settings      = db.get_settings(g.tenant_id)
-    billing_enabled = bool(os.getenv("STRIPE_SECRET_KEY", ""))
-    billing_customer = db.get_billing_customer(g.tenant_id)
-    billing_sub  = db.get_billing_subscription(g.tenant_id) or {}
-    plan          = db.get_tenant_plan(g.tenant_id)
-    limits        = db.get_plan_limits(plan)
-    usage         = db.get_usage(g.tenant_id) or {}
-    used_janus    = usage.get("janus_calls", 0)
-    used_commands = usage.get("ad_commands", 0)
-    lim_janus     = limits["janus_calls"]
-    lim_commands  = limits["ad_commands"]
-    return render_template("billing.html",
-                           tenant_name=g.tenant_name,
-                           user_email=g.user_email,
-                           user_role=g.user_role,
-                           settings=settings,
-                           billing_enabled=billing_enabled,
-                           billing_customer=billing_customer,
-                           billing_status=billing_sub.get("status", "none"),
-                           billing_current_period_end=billing_sub.get("current_period_end"),
-                           billing_portal_available=bool(billing_customer),
-                           tenant_plan=plan,
-                           plan_label=limits["label"],
-                           plan_price=limits["price"],
-                           usage_janus=used_janus,
-                           usage_commands=used_commands,
-                           limits_janus=lim_janus,
-                           limits_commands=lim_commands,
-                           ai_name=_get_ai_name(settings),
-                           janus_pct=min(100, int(used_janus / lim_janus * 100)) if lim_janus else 0,
-                           commands_pct=min(100, int(used_commands / lim_commands * 100)) if lim_commands else 0,
-                           )
 
 
-# ---------------------------------------------------------------------------
-# Stripe billing
-# ---------------------------------------------------------------------------
-# Required env vars:
-#   STRIPE_SECRET_KEY      — secret key from Stripe dashboard
-#   STRIPE_WEBHOOK_SECRET  — from `stripe listen --forward-to ...` or dashboard
-#   STRIPE_PRICE_PRO       — recurring Price ID for the Pro plan (e.g. price_xxx)
-#   STRIPE_PRICE_ENTERPRISE— recurring Price ID for the Enterprise plan
-# Optional:
-#   APP_BASE_URL           — public base URL, e.g. https://app.aidhelpdesk.com
-#                            used to build success/cancel redirect URLs
-
-def _stripe_client():
-    key = os.getenv("STRIPE_SECRET_KEY", "")
-    if not key:
-        raise RuntimeError("STRIPE_SECRET_KEY is not set")
-    try:
-        import stripe as _stripe
-    except ImportError as exc:
-        raise RuntimeError("Stripe Python SDK is not installed") from exc
-    _stripe.api_key = key
-    return _stripe
+# Billing, checkout, and subscription handling live in the managed (hosted)
+# edition only. This self-hosted edition is unmetered: no plans, no quotas.
 
 
-def _app_base_url() -> str:
-    base = os.getenv("APP_BASE_URL", "").rstrip("/")
-    if not base:
-        # Fall back to the request's own origin when APP_BASE_URL is unset.
-        from flask import request as _req
-        base = _req.host_url.rstrip("/")
-    return base
+
 
 
 # plan slug → Stripe Price ID (set these in Railway env vars)
@@ -1740,309 +1556,34 @@ _CHECKOUT_PRICE_ENV = {
 }
 
 
-def _stripe_get(obj, key: str, default=None):
-    if obj is None:
-        return default
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    try:
-        return obj.get(key, default)
-    except Exception:
-        return getattr(obj, key, default)
 
 
-def _stripe_metadata(obj) -> dict:
-    meta = _stripe_get(obj, "metadata", {}) or {}
-    try:
-        return dict(meta)
-    except Exception:
-        return {}
 
 
-def _stripe_timestamp_to_iso(value) -> str | None:
-    if not value:
-        return None
-    try:
-        from datetime import datetime
-        return datetime.utcfromtimestamp(int(value)).isoformat()
-    except Exception:
-        return None
 
 
-def _configured_price_to_plan() -> dict:
-    return {
-        os.getenv(env): plan
-        for plan, env in _CHECKOUT_PRICE_ENV.items()
-        if os.getenv(env)
-    }
 
 
-def _plan_from_price_id(price_id: str | None) -> str | None:
-    if not price_id:
-        return None
-    return _configured_price_to_plan().get(price_id)
 
 
-def _subscription_items(subscription) -> list:
-    items = _stripe_get(subscription, "items", {}) or {}
-    data = _stripe_get(items, "data", []) or []
-    return list(data)
 
 
-def _subscription_price_id(subscription) -> str | None:
-    for item in _subscription_items(subscription):
-        price = _stripe_get(item, "price", {}) or {}
-        price_id = _stripe_get(price, "id")
-        if price_id:
-            return price_id
-    return None
 
 
-def _subscription_period_end(subscription) -> str | None:
-    period_end = _stripe_get(subscription, "current_period_end")
-    if not period_end:
-        for item in _subscription_items(subscription):
-            period_end = _stripe_get(item, "current_period_end")
-            if period_end:
-                break
-    return _stripe_timestamp_to_iso(period_end)
 
 
-def _resolve_subscription_tenant(subscription, tenant_hint: str | None = None) -> str | None:
-    if tenant_hint:
-        return tenant_hint
-    metadata = _stripe_metadata(subscription)
-    tenant_id = metadata.get("tenant_id")
-    if tenant_id:
-        return tenant_id
-    sub_id = _stripe_get(subscription, "id")
-    tenant_id = db.get_tenant_id_by_stripe_subscription(sub_id)
-    if tenant_id:
-        return tenant_id
-    customer_id = _stripe_get(subscription, "customer")
-    return db.get_tenant_id_by_stripe_customer(customer_id)
 
 
-def _sync_subscription_from_stripe(subscription, tenant_hint: str | None = None) -> dict | None:
-    """Persist a Stripe subscription and update the tenant plan from active status."""
-    sub_id = _stripe_get(subscription, "id")
-    if not sub_id:
-        return None
-
-    price_id = _subscription_price_id(subscription)
-    if not price_id:
-        try:
-            stripe = _stripe_client()
-            subscription = stripe.Subscription.retrieve(sub_id, expand=["items.data.price"])
-            price_id = _subscription_price_id(subscription)
-        except Exception as e:
-            print(f"[stripe] Could not retrieve subscription {sub_id}: {e}")
-
-    tenant_id = _resolve_subscription_tenant(subscription, tenant_hint)
-    if not tenant_id:
-        print(f"[stripe] Could not map subscription {sub_id} to a tenant")
-        return None
-
-    customer_id = _stripe_get(subscription, "customer")
-    if customer_id:
-        db.upsert_billing_customer(tenant_id, customer_id)
-
-    metadata = _stripe_metadata(subscription)
-    plan = _plan_from_price_id(price_id)
-    if plan is None:
-        metadata_plan = metadata.get("plan")
-        if metadata_plan in ("pro", "enterprise"):
-            plan = metadata_plan
-        else:
-            existing = db.get_billing_subscription(tenant_id) or {}
-            plan = existing.get("plan") or "free"
-
-    status = str(_stripe_get(subscription, "status", "none") or "none")
-    current_period_end = _subscription_period_end(subscription)
-    row = db.upsert_billing_subscription(
-        tenant_id=tenant_id,
-        stripe_subscription_id=sub_id,
-        plan=plan,
-        status=status,
-        current_period_end=current_period_end,
-    )
-
-    if status == "active" and plan in ("pro", "enterprise"):
-        db.set_tenant_plan(tenant_id, plan)
-    else:
-        db.set_tenant_plan(tenant_id, "free")
-    return row
 
 
-def _create_portal_url(tenant_id: str) -> str | None:
-    customer = db.get_billing_customer(tenant_id)
-    if not customer:
-        return None
-    stripe = _stripe_client()
-    portal = stripe.billing_portal.Session.create(
-        customer=customer["stripe_customer_id"],
-        return_url=f"{_app_base_url()}/billing",
-    )
-    return portal.url
 
 
-@app.route("/create-checkout-session", methods=["POST"])
-@app.route("/billing/create-checkout-session", methods=["POST"])
-@cloud_only
-@require_dashboard_user
-def billing_create_checkout_session():
-    """Create a Stripe Checkout session and return its URL."""
-    if g.user_role != "admin":
-        return jsonify({"success": False, "message": "Only tenant admins can manage billing."}), 403
-
-    data = request.get_json(silent=True) or {}
-    plan = str(data.get("plan", "pro")).strip().lower()
-    if plan not in ("free", "pro", "enterprise"):
-        return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
-
-    if plan == "free":
-        return jsonify({
-            "success": False,
-            "message": "The Free plan does not require Stripe Checkout.",
-        }), 400
-
-    try:
-        stripe = _stripe_client()
-    except RuntimeError as e:
-        return jsonify({"success": False, "message": str(e)}), 503
-
-    active_sub = db.get_billing_subscription(g.tenant_id)
-    if active_sub and active_sub.get("status") == "active":
-        portal_url = _create_portal_url(g.tenant_id)
-        if portal_url:
-            return jsonify({"success": True, "url": portal_url, "portal": True})
-        return jsonify({"success": False, "message": "This tenant already has an active subscription."}), 409
-
-    base = _app_base_url()
-    price_env = _CHECKOUT_PRICE_ENV[plan]
-    price_id = os.getenv(price_env, "")
-    if not price_id:
-        return jsonify({
-            "success": False,
-            "message": f"{price_env} is not configured.",
-        }), 503
-
-    metadata = {"tenant_id": g.tenant_id, "plan": plan}
-    billing_customer = db.get_billing_customer(g.tenant_id)
-    customer_id = billing_customer["stripe_customer_id"] if billing_customer else ""
-    if not customer_id:
-        customer = stripe.Customer.create(
-            email=g.user_email,
-            name=g.tenant_name or None,
-            metadata={"tenant_id": g.tenant_id},
-        )
-        customer_id = customer.id
-        db.upsert_billing_customer(g.tenant_id, customer_id)
-
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
-        customer=customer_id,
-        client_reference_id=g.tenant_id,
-        metadata=metadata,
-        subscription_data={"metadata": metadata},
-        allow_promotion_codes=True,
-        success_url=f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{base}/billing?cancelled=1",
-    )
-    return jsonify({"success": True, "url": session.url, "session_id": session.id})
 
 
-@app.route("/billing/portal", methods=["GET"])
-@cloud_only
-@require_dashboard_user
-def billing_portal():
-    """Open Stripe Customer Portal for subscription management."""
-    if g.user_role != "admin":
-        return jsonify({"success": False, "message": "Only tenant admins can manage billing."}), 403
-    try:
-        portal_url = _create_portal_url(g.tenant_id)
-    except RuntimeError as e:
-        return jsonify({"success": False, "message": str(e)}), 503
-    if not portal_url:
-        return jsonify({"success": False, "message": "No Stripe customer exists for this tenant yet."}), 404
-    return redirect(portal_url)
 
 
-@app.route("/billing/success")
-@cloud_only
-@require_dashboard_user
-def billing_success():
-    """Redirect target after a completed Stripe checkout."""
-    from flask import redirect
-    return redirect("/billing?success=1")
 
 
-@app.route("/webhook/stripe", methods=["POST"])
-@app.route("/billing/webhook", methods=["POST"])
-@cloud_only
-def billing_webhook():
-    """
-    Stripe webhook receiver.  Automatically upgrades (or downgrades) the
-    tenant's plan when Stripe confirms payment or cancellation.
-
-    Configure in Stripe dashboard → Developers → Webhooks:
-      endpoint: https://<your-domain>/billing/webhook
-      events:   checkout.session.completed
-                customer.subscription.deleted
-    """
-    import stripe as _stripe
-    secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-    if not secret:
-        return jsonify({"error": "STRIPE_WEBHOOK_SECRET is not configured"}), 503
-
-    payload = request.get_data()
-    sig     = request.headers.get("Stripe-Signature", "")
-
-    try:
-        event = _stripe.Webhook.construct_event(payload, sig, secret)
-    except ValueError:
-        return jsonify({"error": "bad payload"}), 400
-    except _stripe.error.SignatureVerificationError:
-        return jsonify({"error": "invalid signature"}), 400
-
-    event_id = _stripe_get(event, "id")
-    etype = _stripe_get(event, "type")
-    if not event_id or not etype:
-        return jsonify({"error": "invalid event"}), 400
-
-    if not db.record_stripe_event(event_id, etype):
-        return jsonify({"received": True, "duplicate": True})
-
-    try:
-        obj = event["data"]["object"]
-
-        if etype == "checkout.session.completed":
-            metadata = _stripe_metadata(obj)
-            tenant_id = metadata.get("tenant_id") or _stripe_get(obj, "client_reference_id")
-            customer_id = _stripe_get(obj, "customer")
-            subscription_id = _stripe_get(obj, "subscription")
-            if tenant_id and customer_id:
-                db.upsert_billing_customer(tenant_id, customer_id)
-            if subscription_id:
-                stripe = _stripe_client()
-                subscription = stripe.Subscription.retrieve(
-                    subscription_id,
-                    expand=["items.data.price"],
-                )
-                _sync_subscription_from_stripe(subscription, tenant_hint=tenant_id)
-
-        elif etype in ("customer.subscription.created",
-                       "customer.subscription.updated",
-                       "customer.subscription.deleted"):
-            _sync_subscription_from_stripe(obj)
-
-        db.mark_stripe_event_processed(event_id)
-        return jsonify({"received": True})
-    except Exception as e:
-        db.release_unprocessed_stripe_event(event_id)
-        print(f"[stripe] Webhook processing failed for {event_id} ({etype}): {e}")
-        return jsonify({"error": "webhook processing failed"}), 500
 
 
 @app.route("/dashboard/api/onboarding")
@@ -5139,10 +4680,6 @@ def dashboard_onboarding_dismiss():
 # Admin -- tenant management (called with X-Admin-Key)
 # ---------------------------------------------------------------------------
 
-@app.route("/admin/tenants", methods=["GET"])
-@require_admin
-def admin_list_tenants():
-    return jsonify({"success": True, "data": db.list_tenants()})
 
 
 @app.route("/admin/feedback", methods=["GET"])
@@ -5157,69 +4694,12 @@ def admin_list_feedback():
     return jsonify({"success": True, "data": db.list_feedback(limit)})
 
 
-@app.route("/admin/tenants", methods=["POST"])
-@require_admin
-def admin_create_tenant():
-    """
-    Create a new tenant. Optionally create the first dashboard user.
-    Body: { "name": "Acme Corp", "email": "admin@acme.com", "password": "..." }
-    """
-    data     = request.get_json() or {}
-    name     = data.get("name", "").strip()
-    email    = data.get("email", "").strip()
-    password = data.get("password", "")
-
-    if not name:
-        return jsonify({"success": False, "message": "name is required."}), 400
-
-    tenant = db.create_tenant(name)
-
-    user = None
-    if email and password:
-        user = db.create_tenant_user(tenant["id"], email, password, role="admin")
-
-    return jsonify({
-        "success": True,
-        "message": f"Tenant '{name}' created.",
-        "data": {
-            "tenant":       tenant,
-            "dashboard_user": user
-        }
-    }), 201
 
 
-@app.route("/admin/tenants/<tenant_id>/users", methods=["POST"])
-@require_admin
-def admin_create_tenant_user(tenant_id):
-    """Add a dashboard user to an existing tenant."""
-    tenant = db.get_tenant_by_id(tenant_id)
-    if not tenant:
-        return jsonify({"success": False, "message": "Tenant not found."}), 404
-    data     = request.get_json() or {}
-    email    = data.get("email", "").strip()
-    password = data.get("password", "")
-    role     = data.get("role", "admin")
-    if not email or not password:
-        return jsonify({"success": False, "message": "email and password are required."}), 400
-    user = db.create_tenant_user(tenant_id, email, password, role)
-    return jsonify({"success": True, "data": user}), 201
 
 
-@app.route("/admin/ui")
-def admin_ui():
-    """Browser-based admin panel — protected by ADMIN_KEY entered in the UI."""
-    return render_template("admin_panel.html")
 
 
-@app.route("/admin/tenants/<tenant_id>/set-plan", methods=["PATCH"])
-@require_admin
-def admin_set_tenant_plan(tenant_id):
-    """Set plan for a specific tenant by ID."""
-    plan = (request.get_json() or {}).get("plan", "").strip().lower()
-    if plan not in ("free", "pro", "enterprise"):
-        return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
-    db.set_tenant_plan(tenant_id, plan)
-    return jsonify({"success": True, "message": f"Plan set to '{plan}'"})
 
 
 @app.route("/admin/flush-queue", methods=["POST"])
@@ -5237,25 +4717,6 @@ def admin_flush_queue():
     return jsonify({"success": True, "message": f"Cancelled {count} pending command(s) for {scope}."})
 
 
-@app.route("/admin/set-plan", methods=["POST"])
-@require_admin
-def admin_set_plan():
-    """
-    Set a tenant's plan by user email.
-    Body: { "email": "admin@example.com", "plan": "enterprise" }
-    """
-    data  = request.get_json() or {}
-    email = data.get("email", "").strip().lower()
-    plan  = data.get("plan", "").strip().lower()
-    if plan not in ("free", "pro", "enterprise"):
-        return jsonify({"success": False, "message": "plan must be free, pro, or enterprise"}), 400
-    if not email:
-        return jsonify({"success": False, "message": "email is required"}), 400
-    tenant = db.get_tenant_by_user_email(email)
-    if not tenant:
-        return jsonify({"success": False, "message": f"No user found with email {email}"}), 404
-    db.set_tenant_plan(tenant["id"], plan)
-    return jsonify({"success": True, "message": f"Plan set to '{plan}' for tenant of {email}"})
 
 
 # ---------------------------------------------------------------------------
