@@ -1,48 +1,54 @@
-# AID Helpdesk
-
 <p align="center">
-  <img src="cloud/static/aid-logo.svg" alt="AID Helpdesk" width="120"/>
+  <img src="cloud/static/aid-logo.svg" alt="AD Helpdesk" width="110"/>
 </p>
 
-<p align="center">
-  <strong>Your IT Admin, powered by AI. Self-hosted, on your terms.</strong><br/>
-  Manage your whole Windows Server estate in plain English, with a smart ticket system<br/>
-  and your own named AI assistant, running entirely on your own infrastructure.<br/>
-  <em>Your data, your network, your choice of AI model. No cloud required.</em>
-</p>
+<h1 align="center">AD Helpdesk</h1>
 
 <p align="center">
-  <a href="SELF_HOSTING_LOCAL.md"><strong>Run it locally in 3 steps &rarr;</strong></a>
+  <strong>Run your Windows Server estate in plain English &mdash; self-hosted, with your own AI.</strong><br/>
+  Unlock accounts, reset passwords, fix DNS, push apps. No PowerShell, no MMC consoles,<br/>
+  no cloud account, and nothing leaves your network.
 </p>
 
 <p align="center">
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue"/>
   <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue"/>
-  <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-yes-9333ea"/>
-  <img alt="Local AI" src="https://img.shields.io/badge/local%20AI-Ollama%20%7C%20any%20endpoint-9333ea"/>
+  <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-100%25-6366f1"/>
+  <img alt="Local AI" src="https://img.shields.io/badge/AI-Ollama%20%7C%20any%20endpoint-6366f1"/>
 </p>
 
----
+```
+> unlock john.smith and reset karen.wilson's password
 
-## What is AID Helpdesk?
+  On it.  → get_user_info  → unlock_account  → reset_password
+  Done. John is unlocked and Karen's temp password has been sent.
+```
 
-AID Helpdesk puts an AI layer in front of your entire Windows Server estate, not just Active Directory, and **runs entirely on your own infrastructure**. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **your AI assistant** (which you name, and which gets smarter about your organisation over time) analyses, triages, and resolves them automatically, then logs every action for your audit trail.
+## Why you might want this
 
-It started as an AD helpdesk and is now a full Windows Server management platform: Active Directory, DNS, DHCP, and Group Policy from one dashboard, NPS (RADIUS) visibility, app deployment via Group Policy, plus Entra ID via Microsoft Graph with hybrid awareness, so synced users are always managed on the correct side automatically.
+- 🧠 **Bring your own AI.** Point it at [Ollama](https://ollama.com), your own GPU box by IP, or any OpenAI-compatible server (LM Studio, vLLM, LocalAI, Jan, LiteLLM). Pick Local or Cloud in the UI. **No cloud dependency unless you choose one.**
+- 🔒 **Your data never leaves.** On-prem dashboard, database, AD, and AI. Full audit trail, secrets encrypted at rest, and every risky action gated behind a confirmation code.
+- 🪟 **The whole estate, not just AD.** Active Directory, DNS, DHCP, Group Policy, NPS, app deployment, and Entra ID &mdash; one dashboard, 60 actions.
+- 🎫 **Tickets that resolve themselves.** Staff email "I'm locked out"; the assistant verifies who they are, does it, and logs it.
+- 🆓 **No plans, no quotas, no billing.** Self-hosted means unlimited.
 
-No scripting. No clicking through MMC consoles. Just describe the problem and it gets handled.
+## Quickstart
 
-### Runs where you want, on the AI you want
+```bash
+git clone https://github.com/lachydotmcg/ad-helpdesk.git
+cd ad-helpdesk && pip install -r requirements.txt
 
-This is the **self-hosted edition** - you run the whole thing yourself: the dashboard, the database, the agent, and the AI. Nothing leaves your network unless you send it there.
+# point it at a local model and run as a single-org install
+export AI_PROVIDER=ollama AID_LOCAL_MODE=1
+python cloud/app.py
+```
 
-- 🧠 **Any AI, anywhere.** Point the assistant at a local [Ollama](https://ollama.com) model, at your own AI server/VM by IP or hostname (anything OpenAI-compatible: LM Studio, vLLM, LocalAI, Jan, LiteLLM, and more), or at a managed cloud model. **No cloud dependency unless you choose one.**
-- 🏠 **One command to run it.** `AID_LOCAL_MODE=1` provisions a single-organisation install with an admin login on first start. No account, no billing, no keys.
-- 🔒 **Your data stays yours.** On-prem database, on-prem AD, on-prem AI. Full audit trail, and secrets encrypted at rest.
+Open **http://localhost:5000** &mdash; your admin login is printed to the console on first start.
 
-See **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)** for the 3-step quickstart.
+Then install the agent on a box that can reach your domain controller, and you're live.
+Full walkthrough: **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)**.
 
-> **Prefer a managed, hosted version?** The same platform is available as a fully managed cloud service (we run it, you just log in). Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
+> **Want it managed instead?** The same platform runs as a hosted service at **[aidhelpdesk-bba430f79b62.herokuapp.com](https://aidhelpdesk-bba430f79b62.herokuapp.com)** &mdash; we run it, you just log in.
 
 ---
 
@@ -71,21 +77,22 @@ See **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)** for the 3-step quickstart
 
 ## How it works
 
+Everything below runs on hardware you control. Nothing here requires the internet.
+
 ```
   Staff Browser
-       │  HTTPS
+       │
        ▼
-  ┌──────────────────────────────────┐
-  │   AID Cloud Dashboard            │  ← Railway / any VPS
-  │   web-production-01ecc.up.       │
-  │   railway.app                    │
-  └──────────────┬───────────────────┘
-                 │
-                 │  outbound HTTPS polling
+  ┌──────────────────────────────────┐        ┌──────────────────────────┐
+  │   AD Helpdesk Dashboard          │ ─────► │  Your AI                 │
+  │   (your server / VM / NAS)       │        │  Ollama, LM Studio, vLLM │
+  └──────────────┬───────────────────┘        │  or any OpenAI-compatible│
+                 │                            │  endpoint by IP/URL      │
+                 │  outbound polling          └──────────────────────────┘
                  │  ◀── no inbound ports · no VPN · no firewall rules
                  ▼
   ┌──────────────────────────────────┐
-  │   AID Agent                      │  ← Windows Service on your server
+  │   AD Agent                       │  ← Windows Service on your server
   │   (agent.py)                     │
   └──────────────┬───────────────────┘
                  │
@@ -93,35 +100,27 @@ See **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)** for the 3-step quickstart
                  ▼
   ┌──────────────────────────────────┐
   │   Windows Server                 │
-  │   Active Directory               │  ← never touches the internet
+  │   AD · DNS · DHCP · GPO · NPS    │  ← never touches the internet
   └──────────────────────────────────┘
 ```
 
-The **AID Agent** is a lightweight Windows Service that polls *outbound*; your Active Directory never exposes itself to the internet, no firewall rules are needed, and it works behind NAT, Tailscale, or any network topology.
+The **agent** is a lightweight Windows Service that polls *outbound*; your domain controller never exposes itself, no firewall rules are needed, and it works behind NAT, Tailscale, or any network topology.
 
 ---
 
-## Quickstart
+## Connecting the agent
 
-### 1. Create an account
+The dashboard talks to Windows through a lightweight agent. Install it on any box that can reach your domain controller over WinRM:
 
-Sign up free at [web-production-01ecc.up.railway.app/signup](https://aidhelpdesk-bba430f79b62.herokuapp.com). No credit card needed.
-
-### 2. Copy your API key
-
-Go to **Settings** in your dashboard and copy your tenant API key.
-
-### 3. Install the agent on your Windows Server
-
-Download `aid-agent-setup.exe` from your dashboard and run it. The setup wizard walks you through three screens:
-
-1. **Cloud**: paste your API key; wizard verifies connectivity
-2. **AD Credentials**: enter your AD server IP, domain name, and service account
-3. **Install**: wizard copies the agent to `C:\Program Files\AID Helpdesk Agent\`, writes `agent-config.json`, and registers + starts the Windows Service
-
-Your dashboard shows **Agent: Online** and you're ready to receive tickets.
+1. **Get your API key** &mdash; printed to the console on first start, and shown in **Settings**.
+2. **Run the installer** &mdash; `aid-agent-setup.exe` walks through three screens:
+   - **Server**: paste your API key and your dashboard's address (e.g. `http://your-server:5000`); the wizard verifies connectivity
+   - **AD Credentials**: your AD server IP, domain name, and service account
+   - **Install**: copies the agent, writes `agent-config.json`, and registers + starts the Windows Service
+3. **Check the dashboard** &mdash; it shows **Agent: Online** and you're ready to go.
 
 > **Build the installer yourself:** `installer/build.bat`; requires Python 3.9+ and PyInstaller on Windows.
+> **Prefer no installer?** `python agent.py` with a filled-in `agent-config.json` works too.
 
 ---
 
@@ -176,29 +175,23 @@ High-blast, hard-to-reverse actions (`disable_account`, bulk OU moves, OU creati
 
 ---
 
-## Free while in early access
+## Self-hosted vs managed
 
-AID Helpdesk is **completely free** right now. I'm trialling it out and gathering feedback before introducing paid plans — so every feature is unlocked, no credit card required.
+Same platform, same features. The only difference is who runs it and where the AI lives.
 
-| | Free Trial |
-|---|---|
-| AI scans / month | 20 |
-| AD actions / month | 50 |
-| Tickets | Unlimited |
-| Team members | Unlimited |
-| Email ticket intake | ✓ |
-| Zoho Desk sync | ✓ |
-| AI auto-actions | ✓ |
-| DNS / DHCP / Group Policy tabs | ✓ |
-| NPS (RADIUS) read-only view | ✓ |
-| Entra ID (Microsoft Graph) | ✓ |
-| Scheduled reports | ✓ |
-| Custom PowerShell scripts | ✓ (up to 3) |
-| Slack / Teams integration | ✓ |
-| Full audit trail | ✓ |
-| Price | **A$0** |
+| | **Self-hosted** (this repo) | **Managed** ([hosted](https://aidhelpdesk-bba430f79b62.herokuapp.com)) |
+|---|---|---|
+| AI | Yours: Ollama, your GPU box, any endpoint | Managed model, zero setup |
+| AI scans / AD actions | **Unlimited** | Plan quotas |
+| Data location | Entirely your network | Hosted |
+| Setup | You run it | Sign up and go |
+| Updates | `git pull` | Automatic |
+| Every feature (AD, DNS, DHCP, GPO, NPS, Entra, deploy, tickets, audit) | ✓ | ✓ |
+| Price | **Free** | Paid |
 
-> Paid plans with higher quotas are coming later. For now, sign up free and let me know what you think — feedback shapes where this goes next. Use the in-app **💬 Feedback** button or email [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
+Self-hosting is free and unmetered, forever. The managed service exists purely so you don't have to run it yourself.
+
+> Feedback shapes where this goes next &mdash; use the in-app **Feedback** button or email [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
 
 ---
 
@@ -206,31 +199,35 @@ AID Helpdesk is **completely free** right now. I'm trialling it out and gatherin
 
 | | |
 |---|---|
-| [SECURITY.md](SECURITY.md) | AI safety model, trust architecture, WinRM security, tenant isolation, audit logging |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Full system design, polling model, action flow, DB schema |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Deploy to Railway, environment variables, PostgreSQL |
-| [SELF_HOSTING.md](SELF_HOSTING.md) | Run the agent or full backend yourself |
+| **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)** | **Start here** &mdash; run everything locally with your own AI |
+| [SECURITY.md](SECURITY.md) | AI safety model, trust architecture, WinRM security, audit logging |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, polling model, action flow, DB schema |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Environment variables, PostgreSQL, hosting it on a VPS |
+| [docs/deploy-app-design.md](docs/deploy-app-design.md) | How app deployment via Group Policy works |
 
 ---
 
 ## Roadmap
 
-- [x] v0.1-v0.4: WinRM bridge, local dashboard, cloud agent, multi-tenant backend
-- [x] v0.5-v0.9: Hosted SaaS, AI assistant, ticketing, threat scores, email intake, search chaining
+- [x] v0.1-v0.4: WinRM bridge, dashboard, agent, backend
+- [x] v0.5-v0.9: AI assistant, ticketing, threat scores, email intake, search chaining
 - [x] v1.0: Windows Service installer (.exe), scheduled reports, custom PS scripts, bulk AD ops
-- [ ] v1.1: Named AI persona, AI memory / organisational learning, Slack/Teams integration
-- [x] v1.2: Windows Server management tabs (DNS, DHCP, Group Policy with token-gated writes, NPS read-only), Entra ID via Microsoft Graph with hybrid on-prem/cloud routing
+- [x] v1.2: Windows Server management (DNS, DHCP, Group Policy with token-gated writes, NPS), Entra ID via Graph with hybrid routing
+- [x] v1.3: Self-hosted edition &mdash; bring-your-own AI (Ollama / any OpenAI-compatible endpoint), local mode, app deployment via GPO
+- [ ] v1.4: Named AI persona, organisational memory, Slack/Teams integration
 
 ---
 
 ## Contributing
 
-PRs welcome on the agent, PowerShell scripts, and skill. Please open an issue first for major changes. The `cloud/` backend is source-available; bug fixes and improvements are welcome, but forks intended as competing hosted services are not.
+PRs welcome, especially on the bridges, PowerShell scripts, and local-model support. Please open an issue first for major changes.
+
+Adding support for another Windows role is deliberately easy: drop a `<role>_bridge.py` next to the others exposing `ACTIONS` and `CAPABILITY`, and the agent auto-registers it. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
 ## Licence
 
-**Agent + bridge** (`agent.py`, `ad_bridge.py`, scripts): [MIT](https://opensource.org/licenses/MIT)
+**Agent + bridges** (`agent.py`, `*_bridge.py`, scripts): [MIT](https://opensource.org/licenses/MIT)
 
-**Cloud SaaS backend** (`cloud/`): MIT + [Commons Clause](https://commonsclause.com/); self-host freely, do not resell as a hosted service without a commercial agreement. Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
+**Backend** (`cloud/`): MIT + [Commons Clause](https://commonsclause.com/) &mdash; self-host freely (including commercially, inside your own organisation); do not resell it as a competing hosted service without a commercial agreement. Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
