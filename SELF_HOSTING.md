@@ -1,181 +1,138 @@
-# Self-hosting AID Helpdesk
+# Run AID Helpdesk fully locally (no cloud, no cost)
 
-You can self-host the agent, the full cloud backend, or both. The entire codebase is in this repo.
+AID Helpdesk is the same codebase whether you use the hosted SaaS or run the whole
+thing yourself on-prem. This guide is the **local edition**: one organisation, your
+own AI, no Anthropic key, no billing, no data leaving your network.
 
----
+You get the full platform - Active Directory, DNS, DHCP, Group Policy, NPS, Entra,
+app deployment, tickets, and the AI assistant - running on your own hardware, with
+the assistant powered by a local model via [Ollama](https://ollama.com).
 
-## Self-hosting the agent only
+## What "local" means here
 
-The agent is MIT-licensed and fully open source.
+```
+  Your browser
+       |
+       v
+  AID dashboard (Flask)  ----> Ollama (local LLM, e.g. llama3)   [AI_PROVIDER=ollama]
+       |                        on this box or any box on your LAN
+       v
+  AID agent  --WinRM/HTTPS-->  Windows Server (Active Directory, DNS, DHCP, ...)
+```
 
-### Requirements
+Nothing calls out to the internet for AI or billing. The dashboard, the database
+(SQLite by default), the agent, and the model all run on infrastructure you control.
 
-- Python 3.9+ on a machine with WinRM access to your AD server
-- Windows Server 2019/2022 with Active Directory Domain Services
-- WinRM enabled on the server
+## Quickstart
 
-### Steps
+### 1. Point the assistant at a model you control
+
+You have three options - pick one:
+
+**a) Ollama (simplest).** Download [Ollama](https://ollama.com) and pull a model:
 
 ```bash
-git clone https://github.com/lachydotmcg/ad-helpdesk.git
-cd ad-helpdesk
+ollama pull llama3          # solid default; qwen2.5 or mistral also work well
+```
+
+Ollama can run on the same box or a separate machine - point `OLLAMA_URL` at it
+(e.g. `http://192.168.1.50:11434`).
+
+**b) Any AI server / VM (`AI_PROVIDER=custom`).** If you already run an AI server -
+LM Studio, vLLM, LocalAI, Jan, text-generation-webui, LiteLLM, or your own GPU VM -
+just give AID its address. Anything that exposes an OpenAI-compatible
+`/v1/chat/completions` endpoint works:
+
+```bash
+AI_PROVIDER=custom
+AI_BASE_URL=http://192.168.1.50:1234/v1     # your AI box's IP or hostname
+AI_MODEL_NAME=qwen2.5-7b-instruct
+AI_API_KEY=                                 # optional, if your endpoint needs one
+```
+
+This also works for hosted OpenAI-compatible APIs (OpenRouter, Groq, Together) if
+you'd rather route there than to Anthropic. There is no dependency on our cloud at
+all unless you choose one.
+
+**c) Managed cloud (`AI_PROVIDER=anthropic`).** Set `ANTHROPIC_API_KEY` and you get
+the same experience as the hosted product, just self-hosted.
+
+### 2. Configure the environment
+
+Copy `cloud/.env.example` to `.env` and set:
+
+```bash
+# choose ONE brain (see step 1):
+AI_PROVIDER=ollama
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3
+# ...or point at any AI server:
+# AI_PROVIDER=custom
+# AI_BASE_URL=http://192.168.1.50:1234/v1
+# AI_MODEL_NAME=qwen2.5-7b-instruct
+
+AID_LOCAL_MODE=1
+AID_LOCAL_ORG=Acme IT
+AID_LOCAL_ADMIN_EMAIL=admin@acme.local
+AID_LOCAL_ADMIN_PASSWORD=pick-a-good-password
+
+SECRET_KEY=change-this-to-a-long-random-string
+SETTINGS_ENCRYPTION_KEY=change-this-to-a-long-random-string
+```
+
+No `ANTHROPIC_API_KEY`, no `ADMIN_KEY`, no Stripe, no `DATABASE_URL` needed. (SQLite
+is used automatically when `DATABASE_URL` is unset. For multiple machines or heavier
+use, point `DATABASE_URL` at your own Postgres.)
+
+### 3. Run it
+
+```bash
 pip install -r requirements.txt
-cd agent
-cp agent-config.example.json agent-config.json
-# Edit agent-config.json — see field reference below
-python agent.py
+python cloud/app.py
 ```
 
-### agent-config.json fields
+On first start you'll see the provisioned login printed to the console:
 
-| Field | Description |
-|---|---|
-| `cloud_url` | URL of your cloud backend (e.g. `https://your-app.railway.app`) |
-| `tenant_api_key` | Your tenant API key from the dashboard Settings page |
-| `ad_vm_ip` | IP address of your Windows Server |
-| `ad_domain` | NetBIOS domain name (e.g. `LAB`, not `lab.local`) |
-| `ad_admin_user` | Service account username (e.g. `svc.helpdesk`) |
-| `ad_admin_pass` | Service account password |
-| `timeout_seconds` | WinRM command timeout (default: 15) |
-
-> **Use the NetBIOS domain name** (e.g. `LAB`), not the FQDN (`lab.local`). NTLM auth will fail with the FQDN.
-
----
-
-## Keeping the agent running without pywin32
-
-The agent connects **outbound only** — it never listens on a port. That means it does not have to run on the AD server itself: any always-on Windows machine with WinRM (or Tailscale) reach to the AD server can host it. Because of that, you don't need a true Windows Service (and the `pywin32` package the service installer relies on) just to keep it alive. The simplest dependency-free option is **Windows Task Scheduler**, which is built into every Windows install.
-
-### Prerequisites
-
-- Put your WinRM credentials in a `.env` file in the repo root (the same folder as `agent.py`). `ad_bridge.py` loads it automatically via `python-dotenv`:
-
-  ```ini
-  AD_VM_IP=100.x.x.x
-  AD_DOMAIN=LAB
-  AD_ADMIN_USER=svc.helpdesk
-  AD_ADMIN_PASS=YourPassword
-  # Force plain-HTTP WinRM on port 5985 instead of HTTPS 5986.
-  # Safe when the agent reaches the AD server over a Tailscale tunnel,
-  # since the tunnel already encrypts the traffic end to end.
-  AD_WINRM_HTTP=1
-  ```
-
-  > `AD_WINRM_HTTP` is read from the environment only (it is **not** one of the keys `agent.py` injects from `agent-config.json`), so it must live in `.env` or be set as a real environment variable. `cloud_url` and `tenant_api_key` still come from `agent-config.json`.
-
-### Register the task
-
-Run this once from an **elevated** Command Prompt or PowerShell. It launches `python agent.py` every time you log on. Replace the path with your actual checkout location:
-
-```bat
-schtasks /create /tn "AID Helpdesk Agent" /sc onlogon /rl highest /f ^
-  /tr "cmd /c cd /d C:\Users\you\ad-helpdesk\agent && python agent.py"
+```
+ AID Helpdesk -- local mode
+ ----------------------------
+ Organisation: Acme IT
+ Sign in at /login with:  admin@acme.local / pick-a-good-password
+ Agent API key:           3f9c...
+ AI provider:             ollama (http://localhost:11434)
 ```
 
-- **Working directory matters.** The `cd /d C:\Users\you\ad-helpdesk` is required so the agent finds `agent-config.json` and loads `.env` from the repo root. Without it, Task Scheduler starts in `C:\Windows\System32` and `.env` won't be picked up.
-- If `python` isn't on the system `PATH`, use the full interpreter path, e.g. `cd /d C:\Users\you\ad-helpdesk && "C:\Python312\python.exe" agent.py`.
-- `/sc onlogon` starts it at user logon; swap for `/sc onstart` if you want it to run at boot before anyone logs in (requires `/ru SYSTEM`).
+Open `http://localhost:5000`, sign in, and change the admin password in Settings.
 
-### Start it now and verify
+### 4. Connect the agent to your Windows Server
 
-```bat
-:: Start immediately without logging out
-schtasks /run /tn "AID Helpdesk Agent"
+Install the AID agent on a box that can reach your domain controller over WinRM,
+paste the **Agent API key** from the console output and your AD credentials, and
+point its `cloud_url` at your dashboard (e.g. `http://your-box:5000`). The agent
+polls outbound, so no inbound ports or VPN are required. See the main README's
+agent section.
 
-:: Confirm it's registered and see Last Run Time / Last Result
-schtasks /query /tn "AID Helpdesk Agent" /v /fo LIST
-```
+## Cloud vs local - same code, two modes
 
-A healthy `Last Result` is `0x0` (still running) or the task showing as **Running** in `taskschd.msc`. The most reliable confirmation is on the cloud side: the dashboard **Settings → Agent** status flips to connected within a few seconds once the agent starts polling. To stop or remove it:
+| | Cloud SaaS | Local self-host |
+|---|---|---|
+| AI | Anthropic (`AI_PROVIDER=anthropic`) | Ollama (`AI_PROVIDER=ollama`) |
+| Tenants | Multi-tenant | Single org (`AID_LOCAL_MODE=1`) |
+| Sign-up / billing | Yes (Stripe) | None |
+| Database | Postgres | SQLite (or your own Postgres) |
+| Cost | Per-plan | Free |
+| Data location | Hosted | Entirely on your network |
 
-```bat
-schtasks /end    /tn "AID Helpdesk Agent"
-schtasks /delete /tn "AID Helpdesk Agent" /f
-```
+Switching modes is purely configuration - there is no separate build. That keeps the
+local and cloud editions from drifting apart.
 
----
+## Notes
 
-## Enable WinRM on your AD server
-
-```powershell
-Enable-PSRemoting -Force
-```
-
-Use HTTPS WinRM (port 5986) — the agent defaults to this. Restrict firewall rules to your local subnet. See [SECURITY.md](SECURITY.md) for full WinRM guidance.
-
----
-
-## Create a minimal service account
-
-The agent does **not** need Domain Admin rights. Use a dedicated account with delegated permissions only:
-
-```powershell
-# 1. Create the service account
-New-ADUser -Name "Helpdesk Service" -SamAccountName "svc.helpdesk" `
-  -AccountPassword (ConvertTo-SecureString "YourPassword" -AsPlainText -Force) `
-  -Enabled $true -PasswordNeverExpires $true
-
-# 2. Allow WinRM access
-Add-ADGroupMember -Identity "Remote Management Users" -Members "svc.helpdesk"
-
-# 3. Delegate OU permissions (adjust OU path to match your domain)
-$ou = "OU=YourOU,DC=lab,DC=local"
-dsacls $ou /G "LAB\svc.helpdesk:CA;Reset Password;user" /I:S
-dsacls $ou /G "LAB\svc.helpdesk:RPWP;pwdLastSet;user" /I:S
-dsacls $ou /G "LAB\svc.helpdesk:RPWP;lockoutTime;user" /I:S
-dsacls $ou /G "LAB\svc.helpdesk:RPWP;userAccountControl;user" /I:S
-```
-
-> `svc.helpdesk` does **not** need to be a member of local Administrators or Domain Admins. The delegated permissions above give it exactly what it needs and nothing more.
-
----
-
-## Self-hosting the full cloud backend
-
-The cloud backend (`cloud/`) is MIT + Commons Clause licensed. Self-hosting for your own organisation is free and encouraged. Reselling a hosted instance as a subscription service to third parties requires a separate commercial licence — contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
-
-### Requirements
-
-- Python 3.9+
-- PostgreSQL (or SQLite for local dev/test)
-- An Anthropic API key
-
-### Steps
-
-```bash
-git clone https://github.com/lachydotmcg/ad-helpdesk.git
-cd ad-helpdesk
-pip install -r requirements.txt
-```
-
-**Local dev (SQLite — no DATABASE_URL needed):**
-
-```bash
-cd cloud
-python app.py
-```
-
-Dashboard is at `http://localhost:5000`. The DB is created automatically on first run.
-
-**Production (PostgreSQL):**
-
-```bash
-export DATABASE_URL=postgresql://user:pass@host/dbname
-export SECRET_KEY=your-secret-key
-export ADMIN_KEY=your-admin-key
-export ANTHROPIC_API_KEY=sk-ant-...
-python -m gunicorn cloud.app:app
-```
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full Railway deployment guide.
-
----
-
-## Building the Windows installer
-
-```bat
-cd installer
-build.bat
-```
-
-Requires Python 3.9+ and PyInstaller on Windows. Output: `installer/dist/aid-agent-setup.exe`.
+- The **intelligence tiers** (Normal / High) in Configure AI are an Anthropic concept.
+  In Ollama mode the assistant always uses `OLLAMA_MODEL`; swap that env var to change
+  models. (A future version may map tiers to different local models.)
+- Ollama replies are only as good as the model you pull. For agentic action-planning,
+  a 7B+ instruct model is the practical floor; larger models plan multi-step actions
+  more reliably.
+- Everything else - the AD/DNS/DHCP/GPO/NPS/deploy bridges, tickets, audit log, the
+  command palette - works identically in both modes.

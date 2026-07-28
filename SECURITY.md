@@ -81,7 +81,7 @@ The Windows agent never opens an inbound port. It polls the cloud backend every 
 
 ### Principle of least privilege
 
-The service account (`svc.helpdesk`) uses delegated OU permissions only  - not Domain Admins, not local Administrators. It has exactly the rights needed to reset passwords, unlock accounts, and manage group membership, and nothing more. See [SELF_HOSTING.md](SELF_HOSTING.md) for the exact `dsacls` delegation commands.
+The service account (`svc.helpdesk`) uses delegated OU permissions only  - not Domain Admins, not local Administrators. It has exactly the rights needed to reset passwords, unlock accounts, and manage group membership, and nothing more. See [docs/agent-setup.md](docs/agent-setup.md) for the exact `dsacls` delegation commands.
 
 ---
 

@@ -35,7 +35,7 @@ DEFAULT_VERSION = "1.3.0"
 SERVER_FILES = [
     "README.md",
     "LICENSE",
-    "SELF_HOSTING_LOCAL.md",
+    "SELF_HOSTING.md",
     "SECURITY.md",
     "ARCHITECTURE.md",
     "DEPLOYMENT.md",
@@ -140,7 +140,7 @@ The dashboard, database, and AI assistant. Run this anywhere Python runs.
 Then install the AGENT (separate download) on a Windows box that can reach
 your domain controller, and give it that agent key plus this server's address.
 
-Full guide: SELF_HOSTING_LOCAL.md
+Full guide: SELF_HOSTING.md
 """
     return f"""AD Helpdesk AGENT {version}
 ================================

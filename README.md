@@ -50,7 +50,7 @@ python cloud/app.py
 Open **http://localhost:5000** &mdash; your admin login is printed to the console on first start.
 
 Then install the agent on a box that can reach your domain controller, and you're live.
-Full walkthrough: **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)**.
+Full walkthrough: **[SELF_HOSTING.md](SELF_HOSTING.md)**.
 
 > **Want it managed instead?** The same platform runs as a hosted service at **[aidhelpdesk-bba430f79b62.herokuapp.com](https://aidhelpdesk-bba430f79b62.herokuapp.com)** &mdash; we run it, you just log in.
 
@@ -214,7 +214,8 @@ Self-hosting is free and unmetered, forever. The managed service exists purely s
 
 | | |
 |---|---|
-| **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)** | **Start here** &mdash; run everything locally with your own AI |
+| **[SELF_HOSTING.md](SELF_HOSTING.md)** | **Start here** &mdash; run everything yourself with your own AI |
+| [docs/agent-setup.md](docs/agent-setup.md) | Installing the agent, WinRM, and a least-privilege service account |
 | [SECURITY.md](SECURITY.md) | AI safety model, trust architecture, WinRM security, audit logging |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, polling model, action flow, DB schema |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Environment variables, PostgreSQL, hosting it on a VPS |
