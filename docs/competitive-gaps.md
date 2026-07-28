@@ -76,17 +76,21 @@ Worth stating plainly, because it is the actual moat:
 
 Ranked by (value to a real deal) / (effort), not by how impressive it sounds.
 
-1. **Two-way Slack / Teams assistant** - the single biggest gap. Converts us from
-   an IT-admin tool into employee self-service, which is where deflection actually
-   happens. The assistant pipeline already exists; this is a new *surface* on it,
-   not new reasoning.
-2. **Ticket attachments** - cheap, and its absence is obvious in any demo.
-3. **SLA basics** - due date, breach flag, escalation on breach. A day against the
-   existing schema.
-4. **Knowledge base + RAG** - larger, but it is what lets the assistant answer "how
-   do I connect to the VPN" instead of shrugging. Pairs naturally with the local
-   model story: embeddings can run locally too.
-5. **Service metrics** - MTTR, first-contact resolution, CSAT.
+1. ~~**Two-way Slack assistant**~~ - **built.** Socket Mode listener, server-side
+   identity resolution, self-service action allowlist, Settings UI. Teams is still
+   open and needs a different transport (see the note below). The live Socket Mode
+   handshake is untested against a real Slack app.
+2. ~~**Ticket attachments**~~ - **built.** Extension allowlist, size cap, traversal
+   guard, tenant-scoped.
+3. ~~**SLA basics**~~ - **built.** Priority-based targets, due dates, breach flag,
+   escalation to the activity log, first-response timestamps.
+4. **Knowledge base + RAG** - the largest remaining item, and now the top one. It is
+   what lets the assistant answer "how do I connect to the VPN" instead of
+   shrugging. Pairs naturally with the local model story: embeddings can run
+   locally too.
+5. **Service metrics** - MTTR, first-contact resolution, CSAT. Cheaper than it was:
+   SLA work already added `first_response_at` and `resolved_at`, so first-contact
+   resolution and MTTR are now mostly a query rather than a schema change.
 
 ---
 
