@@ -30,7 +30,7 @@ import secrets_crypto
 
 # Tenant-settings keys that hold secrets and must be encrypted at rest. Encryption
 # is transparent: callers of get_settings/update_settings always see plaintext.
-SECRET_SETTING_KEYS = ("smtp_pass", "graph_client_secret")
+SECRET_SETTING_KEYS = ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "adhelpdesk.db")
 
@@ -1404,6 +1404,12 @@ _SETTINGS_DEFAULTS = {
     "ai_name":            "Assistant",
     "ai_context":         "",
     "ai_model":           "normal",   # assistant intelligence tier: normal | high | super
+    # AI provider chosen in Configure AI. "" = use the server's env default.
+    "ai_provider":        "",         # "" | "cloud" | "local"
+    "ai_base_url":        "",         # local: OpenAI-compatible endpoint (IP/URL)
+    "ai_model_name":      "",         # local: model id the endpoint expects
+    "ai_cloud_key":       "",         # cloud: API key (encrypted at rest)
+    "ai_local_key":       "",         # local: optional endpoint key (encrypted)
 
     "security_checks":    True,
     "email_domain":       "",

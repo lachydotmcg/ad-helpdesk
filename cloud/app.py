@@ -149,12 +149,14 @@ class _ShimResponse:
 
 
 class _OllamaMessages:
+    def __init__(self, url, model):
+        self.url = url.rstrip("/"); self.model = model
     def create(self, model=None, max_tokens=512, system=None, messages=None, **kwargs):
         import requests
         msgs = ([{"role": "system", "content": system}] if system else []) + (messages or [])
         resp = requests.post(
-            f"{OLLAMA_URL}/api/chat",
-            json={"model": OLLAMA_MODEL, "messages": msgs, "stream": False,
+            f"{self.url}/api/chat",
+            json={"model": self.model, "messages": msgs, "stream": False,
                   "options": {"num_predict": max_tokens}},
             timeout=180,
         )
@@ -165,17 +167,18 @@ class _OllamaMessages:
 
 class _OpenAICompatMessages:
     """Talks to any OpenAI-compatible /chat/completions endpoint."""
+    def __init__(self, base_url, model, key):
+        self.base_url = base_url.rstrip("/"); self.model = model or "local-model"; self.key = key
     def create(self, model=None, max_tokens=512, system=None, messages=None, **kwargs):
         import requests
         msgs = ([{"role": "system", "content": system}] if system else []) + (messages or [])
         headers = {"Content-Type": "application/json"}
-        if AI_API_KEY:
-            headers["Authorization"] = f"Bearer {AI_API_KEY}"
+        if self.key:
+            headers["Authorization"] = f"Bearer {self.key}"
         resp = requests.post(
-            f"{AI_BASE_URL}/chat/completions",
+            f"{self.base_url}/chat/completions",
             headers=headers,
-            json={"model": AI_MODEL_NAME or "local-model", "messages": msgs,
-                  "max_tokens": max_tokens, "stream": False},
+            json={"model": self.model, "messages": msgs, "max_tokens": max_tokens, "stream": False},
             timeout=180,
         )
         resp.raise_for_status()
@@ -189,32 +192,64 @@ class _ShimClient:
         self.messages = messages_impl
 
 
-def ai_enabled() -> bool:
-    """Whether the configured AI provider is usable at all."""
+def _resolve_ai(tenant_id=None):
+    """Resolve the effective AI config. A tenant's in-app AI setting
+    (Configure AI -> AI Provider) wins; otherwise fall back to the env defaults.
+    Returns {mode, base_url, model, key} where mode is 'anthropic' | 'ollama' | 'openai'."""
+    s = {}
+    if tenant_id:
+        try:
+            s = db.get_settings(tenant_id) or {}
+        except Exception:
+            s = {}
+    choice = (s.get("ai_provider") or "").strip().lower()   # "cloud" | "local" | ""
+
+    if choice == "cloud":
+        return {"mode": "anthropic", "key": (s.get("ai_cloud_key") or os.getenv("ANTHROPIC_API_KEY", "")).strip()}
+    if choice == "local":
+        return {
+            "mode":     "openai",
+            "base_url": (s.get("ai_base_url") or AI_BASE_URL).strip(),
+            "model":    (s.get("ai_model_name") or AI_MODEL_NAME).strip(),
+            "key":      (s.get("ai_local_key") or AI_API_KEY).strip(),
+        }
+    # No in-app choice -> use the env-configured global provider.
     if AI_PROVIDER == "ollama":
-        return True
+        return {"mode": "ollama", "base_url": OLLAMA_URL, "model": OLLAMA_MODEL}
     if AI_PROVIDER == "custom":
-        return bool(AI_BASE_URL)
-    return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+        return {"mode": "openai", "base_url": AI_BASE_URL, "model": AI_MODEL_NAME, "key": AI_API_KEY}
+    return {"mode": "anthropic", "key": os.getenv("ANTHROPIC_API_KEY", "").strip()}
 
 
-def ai_unavailable_message() -> str:
-    if AI_PROVIDER == "ollama":
-        return f"The local AI model isn't reachable. Check that Ollama is running at {OLLAMA_URL}."
-    if AI_PROVIDER == "custom":
-        return "No AI endpoint configured. Set AI_BASE_URL to your AI server's OpenAI-compatible address."
-    return "ANTHROPIC_API_KEY not set in environment."
+def ai_enabled(tenant_id=None) -> bool:
+    """Whether the effective AI provider is usable at all."""
+    cfg = _resolve_ai(tenant_id)
+    if cfg["mode"] == "ollama":
+        return bool(cfg.get("base_url"))
+    if cfg["mode"] == "openai":
+        return bool(cfg.get("base_url"))
+    return bool(cfg.get("key"))
 
 
-def _get_ai_client():
+def ai_unavailable_message(tenant_id=None) -> str:
+    cfg = _resolve_ai(tenant_id)
+    if cfg["mode"] == "ollama":
+        return f"The local AI model isn't reachable. Check that Ollama is running at {cfg.get('base_url')}."
+    if cfg["mode"] == "openai":
+        return "No local AI endpoint set. In Configure AI, choose Local and enter your AI server's address."
+    return "No AI is configured. In Configure AI, choose Cloud and enter an API key (or set ANTHROPIC_API_KEY)."
+
+
+def _get_ai_client(tenant_id=None):
     """Return an Anthropic client, or a shim for Ollama / any OpenAI-compatible
-    endpoint, per AI_PROVIDER."""
-    if AI_PROVIDER == "ollama":
-        return _ShimClient(_OllamaMessages())
-    if AI_PROVIDER == "custom":
-        return _ShimClient(_OpenAICompatMessages())
+    endpoint, based on the tenant's in-app AI setting (env fallback)."""
+    cfg = _resolve_ai(tenant_id)
+    if cfg["mode"] == "ollama":
+        return _ShimClient(_OllamaMessages(cfg["base_url"], cfg.get("model") or OLLAMA_MODEL))
+    if cfg["mode"] == "openai":
+        return _ShimClient(_OpenAICompatMessages(cfg["base_url"], cfg.get("model"), cfg.get("key")))
     import anthropic
-    return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+    return anthropic.Anthropic(api_key=cfg.get("key", ""))
 
 
 # Standard security headers applied to every response.
@@ -775,10 +810,10 @@ def _run_reflection_pass(tenant_id: str, ai_name: str, user_message: str,
     After a meaningful action, ask Claude to extract any org-specific facts worth remembering.
     Runs in a background thread so it never blocks the chat response.
     """
-    if not ai_enabled() or not result_success:
+    if not ai_enabled(tenant_id) or not result_success:
         return
     try:
-        client = _get_ai_client()
+        client = _get_ai_client(tenant_id)
         prompt = f"""An IT admin asked their AI assistant ("{ai_name}") to: "{user_message}"
 The action taken was: {action} with args {args}
 The action succeeded.
@@ -3239,8 +3274,8 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
     Returns a plain dict (suitable for jsonify). Never raises — errors are
     returned as {"success": False, "message": "..."}.
     """
-    if not ai_enabled():
-        return {"success": False, "message": ai_unavailable_message()}
+    if not ai_enabled(tenant_id):
+        return {"success": False, "message": ai_unavailable_message(tenant_id)}
 
     history = history or []
 
@@ -3517,7 +3552,7 @@ CRITICAL RULES:
     }
     LOOKUP_ACTIONS |= ENTRA_LOOKUP_ACTIONS
 
-    client   = _get_ai_client()
+    client   = _get_ai_client(tenant_id)
     messages = []
     for h in history[-10:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):
@@ -4016,12 +4051,13 @@ def dashboard_delete_script(script_id):
 def dashboard_get_settings():
     """Return this tenant's AI / automation settings."""
     settings = db.get_settings(g.tenant_id)
-    # Never expose smtp_pass in API response — redact it
+    # Never expose secrets in the API response — redact them (client shows a
+    # placeholder and a "key is set" hint instead).
     safe = dict(settings)
-    if safe.get("smtp_pass"):
-        safe["smtp_pass"] = ""   # client shows placeholder text instead
-    if safe.get("graph_client_secret"):
-        safe["graph_client_secret"] = ""   # never echo the secret back; client shows placeholder text
+    for _secret in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key"):
+        if safe.get(_secret):
+            safe[_secret + "_set"] = True   # tell the UI a value exists
+            safe[_secret] = ""
     return jsonify({"success": True, "data": safe})
 
 
@@ -4038,6 +4074,7 @@ def dashboard_update_settings():
                "custom_statuses", "custom_priorities", "ticket_labels",
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
                "ai_context", "ai_name", "ai_model",
+               "ai_provider", "ai_base_url", "ai_model_name", "ai_cloud_key", "ai_local_key",
                "report_enabled", "report_frequency", "report_day",
                "report_hour", "report_recipients", "last_report_sent",
                "slack_webhook_url", "teams_webhook_url",
@@ -4066,7 +4103,7 @@ def dashboard_update_settings():
         if k in allowed:
             # Never overwrite smtp_pass / graph_client_secret with an empty
             # string (blank = "keep existing")
-            if k in ("smtp_pass", "graph_client_secret") and v == "":
+            if k in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key") and v == "":
                 continue
             if k == "ai_name":
                 v = str(v or "").strip() or DEFAULT_AI_NAME
@@ -4076,10 +4113,44 @@ def dashboard_update_settings():
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
     safe = dict(current)
-    for _secret in ("smtp_pass", "graph_client_secret"):
+    for _secret in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key"):
         if safe.get(_secret):
             safe[_secret] = ""   # never echo secrets back; client shows placeholder
     return jsonify({"success": True, "data": safe})
+
+
+@app.route("/dashboard/api/ai/test", methods=["POST"])
+@require_dashboard_user
+def dashboard_test_ai():
+    """Ping a local/custom AI endpoint to confirm it's reachable and answering.
+    Uses the values from the form; if the key is blank, fall back to the saved one."""
+    data     = request.get_json() or {}
+    base_url = str(data.get("base_url", "")).strip().rstrip("/")
+    model    = str(data.get("model", "")).strip() or "local-model"
+    key      = str(data.get("key", "")).strip()
+    if not base_url:
+        return jsonify({"success": False, "message": "Enter an endpoint URL first."})
+    if not (base_url.startswith("http://") or base_url.startswith("https://")):
+        return jsonify({"success": False, "message": "Endpoint must start with http:// or https://"})
+    if not key:  # fall back to the saved local key
+        key = (db.get_settings(g.tenant_id) or {}).get("ai_local_key", "")
+    try:
+        import requests
+        headers = {"Content-Type": "application/json"}
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        r = requests.post(
+            f"{base_url}/chat/completions", headers=headers,
+            json={"model": model, "messages": [{"role": "user", "content": "Reply with the word OK."}],
+                  "max_tokens": 5, "stream": False},
+            timeout=20,
+        )
+        if r.status_code >= 400:
+            return jsonify({"success": False, "message": f"Endpoint returned {r.status_code}. Check the URL, model name, and key."})
+        txt = (((r.json() or {}).get("choices") or [{}])[0].get("message") or {}).get("content", "")
+        return jsonify({"success": True, "message": f"Connected. Model replied: “{txt.strip()[:40]}”"})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Could not reach the endpoint: {str(e)[:80]}"})
 
 
 @app.route("/dashboard/api/integrations/test", methods=["POST"])
@@ -4245,11 +4316,11 @@ def _run_janus_analysis(tenant_id, tenant_name, ticket_id, title, description,
     janus_cap   = limits["janus_calls"]
     janus_ok    = janus_cap is None or janus_used < janus_cap
 
-    if not ai_enabled() or not settings.get("janus_enabled", True) or not janus_ok:
+    if not ai_enabled(tenant_id) or not settings.get("janus_enabled", True) or not janus_ok:
         return {"parsed": None, "auto_resolved": False, "error": None}
 
     try:
-        client = _get_ai_client()
+        client = _get_ai_client(tenant_id)
 
         configured_roles = settings.get("roles", [])
         roles_context = ""
@@ -4877,7 +4948,7 @@ def dashboard_insights():
     try:
         settings = db.get_settings(g.tenant_id)
         ai_name  = _get_ai_name(settings)
-        if not ai_enabled() or not settings.get("janus_enabled", True):
+        if not ai_enabled(g.tenant_id) or not settings.get("janus_enabled", True):
             return jsonify({"success": True, "data": {"message": None}})
         plan, limits = _tenant_plan_limits(g.tenant_id)
         usage = db.get_usage(g.tenant_id) or {}
@@ -4902,7 +4973,7 @@ def dashboard_insights():
             f"recent activity: {recent_desc}. "
             f"Highlight the most important thing the admin should do or note right now."
         )
-        client   = _get_ai_client()
+        client   = _get_ai_client(g.tenant_id)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=80,

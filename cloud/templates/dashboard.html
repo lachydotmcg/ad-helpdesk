@@ -2566,9 +2566,63 @@
             </div>
 
             <div class="settings-section">
+              <div class="settings-section-title">AI Provider</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+                Where the assistant's brain runs. Choose Cloud for a managed model, or Local to run it on your own
+                infrastructure and keep everything on your network.
+              </div>
+              <div class="intel-grid" id="jc-provider-grid" style="margin-bottom:16px;">
+                <div class="intel-card" data-provider="cloud" onclick="selectProvider('cloud')">
+                  <div class="intel-head">
+                    <span class="intel-name">Cloud</span>
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A5 5 0 0 0 5 18h.5"/></svg>
+                  </div>
+                  <div class="intel-desc">A managed model. Fast, no setup. You provide an API key.</div>
+                </div>
+                <div class="intel-card" data-provider="local" onclick="selectProvider('local')">
+                  <div class="intel-head">
+                    <span class="intel-name">Local</span>
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/></svg>
+                  </div>
+                  <div class="intel-desc">Your own AI server or model by IP/URL. Nothing leaves your network.</div>
+                </div>
+              </div>
+
+              <div id="jc-provider-cloud" style="display:none;">
+                <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">API key</label>
+                <input id="jc-ai-cloud-key" type="password" class="search-input" placeholder="sk-ant-... (leave blank to keep existing)" style="width:100%;" oninput="markAiSettingsDirty()">
+                <div style="font-size:11px;color:var(--muted);margin-top:6px;" id="jc-cloud-key-hint"></div>
+              </div>
+
+              <div id="jc-provider-local" style="display:none;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div style="grid-column:1/-1;">
+                    <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Endpoint URL <span style="font-weight:400;">(OpenAI-compatible)</span></label>
+                    <input id="jc-ai-base-url" type="text" class="search-input" placeholder="http://192.168.1.50:1234/v1" style="width:100%;font-family:'Courier New',monospace;font-size:12px;" oninput="markAiSettingsDirty()">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Model name</label>
+                    <input id="jc-ai-model-name" type="text" class="search-input" placeholder="qwen2.5-7b-instruct" style="width:100%;" oninput="markAiSettingsDirty()">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">API key <span style="font-weight:400;">(optional)</span></label>
+                    <input id="jc-ai-local-key" type="password" class="search-input" placeholder="leave blank if not needed" style="width:100%;" oninput="markAiSettingsDirty()">
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+                  Works with LM Studio, vLLM, LocalAI, Jan, text-generation-webui, LiteLLM, Ollama (<code style="font-size:10px;background:rgba(147,51,234,0.12);padding:1px 5px;border-radius:3px;">http://host:11434/v1</code>), or any OpenAI-compatible server on your network.
+                </div>
+                <div style="margin-top:12px;">
+                  <button class="btn btn-ghost" style="font-size:12px;" onclick="testAiEndpoint()">Test connection</button>
+                  <span id="jc-ai-test-result" style="font-size:12px;margin-left:8px;"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section" id="jc-intel-section">
               <div class="settings-section-title">Intelligence</div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
-                Choose how much reasoning power your assistant uses for chat, ticket analysis, and insights.
+                Reasoning power for chat, ticket analysis, and insights (applies to the Cloud provider).
                 Higher tiers are noticeably sharper on tricky requests, and use more of your monthly AI allowance per call.
               </div>
               <div class="intel-grid" id="jc-intel-grid">
@@ -7084,6 +7138,38 @@
     markAiSettingsDirty();
   }
 
+  let _selectedProvider = 'cloud';
+  function selectProvider(mode) {
+    _selectedProvider = mode;
+    document.querySelectorAll('#jc-provider-grid .intel-card').forEach(c => {
+      c.classList.toggle('selected', c.dataset.provider === mode);
+    });
+    document.getElementById('jc-provider-cloud').style.display = (mode === 'cloud') ? 'block' : 'none';
+    document.getElementById('jc-provider-local').style.display = (mode === 'local') ? 'block' : 'none';
+    // Intelligence tiers only apply to the cloud provider.
+    const intel = document.getElementById('jc-intel-section');
+    if (intel) intel.style.display = (mode === 'cloud') ? 'block' : 'none';
+    markAiSettingsDirty();
+  }
+
+  async function testAiEndpoint() {
+    const out = document.getElementById('jc-ai-test-result');
+    out.textContent = 'Testing...'; out.style.color = 'var(--muted)';
+    try {
+      const res = await fetch('/dashboard/api/ai/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_url: document.getElementById('jc-ai-base-url').value.trim(),
+          model:    document.getElementById('jc-ai-model-name').value.trim(),
+          key:      document.getElementById('jc-ai-local-key').value.trim(),
+        })
+      });
+      const j = await res.json();
+      out.textContent = j.message;
+      out.style.color = j.success ? 'var(--success, #6ee7a8)' : 'var(--error, #fca5a5)';
+    } catch (e) { out.textContent = e.message; out.style.color = 'var(--error, #fca5a5)'; }
+  }
+
   async function loadAiConfig() {
     try {
       const res  = await fetch('/dashboard/api/settings');
@@ -7091,6 +7177,13 @@
       if (!body.success) return;
       const s = body.data;
       selectIntel(s.ai_model || 'normal');
+      // AI provider: default to cloud when unset.
+      selectProvider(s.ai_provider === 'local' ? 'local' : 'cloud');
+      document.getElementById('jc-ai-base-url').value   = s.ai_base_url || '';
+      document.getElementById('jc-ai-model-name').value = s.ai_model_name || '';
+      document.getElementById('jc-ai-cloud-key').value  = '';
+      document.getElementById('jc-ai-local-key').value  = '';
+      document.getElementById('jc-cloud-key-hint').textContent = s.ai_cloud_key_set ? 'A key is saved. Leave blank to keep it.' : '';
       _aiSettingsDirty = false;  // selectIntel marks dirty; loading is not a user edit
       const _sb = document.getElementById('jc-save-btn'); if (_sb) _sb.style.display = 'none';
       document.getElementById('jc-janus-enabled').checked   = !!s.janus_enabled;
@@ -7258,6 +7351,11 @@
       ai_name:            document.getElementById('jc-ai-name').value.trim(),
       email_domain:       document.getElementById('jc-email-domain').value.trim(),
       ai_model:           _selectedIntel,
+      ai_provider:        _selectedProvider,
+      ai_base_url:        document.getElementById('jc-ai-base-url').value.trim(),
+      ai_model_name:      document.getElementById('jc-ai-model-name').value.trim(),
+      ai_cloud_key:       document.getElementById('jc-ai-cloud-key').value,
+      ai_local_key:       document.getElementById('jc-ai-local-key').value,
       ai_context:         document.getElementById('jc-context').value,
       report_enabled:     reEnabled,
       report_frequency:   document.getElementById('jc-report-freq').value,
