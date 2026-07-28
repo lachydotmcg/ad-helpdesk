@@ -37,3 +37,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# demo tooling scratch output
+demo_agent_out.txt
+demo_agent_err.txt
