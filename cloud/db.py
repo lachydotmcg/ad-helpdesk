@@ -213,6 +213,21 @@ _SCHEMA = [
         created_at  TEXT NOT NULL,
         FOREIGN KEY (ticket_id) REFERENCES tickets(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS kb_articles (
+        id          TEXT PRIMARY KEY,
+        tenant_id   TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        keywords    TEXT,
+        category    TEXT,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        times_used  INTEGER NOT NULL DEFAULT 0,
+        last_used_at TEXT,
+        created_by  TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+    )""",
     """CREATE TABLE IF NOT EXISTS usage (
         id          TEXT PRIMARY KEY,
         tenant_id   TEXT NOT NULL,
@@ -2301,6 +2316,113 @@ def touch_memory(tenant_id: str, memory_id: str) -> None:
             f"UPDATE agent_memory SET last_used = {_PH} WHERE id = {_PH} AND tenant_id = {_PH}",
             (now, memory_id, tenant_id)
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Knowledge base
+# ---------------------------------------------------------------------------
+
+def create_kb_article(tenant_id: str, title: str, body: str, keywords: str = "",
+                      category: str = "", created_by: str = None,
+                      enabled: bool = True) -> dict:
+    art_id = str(uuid.uuid4())
+    now    = datetime.utcnow().isoformat()
+    conn   = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""INSERT INTO kb_articles
+                (id, tenant_id, title, body, keywords, category, enabled,
+                 times_used, created_by, created_at, updated_at)
+                VALUES ({_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, 0, {_PH}, {_PH}, {_PH})""",
+            (art_id, tenant_id, title, body, keywords, category,
+             1 if enabled else 0, created_by, now, now))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"id": art_id, "title": title, "created_at": now}
+
+
+def list_kb_articles(tenant_id: str, include_disabled: bool = True,
+                     limit: int = 500) -> list:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        q = f"SELECT * FROM kb_articles WHERE tenant_id = {_PH}"
+        if not include_disabled:
+            q += " AND enabled = 1"
+        q += f" ORDER BY updated_at DESC LIMIT {_PH}"
+        cur.execute(q, (tenant_id, limit))
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def get_kb_article(tenant_id: str, article_id: str) -> dict:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM kb_articles WHERE id = {_PH} AND tenant_id = {_PH}",
+            (article_id, tenant_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_kb_article(tenant_id: str, article_id: str, **fields) -> bool:
+    allowed = {"title", "body", "keywords", "category", "enabled"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if "enabled" in updates:
+        updates["enabled"] = 1 if updates["enabled"] else 0
+    if not updates:
+        return False
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    cols = ", ".join(f"{k} = {_PH}" for k in updates)
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"UPDATE kb_articles SET {cols} WHERE id = {_PH} AND tenant_id = {_PH}",
+                    list(updates.values()) + [article_id, tenant_id])
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_kb_article(tenant_id: str, article_id: str) -> bool:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"DELETE FROM kb_articles WHERE id = {_PH} AND tenant_id = {_PH}",
+                    (article_id, tenant_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def touch_kb_articles(tenant_id: str, article_ids: list) -> None:
+    """Record that these articles were retrieved for an answer.
+
+    Drives the 'used N times' figure in the UI, which is how an admin finds the
+    articles worth keeping accurate and the ones nobody ever hits.
+    """
+    if not article_ids:
+        return
+    now  = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        for aid in article_ids:
+            cur.execute(
+                f"""UPDATE kb_articles SET times_used = times_used + 1, last_used_at = {_PH}
+                    WHERE id = {_PH} AND tenant_id = {_PH}""",
+                (now, aid, tenant_id))
         conn.commit()
     finally:
         conn.close()

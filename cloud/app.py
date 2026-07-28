@@ -34,6 +34,7 @@ from flask import (
 )
 from dotenv import load_dotenv
 import db
+import kb
 import action_policy
 import slack_bot
 from graph_client import GraphClient, ACTIONS as GRAPH_ACTIONS
@@ -3146,6 +3147,21 @@ def _run_chat(tenant_id: str, user_email: str, message: str,
         for m in memories:
             db.touch_memory(tenant_id, m["id"])
 
+    # ---- knowledge base retrieval --------------------------------------
+    # Retrieved per message rather than dumped wholesale: a knowledge base can be
+    # hundreds of articles and none of them belong in the prompt unless they
+    # relate to what was actually asked. Failures here are swallowed because a
+    # broken search should degrade the answer, not block it.
+    kb_block, kb_used_ids = "", []
+    try:
+        articles = db.list_kb_articles(tenant_id, include_disabled=False)
+        if articles:
+            kb_block, kb_used_ids = kb.retrieve_for_prompt(message, articles)
+            if kb_used_ids:
+                db.touch_kb_articles(tenant_id, kb_used_ids)
+    except Exception as e:
+        print(f"[kb] retrieval failed: {e}", flush=True)
+
     system_prompt = f"""You are {ai_name}, an AI assistant built into AD Helpdesk, a tool for managing Windows Active Directory.
 The user is an IT admin. Your job is to understand what they want and either:
   (a) Execute an AD operation by responding with a JSON command block, OR
@@ -3341,7 +3357,7 @@ CRITICAL RULES:
 - When generating a temporary password, make it secure: uppercase + lowercase + numbers + symbol, 12+ chars. State it clearly.
 - Questions about a user's groups, role, department, title, status → ALWAYS use get_user_info first.
 - If no AD action is needed, respond conversationally in plain text — do NOT output JSON.
-- Keep responses concise and direct. You are talking to an experienced IT admin.{custom_scripts_block}{tenant_context_block}{memory_block}"""
+- Keep responses concise and direct. You are talking to an experienced IT admin.{custom_scripts_block}{tenant_context_block}{memory_block}{kb_block}"""
 
     LOOKUP_ACTIONS = {
         'search_users', 'search_groups', 'list_ous', 'get_user_info',
@@ -4168,6 +4184,89 @@ def dashboard_test_webhook():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/dashboard/api/kb", methods=["GET"])
+@require_dashboard_user
+def dashboard_list_kb():
+    """List knowledge base articles for this tenant."""
+    return jsonify({"success": True, "data": db.list_kb_articles(g.tenant_id)})
+
+
+@app.route("/dashboard/api/kb", methods=["POST"])
+@require_dashboard_user
+def dashboard_create_kb():
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data     = request.get_json() or {}
+    title    = (data.get("title") or "").strip()
+    body     = (data.get("body") or "").strip()
+    keywords = (data.get("keywords") or "").strip()
+    category = (data.get("category") or "").strip()
+    if not title or not body:
+        return jsonify({"success": False, "message": "A title and body are required."}), 400
+    if len(title) > 200:
+        return jsonify({"success": False, "message": "Title is too long (200 characters max)."}), 400
+    # Generous, but bounded: the whole article is a candidate for the prompt, and
+    # an unbounded body is a way to blow out the context window of a local model.
+    if len(body) > 20000:
+        return jsonify({"success": False, "message": "Article is too long (20,000 characters max)."}), 400
+    art = db.create_kb_article(g.tenant_id, title, body, keywords, category,
+                               created_by=g.user_email,
+                               enabled=bool(data.get("enabled", True)))
+    db.log_activity(g.tenant_id, "kb_article_added", g.user_email,
+                    target=title[:80], detail="Knowledge base article created")
+    return jsonify({"success": True, "data": art}), 201
+
+
+@app.route("/dashboard/api/kb/<article_id>", methods=["PATCH"])
+@require_dashboard_user
+def dashboard_update_kb(article_id):
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data   = request.get_json() or {}
+    fields = {k: data[k] for k in ("title", "body", "keywords", "category", "enabled")
+              if k in data}
+    if "body" in fields and len(fields["body"] or "") > 20000:
+        return jsonify({"success": False, "message": "Article is too long (20,000 characters max)."}), 400
+    if not db.update_kb_article(g.tenant_id, article_id, **fields):
+        return jsonify({"success": False, "message": "Article not found."}), 404
+    return jsonify({"success": True})
+
+
+@app.route("/dashboard/api/kb/<article_id>", methods=["DELETE"])
+@require_dashboard_user
+def dashboard_delete_kb(article_id):
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    art = db.get_kb_article(g.tenant_id, article_id)
+    if not db.delete_kb_article(g.tenant_id, article_id):
+        return jsonify({"success": False, "message": "Article not found."}), 404
+    db.log_activity(g.tenant_id, "kb_article_deleted", g.user_email,
+                    target=(art or {}).get("title", "")[:80],
+                    detail="Knowledge base article deleted")
+    return jsonify({"success": True})
+
+
+@app.route("/dashboard/api/kb/test", methods=["POST"])
+@require_dashboard_user
+def dashboard_test_kb():
+    """Show which articles a question would retrieve, and why.
+
+    Retrieval that silently picks the wrong article is the main way this feature
+    makes answers worse, so an admin needs to be able to see the ranking without
+    burning an AI call to find out.
+    """
+    query = ((request.get_json() or {}).get("query") or "").strip()
+    if not query:
+        return jsonify({"success": False, "message": "Enter a question to test."}), 400
+    articles = db.list_kb_articles(g.tenant_id, include_disabled=False)
+    results  = kb.search(query, articles)
+    return jsonify({"success": True, "data": [
+        {"id": r["article"]["id"], "title": r["article"]["title"],
+         "score": r["score"], "matched": r["matched"], "coverage": r["coverage"]}
+        for r in results
+    ], "searched": len(articles)})
 
 
 @app.route("/dashboard/api/memory", methods=["GET"])

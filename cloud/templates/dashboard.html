@@ -1384,6 +1384,9 @@
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4z"/><path d="M13 7v10"/></svg></span> Tickets
       <span id="open-tickets-badge" style="margin-left:auto;font-size:11px;color:var(--yellow);display:none"></span>
     </div>
+    <div class="nav-item" onclick="showPage('kb')">
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span> Knowledge Base
+    </div>
     <div class="nav-group" id="grp-activity">
       <div class="nav-group-header" onclick="toggleNavGroup('grp-activity')">
         <span class="nav-group-title">Activity</span>
@@ -2062,6 +2065,90 @@
       </div>
       </div>
       {% endif %}
+    </div>
+
+    <!-- ===== KNOWLEDGE BASE PAGE ===== -->
+    <div class="page" id="page-kb">
+
+      <!-- Article editor, doubles as create and edit -->
+      <div class="panel" id="kb-editor-panel" style="display:none;margin-bottom:20px;">
+        <div class="panel-header">
+          <span class="panel-title" id="kb-editor-title">New Article</span>
+          <button class="btn btn-ghost" onclick="closeKbEditor()">✕ Cancel</button>
+        </div>
+        <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Title</label>
+            <input class="search-input" id="kb-title" placeholder="Connecting to the VPN" style="width:100%"/>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Category <span style="opacity:.6">(optional)</span></label>
+            <input class="search-input" id="kb-category" placeholder="Network"/>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Keywords <span style="opacity:.6">(optional)</span></label>
+            <input class="search-input" id="kb-keywords" placeholder="vpn remote anyconnect work from home"/>
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">Article</label>
+            <textarea class="search-input" id="kb-body" rows="10" style="width:100%;font-family:inherit;line-height:1.6;resize:vertical;" placeholder="Write the answer exactly as you would tell someone. The assistant reads this and answers from it."></textarea>
+          </div>
+          <div style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="kb-enabled" checked style="width:15px;height:15px;cursor:pointer;"/>
+              Available to the assistant
+            </label>
+            <span style="flex:1"></span>
+            <span id="kb-editor-result" style="font-size:12px;"></span>
+            <button class="btn btn-primary" onclick="saveKbArticle()">Save article</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Retrieval tester -->
+      <div class="panel" id="kb-test-panel" style="display:none;margin-bottom:20px;">
+        <div class="panel-header">
+          <span class="panel-title">Test retrieval</span>
+          <button class="btn btn-ghost" onclick="document.getElementById('kb-test-panel').style.display='none'">✕ Close</button>
+        </div>
+        <div style="padding:20px;">
+          <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.6;">
+            Ask a question the way an employee would, and see which articles the assistant
+            would be given. This runs the search only, so it costs nothing and does not
+            call the AI.
+          </p>
+          <div class="search-row" style="padding:0;margin-bottom:14px;">
+            <input class="search-input" id="kb-test-query" placeholder="how do I connect to the vpn from home" style="flex:1" onkeydown="if(event.key==='Enter')runKbTest()"/>
+            <button class="btn btn-primary" onclick="runKbTest()">Test</button>
+          </div>
+          <div id="kb-test-result"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Knowledge Base</span>
+          <span class="panel-count" id="kb-count">loading...</span>
+        </div>
+        <div style="padding:16px 20px 0;">
+          <p style="font-size:13px;color:var(--muted);margin:0;line-height:1.6;">
+            Articles your team writes about how things work here. When someone asks the
+            assistant a question, the closest articles are searched and handed to it, so
+            it answers from your documentation instead of guessing.
+          </p>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="kb-search" type="search" placeholder="Search articles..." oninput="filterKbArticles()" autocomplete="off" spellcheck="false"/>
+          <button class="btn btn-ghost" onclick="loadKbArticles()">↺ Refresh</button>
+          <button class="btn btn-ghost" onclick="openKbTest()">Test retrieval</button>
+          {% if user_role == 'admin' %}
+          <button class="btn btn-primary" onclick="openKbEditor()">+ New Article</button>
+          {% endif %}
+        </div>
+        <div id="kb-table-wrap">
+          <div class="loading"><span class="spinner"></span>Loading articles...</div>
+        </div>
+      </div>
     </div>
 
     <!-- ===== TICKETS PAGE ===== -->
@@ -6608,6 +6695,7 @@
     nps:      'NPS',
     entra:    'Entra ID',
     tickets:  'Tickets',
+    kb:       'Knowledge Base',
     chat:     'AI Assistant',
     audit:    'Audit Log',
     activity: 'Activity Feed',
@@ -6693,8 +6781,184 @@
       if (name === 'audit')    loadAudit();
       if (name === 'team')     loadTeam();
       if (name === 'tickets')  loadTickets();
+      if (name === 'kb')       loadKbArticles();
       if (name === 'activity') loadActivity();
       if (name === 'settings') loadSettings();
+    }
+  }
+
+  // =========================================================
+  // Knowledge Base
+  // =========================================================
+  let _kbArticles = [];
+  let _kbEditingId = null;
+
+  async function loadKbArticles() {
+    const wrap = document.getElementById('kb-table-wrap');
+    wrap.innerHTML = '<div class="loading"><span class="spinner"></span>Loading articles...</div>';
+    try {
+      const res  = await fetch('/dashboard/api/kb');
+      const json = await res.json();
+      _kbArticles = json.data || [];
+      document.getElementById('kb-count').textContent =
+        _kbArticles.length === 1 ? '1 article' : `${_kbArticles.length} articles`;
+      filterKbArticles();
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function filterKbArticles() {
+    const q = (document.getElementById('kb-search')?.value || '').toLowerCase();
+    const list = q ? _kbArticles.filter(a =>
+      (a.title || '').toLowerCase().includes(q) ||
+      (a.keywords || '').toLowerCase().includes(q) ||
+      (a.category || '').toLowerCase().includes(q) ||
+      (a.body || '').toLowerCase().includes(q)) : _kbArticles;
+    renderKbArticles(list);
+  }
+
+  function renderKbArticles(list) {
+    const wrap = document.getElementById('kb-table-wrap');
+    if (!list.length) {
+      wrap.innerHTML = _kbArticles.length
+        ? '<div class="empty"><div class="empty-icon">🔍</div>No articles match that search.</div>'
+        : `<div class="empty"><div class="empty-icon">📖</div>No articles yet.<br/>
+           <span style="font-size:13px;color:var(--muted)">Write one about something people ask often, like connecting to the VPN or resetting a password.</span></div>`;
+      return;
+    }
+    let html = '<table><thead><tr><th>Title</th><th>Category</th><th>Used</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>';
+    for (const a of list) {
+      const used = a.times_used || 0;
+      // An article nobody has ever hit is usually a wording problem, not a
+      // popularity problem, so it is called out rather than shown as a bare 0.
+      const usedCell = used
+        ? `<span title="Retrieved for ${used} question${used === 1 ? '' : 's'}">${used}</span>`
+        : '<span style="color:var(--muted)" title="Never retrieved. Try adding keywords people would actually use.">never</span>';
+      const status = a.enabled
+        ? '<span class="sla-pill sla-met">Active</span>'
+        : '<span class="sla-pill sla-ok" title="Hidden from the assistant">Disabled</span>';
+      html += `<tr>
+        <td>${escHtml(a.title)}</td>
+        <td style="font-size:12px;color:var(--muted)">${escHtml(a.category || '-')}</td>
+        <td style="font-size:12px">${usedCell}</td>
+        <td>${status}</td>
+        <td style="font-size:12px;color:var(--muted)">${(a.updated_at || '').slice(0, 10)}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="openKbEditor('${a.id}')">Edit</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="deleteKbArticle('${a.id}')">Delete</button>
+        </td></tr>`;
+    }
+    wrap.innerHTML = html + '</tbody></table>';
+  }
+
+  function openKbEditor(id) {
+    _kbEditingId = id || null;
+    const a = id ? _kbArticles.find(x => x.id === id) : null;
+    document.getElementById('kb-editor-title').textContent = a ? 'Edit Article' : 'New Article';
+    document.getElementById('kb-title').value    = a ? (a.title || '') : '';
+    document.getElementById('kb-category').value = a ? (a.category || '') : '';
+    document.getElementById('kb-keywords').value = a ? (a.keywords || '') : '';
+    document.getElementById('kb-body').value     = a ? (a.body || '') : '';
+    document.getElementById('kb-enabled').checked = a ? !!a.enabled : true;
+    document.getElementById('kb-editor-result').textContent = '';
+    document.getElementById('kb-editor-panel').style.display = '';
+    document.getElementById('kb-title').focus();
+  }
+
+  function closeKbEditor() {
+    document.getElementById('kb-editor-panel').style.display = 'none';
+    _kbEditingId = null;
+  }
+
+  async function saveKbArticle() {
+    const out   = document.getElementById('kb-editor-result');
+    const title = document.getElementById('kb-title').value.trim();
+    const body  = document.getElementById('kb-body').value.trim();
+    if (!title || !body) {
+      out.style.color = 'var(--red)';
+      out.textContent = 'A title and article text are both needed.';
+      return;
+    }
+    const payload = {
+      title, body,
+      category: document.getElementById('kb-category').value.trim(),
+      keywords: document.getElementById('kb-keywords').value.trim(),
+      enabled:  document.getElementById('kb-enabled').checked,
+    };
+    out.style.color = 'var(--muted)';
+    out.textContent = 'Saving...';
+    try {
+      const res = await fetch(_kbEditingId ? `/dashboard/api/kb/${_kbEditingId}` : '/dashboard/api/kb', {
+        method: _kbEditingId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        out.style.color = 'var(--red)';
+        out.textContent = json.message || 'Could not save.';
+        return;
+      }
+      closeKbEditor();
+      loadKbArticles();
+    } catch (e) {
+      out.style.color = 'var(--red)';
+      out.textContent = e.message;
+    }
+  }
+
+  async function deleteKbArticle(id) {
+    const a = _kbArticles.find(x => x.id === id);
+    if (!confirm(`Delete "${a ? a.title : 'this article'}"? The assistant will stop using it.`)) return;
+    try {
+      const res  = await fetch(`/dashboard/api/kb/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!json.success) { alert(json.message || 'Could not delete.'); return; }
+      loadKbArticles();
+    } catch (e) { alert(e.message); }
+  }
+
+  function openKbTest() {
+    document.getElementById('kb-test-panel').style.display = '';
+    document.getElementById('kb-test-query').focus();
+  }
+
+  async function runKbTest() {
+    const out   = document.getElementById('kb-test-result');
+    const query = document.getElementById('kb-test-query').value.trim();
+    if (!query) return;
+    out.innerHTML = '<div class="loading"><span class="spinner"></span>Searching...</div>';
+    try {
+      const res = await fetch('/dashboard/api/kb/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        out.innerHTML = `<div style="font-size:13px;color:var(--red)">${escHtml(json.message || 'Search failed.')}</div>`;
+        return;
+      }
+      if (!json.data.length) {
+        out.innerHTML = `<div style="font-size:13px;color:var(--muted);line-height:1.6">
+          Nothing matched, so the assistant would answer without any article.
+          It searched ${json.searched} active article${json.searched === 1 ? '' : 's'}.
+          If you expected a match, add the words people actually use to that article's keywords.</div>`;
+        return;
+      }
+      let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        ${json.data.length} of ${json.searched} article${json.searched === 1 ? '' : 's'} would be given to the assistant, best first.</div>`;
+      html += '<table><thead><tr><th>Article</th><th>Score</th><th>Matched words</th></tr></thead><tbody>';
+      for (const r of json.data) {
+        html += `<tr>
+          <td>${escHtml(r.title)}</td>
+          <td style="font-size:12px">${r.score}</td>
+          <td style="font-size:12px;color:var(--muted)">${escHtml(r.matched.join(', '))}</td>
+        </tr>`;
+      }
+      out.innerHTML = html + '</tbody></table>';
+    } catch (e) {
+      out.innerHTML = `<div style="font-size:13px;color:var(--red)">${escHtml(e.message)}</div>`;
     }
   }
 
