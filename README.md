@@ -5,9 +5,10 @@
 <h1 align="center">AD Helpdesk</h1>
 
 <p align="center">
-  <strong>Run your Windows Server estate in plain English &mdash; self-hosted, with your own AI.</strong><br/>
-  Unlock accounts, reset passwords, fix DNS, push apps. No PowerShell, no MMC consoles,<br/>
-  no cloud account, and nothing leaves your network.
+  <strong>Helpdesk tickets that resolve themselves, entirely inside your own network.</strong><br/>
+  Self-hosted AI for your whole Windows Server estate: Active Directory, DNS, DHCP,<br/>
+  Group Policy, NPS and Entra. No PowerShell, no MMC consoles, no cloud account,<br/>
+  and not a byte of your identity data leaving the building.
 </p>
 
 <p align="center">
@@ -28,12 +29,44 @@
   <img src="docs/screenshots/platform.png" alt="AD Helpdesk dashboard: Active Directory, DNS, DHCP, Group Policy, NPS and Entra ID in one place" width="900"/>
 </p>
 
-## Why you might want this
+## Tickets that resolve themselves, without leaving your network
+
+Plenty of tools auto-resolve helpdesk tickets. The established ones are all someone
+else's cloud: your staff's identities, your ticket contents, and your AD actions all
+leave your building to make it happen.
+
+**This one doesn't.** A staff member emails "I'm locked out." Nobody opens a console,
+nobody clicks approve, and nothing is sent to a vendor. The whole loop runs on your
+hardware, against your model:
+
+```
+  09:14  karen.wilson@corp.local  ->  "I'm locked out and I have a client call at 10"
+         │
+         ├─ Verified sender against AD ......... karen.wilson, Sales OU, enabled
+         ├─ Threat score ....................... 2/10  (own address, routine request)
+         ├─ Matched intent ..................... account lockout
+         └─ unlock_account("karen.wilson") ..... done in 4s, logged to the audit trail
+
+  09:14  Reply sent: "You're unlocked, Karen. Try signing in now."
+```
+
+**Passive.** It runs on ticket arrival, not on someone remembering to look. Overnight
+lockouts are cleared before anyone starts work.
+
+**Secure by construction, not by prompt.** The model never gets to decide what is
+safe. It proposes an action; Python decides whether it runs:
+
+- Every action is checked against a **hard-coded allowlist** in `cloud/action_policy.py`. A capability that is not on the list cannot be unlocked by rephrasing, and a prompt-injected ticket cannot talk its way past it.
+- **Destructive actions are never auto-resolved.** Disabling an account, editing Group Policy, pushing software: those always stop and wait for a human with a 6-digit token, no matter what the model suggests.
+- The sender is **verified against AD** and threat-scored before anything runs. Requests from outside your domain get flagged instead of actioned.
+- Every action is written to an **immutable audit trail**: who asked, what the AI decided, what actually ran.
+
+## Also worth knowing
 
 - 🧠 **Bring your own AI.** Point it at [Ollama](https://ollama.com), your own GPU box by IP, or any OpenAI-compatible server (LM Studio, vLLM, LocalAI, Jan, LiteLLM). Pick Local or Cloud in the UI. **No cloud dependency unless you choose one.**
-- 🔒 **Your data never leaves.** On-prem dashboard, database, AD, and AI. Full audit trail, secrets encrypted at rest, and every risky action gated behind a confirmation code.
-- 🪟 **The whole estate, not just AD.** Active Directory, DNS, DHCP, Group Policy, NPS, app deployment, and Entra ID &mdash; one dashboard, 60 actions.
-- 🎫 **Tickets that resolve themselves.** Staff email "I'm locked out"; the assistant verifies who they are, does it, and logs it.
+- 🔒 **Your data never leaves.** On-prem dashboard, database, AD, and AI. Secrets encrypted at rest.
+- 🪟 **The whole estate, not just AD.** Active Directory, DNS, DHCP, Group Policy, NPS, app deployment, and Entra ID &mdash; one dashboard, 62 actions.
+- 🩺 **It diagnoses, not just executes.** "The printer isn't resolving" makes it actually resolve the name and tell you what it found.
 - 🆓 **No plans, no quotas, no billing.** Self-hosted means unlimited.
 
 ## Quickstart
@@ -148,13 +181,13 @@ Give your AI a name that fits your organisation: "Max", "Alex", or whatever your
 Your AI assistant builds institutional knowledge over time: username patterns, OU structure, team naming conventions, recurring requests. The longer you use AID Helpdesk, the more it understands about your specific environment without you having to explain it every time. It's the IT brain that never forgets.
 
 ### Smart ticketing
-Staff submit tickets in plain English. Your AI reads the request, checks the requester's identity against your AD domain, assigns a threat score (1-10), flags anything suspicious, and either resolves it automatically or surfaces it for admin review with a full analysis and recommended action.
+Tickets arrive by email or the portal, get read, identity-checked, threat-scored, and either resolved or escalated with a written analysis. See [Tickets that resolve themselves](#tickets-that-resolve-themselves-without-leaving-your-network) above for how the safety model works.
 
 ### AI chat
 Talk to your AI directly in plain English to manage your AD. It chains lookups automatically; if it needs to find a group before adding a user, it does both in one step without asking you to repeat yourself.
 
 ### Auto-actions
-Unlock accounts, reset passwords, enable accounts, hands-free, without waiting for an admin to click approve. Every action is logged.
+Unlock accounts, reset passwords, and enable accounts hands-free, chosen per-action in Configure AI so you decide exactly how much runs without you. Destructive operations are excluded by design and always need a human. Every action is logged.
 
 ### Windows Server management, not just AD
 Dedicated dashboard tabs for DNS (zones and records), DHCP (scopes, leases, reservations), and Group Policy (GPO list, reports, link map). Reads run freely; routine writes go through the same confirm flow as a password reset, and high blast radius changes (zone or scope deletes, GPO link/unlink) require a human-confirmed 6-digit token before anything runs. NPS (RADIUS) is read-only for now: RADIUS clients, network policies, and connection request policies, all visible from the dashboard.
