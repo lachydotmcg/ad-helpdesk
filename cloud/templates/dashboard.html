@@ -2845,6 +2845,55 @@
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px;">In Slack: Apps &rarr; Incoming Webhooks &rarr; Add to Slack &rarr; copy the webhook URL.</div>
             </div>
+
+            <!-- Slack self-service bot (two-way, Socket Mode) -->
+            <div class="settings-section">
+              <div class="settings-section-title">
+                Slack self-service assistant
+                <span id="slack-bot-pill" class="pill pill-gray" style="margin-left:8px;font-size:10px;">Not connected</span>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
+                Lets staff message the assistant in Slack to sort their own account out, instead of raising a ticket.
+                It connects <strong style="color:var(--text);">outbound</strong> over Socket Mode, so it works from
+                behind a firewall with no public URL and no inbound ports.
+              </div>
+              <div style="background:rgba(99,102,241,0.07);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:11.5px;color:var(--muted);line-height:1.7;">
+                <strong style="color:var(--text);">Staff can only act on their own account.</strong>
+                Their identity is read from their Slack profile, not from what they type, and unlocking or
+                resetting anyone else stays an admin-only action.
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Bot token</label>
+                  <input id="jc-slack-bot-token" type="password" class="search-input" placeholder="xoxb-..." style="width:100%;font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">App-level token</label>
+                  <input id="jc-slack-app-token" type="password" class="search-input" placeholder="xapp-..." style="width:100%;font-size:12px;">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                <button class="btn btn-primary" style="font-size:12px;" onclick="connectSlackBot()">Connect</button>
+                <button class="btn btn-ghost" style="font-size:12px;" onclick="disconnectSlackBot()">Disconnect</button>
+                <span id="slack-bot-result" style="font-size:12px;"></span>
+              </div>
+              <details style="margin-top:14px;">
+                <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text);">How to create the Slack app</summary>
+                <ol style="font-size:12px;color:var(--muted);line-height:1.8;margin:10px 0 0;padding-left:20px;">
+                  <li>Go to <code style="font-size:11px;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;">api.slack.com/apps</code> and click Create New App, then From scratch.</li>
+                  <li>Under Socket Mode, turn Socket Mode on. Slack gives you an app-level token starting <code style="font-size:11px;">xapp-</code>. Paste it above.</li>
+                  <li>Under OAuth &amp; Permissions, add these Bot Token Scopes: <code style="font-size:11px;">app_mentions:read</code>, <code style="font-size:11px;">chat:write</code>, <code style="font-size:11px;">im:history</code>, <code style="font-size:11px;">im:read</code>, <code style="font-size:11px;">im:write</code>, <code style="font-size:11px;">users:read</code>, <code style="font-size:11px;">users:read.email</code>.</li>
+                  <li>Under Event Subscriptions, turn events on and subscribe to bot events <code style="font-size:11px;">message.im</code> and <code style="font-size:11px;">app_mention</code>.</li>
+                  <li>Install the app to your workspace, then copy the Bot User OAuth Token (<code style="font-size:11px;">xoxb-</code>) into the field above.</li>
+                  <li>Click Connect. Then DM the bot in Slack to try it.</li>
+                </ol>
+                <div style="font-size:11px;color:var(--muted);margin-top:10px;">
+                  Staff emails in Slack must match their AD account, since that is how the assistant works out who is asking.
+                  Microsoft Teams is not supported: it has no Socket Mode equivalent and would need a publicly reachable server.
+                </div>
+              </details>
+            </div>
+
             <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
               <div class="settings-section-title">Microsoft Teams</div>
               <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Incoming webhook URL</label>
@@ -7380,6 +7429,7 @@
       selectIntel(s.ai_model || 'normal');
       // AI provider: default to cloud when unset.
       selectProvider(s.ai_provider === 'local' ? 'local' : 'cloud');
+      loadSlackBotStatus();
       document.getElementById('jc-ai-base-url').value   = s.ai_base_url || '';
       document.getElementById('jc-ai-model-name').value = s.ai_model_name || '';
       document.getElementById('jc-ai-cloud-key').value  = '';
@@ -7516,6 +7566,61 @@
       if (body.success) { toast('Memory deleted.', 'success'); loadMemoryList(); }
       else { toast(body.message || 'Delete failed.', 'error'); }
     } catch(e) { toast('Delete failed.', 'error'); }
+  }
+
+  // ---- Slack self-service bot ----
+  function _slackPill(state, text) {
+    const p = document.getElementById('slack-bot-pill');
+    if (!p) return;
+    p.className = 'pill pill-' + state;
+    p.textContent = text;
+  }
+
+  async function loadSlackBotStatus() {
+    try {
+      const j = await (await fetch('/dashboard/api/slack/status')).json();
+      const d = j.data || {};
+      if (!d.available)     _slackPill('yellow', 'slack_sdk not installed');
+      else if (d.running)   _slackPill('green',  'Connected');
+      else if (d.configured) _slackPill('gray',  'Configured, not connected');
+      else                  _slackPill('gray',   'Not connected');
+    } catch { /* leave as-is */ }
+  }
+
+  async function connectSlackBot() {
+    const out = document.getElementById('slack-bot-result');
+    out.textContent = 'Connecting...'; out.style.color = 'var(--muted)';
+    try {
+      const j = await (await fetch('/dashboard/api/slack/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: true,
+          bot_token: document.getElementById('jc-slack-bot-token').value.trim(),
+          app_token: document.getElementById('jc-slack-app-token').value.trim(),
+        })
+      })).json();
+      out.textContent = j.message || '';
+      out.style.color = j.success ? 'var(--success, #6ee7a8)' : 'var(--error, #fca5a5)';
+      if (j.success) {
+        // Tokens are stored encrypted; never leave them sitting in the DOM.
+        document.getElementById('jc-slack-bot-token').value = '';
+        document.getElementById('jc-slack-app-token').value = '';
+      }
+      loadSlackBotStatus();
+    } catch (e) { out.textContent = e.message; out.style.color = 'var(--error, #fca5a5)'; }
+  }
+
+  async function disconnectSlackBot() {
+    const out = document.getElementById('slack-bot-result');
+    try {
+      const j = await (await fetch('/dashboard/api/slack/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false })
+      })).json();
+      out.textContent = j.message || '';
+      out.style.color = 'var(--muted)';
+      loadSlackBotStatus();
+    } catch (e) { out.textContent = e.message; }
   }
 
   async function testWebhook(platform) {
