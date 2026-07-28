@@ -24,7 +24,7 @@ import uuid
 import json
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets_crypto
 
@@ -467,6 +467,20 @@ def migrate_db():
             _tencols = [r["name"] for r in cur.fetchall()]
             if "capabilities" not in _tencols:
                 cur.execute("ALTER TABLE tenants ADD COLUMN capabilities TEXT")
+
+        # v12: SLA tracking on tickets. due_at is set from the priority-based
+        # target when the ticket is created; sla_breached is a stored flag rather
+        # than a computed one so a breach that already happened stays true even
+        # if the target is later changed.
+        for col, ddl in (("due_at", "TEXT"), ("sla_breached", "INTEGER DEFAULT 0"),
+                         ("first_response_at", "TEXT")):
+            if _USE_PG:
+                cur.execute(f"ALTER TABLE tickets ADD COLUMN IF NOT EXISTS {col} {ddl}")
+            else:
+                cur.execute("PRAGMA table_info(tickets)")
+                _tcols = [r["name"] for r in cur.fetchall()]
+                if col not in _tcols:
+                    cur.execute(f"ALTER TABLE tickets ADD COLUMN {col} {ddl}")
         conn.commit()
     except Exception:
         pass  # Safe to ignore — already exists
@@ -1220,27 +1234,53 @@ def get_chat_session(session_id: str, tenant_id: str) -> dict | None:
 # Ticket helpers
 # ---------------------------------------------------------------------------
 
+# Hours to resolve, by priority. Deliberately plain numbers rather than a
+# business-calendar engine: most self-hosted AD shops do not have shift
+# schedules configured anywhere, and a wrong-but-invisible calendar is worse
+# than an honest wall-clock target.
+SLA_TARGET_HOURS = {"urgent": 4, "high": 8, "medium": 24, "low": 72}
+SLA_DEFAULT_HOURS = 24
+
+
+def sla_hours_for(priority: str) -> int:
+    return SLA_TARGET_HOURS.get((priority or "").lower(), SLA_DEFAULT_HOURS)
+
+
+def sla_due_at(priority: str, created_at: str = None) -> str:
+    """Resolution deadline as an ISO string."""
+    base = datetime.utcnow()
+    if created_at:
+        try:
+            base = datetime.fromisoformat(created_at)
+        except Exception:
+            pass
+    return (base + timedelta(hours=sla_hours_for(priority))).isoformat()
+
+
 def create_ticket(tenant_id: str, created_by: str, title: str, description: str,
                   priority: str = "medium", requester_name: str = None,
                   requester_email: str = None, source: str = "manual",
                   external_ref: str = None) -> dict:
     ticket_id = str(uuid.uuid4())
     now       = datetime.utcnow().isoformat()
+    due       = sla_due_at(priority, now)
     conn = _get_conn()
     try:
         cur = _cur(conn)
         cur.execute(
             f"""INSERT INTO tickets
                (id, tenant_id, title, description, status, priority, requester_name,
-                requester_email, source, external_ref, created_by, created_at, updated_at)
-               VALUES ({_PH}, {_PH}, {_PH}, {_PH}, 'open', {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH})""",
+                requester_email, source, external_ref, created_by, created_at, updated_at,
+                due_at, sla_breached)
+               VALUES ({_PH}, {_PH}, {_PH}, {_PH}, 'open', {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, 0)""",
             (ticket_id, tenant_id, title, description, priority,
-             requester_name, requester_email, source, external_ref, created_by, now, now)
+             requester_name, requester_email, source, external_ref, created_by, now, now, due)
         )
         conn.commit()
     finally:
         conn.close()
-    return {"id": ticket_id, "title": title, "status": "open", "priority": priority, "created_at": now}
+    return {"id": ticket_id, "title": title, "status": "open", "priority": priority,
+            "created_at": now, "due_at": due}
 
 
 def find_ticket_by_external_ref(tenant_id: str, external_ref: str) -> dict | None:
@@ -1295,11 +1335,19 @@ def list_tickets(tenant_id: str, status: str = None, limit: int = 100) -> list:
 def update_ticket(ticket_id: str, tenant_id: str, **fields) -> None:
     now     = datetime.utcnow().isoformat()
     allowed = {"status", "priority", "assigned_to", "janus_analysis",
-               "janus_action", "janus_action_args", "resolved_at", "labels"}
+               "janus_action", "janus_action_args", "resolved_at", "labels",
+               "due_at", "sla_breached", "first_response_at"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     updates["updated_at"] = now
     if "status" in updates and updates["status"] == "resolved":
         updates["resolved_at"] = now
+    # Raising the priority of a ticket should pull its deadline in, not leave it
+    # on the target it was opened with. Only recalculated if the caller did not
+    # set an explicit due_at.
+    if "priority" in updates and "due_at" not in updates:
+        row = get_ticket(ticket_id, tenant_id)
+        if row:
+            updates["due_at"] = sla_due_at(updates["priority"], row.get("created_at"))
     cols = ", ".join(f"{k} = {_PH}" for k in updates)
     vals = list(updates.values()) + [ticket_id, tenant_id]
     conn = _get_conn()
@@ -1307,6 +1355,70 @@ def update_ticket(ticket_id: str, tenant_id: str, **fields) -> None:
         cur = _cur(conn)
         cur.execute(f"UPDATE tickets SET {cols} WHERE id = {_PH} AND tenant_id = {_PH}", vals)
         conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_first_response(ticket_id: str, tenant_id: str) -> None:
+    """Stamp the first response time, once. Later replies do not overwrite it."""
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""UPDATE tickets SET first_response_at = {_PH}
+                WHERE id = {_PH} AND tenant_id = {_PH} AND first_response_at IS NULL""",
+            (now, ticket_id, tenant_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def sweep_sla_breaches(tenant_id: str = None) -> list:
+    """Flag open tickets that are past their due date.
+
+    Returns the tickets that flipped to breached on THIS call, so the caller can
+    escalate exactly once. Already-breached tickets are not returned again.
+
+    Resolved and closed tickets are left alone: a ticket resolved late keeps the
+    breach it earned, and one resolved on time can never breach afterwards.
+    """
+    now = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        q = (f"""SELECT * FROM tickets
+                 WHERE status NOT IN ('resolved', 'closed')
+                   AND due_at IS NOT NULL AND due_at < {_PH}
+                   AND (sla_breached IS NULL OR sla_breached = 0)""")
+        args = [now]
+        if tenant_id:
+            q += f" AND tenant_id = {_PH}"
+            args.append(tenant_id)
+        cur.execute(q, args)
+        newly = [dict(r) for r in cur.fetchall()]
+        for t in newly:
+            cur.execute(
+                f"UPDATE tickets SET sla_breached = 1, updated_at = {_PH} WHERE id = {_PH}",
+                (now, t["id"]))
+        conn.commit()
+        return newly
+    finally:
+        conn.close()
+
+
+def backfill_due_dates() -> int:
+    """Give pre-SLA tickets a deadline derived from when they were opened."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute("SELECT id, priority, created_at FROM tickets WHERE due_at IS NULL")
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            cur.execute(f"UPDATE tickets SET due_at = {_PH} WHERE id = {_PH}",
+                        (sla_due_at(r.get("priority"), r.get("created_at")), r["id"]))
+        conn.commit()
+        return len(rows)
     finally:
         conn.close()
 
@@ -1324,6 +1436,14 @@ def add_ticket_action(ticket_id: str, tenant_id: str, action_type: str,
             (action_id, ticket_id, tenant_id, action_type, content, user_email, now)
         )
         cur.execute(f"UPDATE tickets SET updated_at = {_PH} WHERE id = {_PH}", (now, ticket_id))
+        # Stamp first response here so every path gets it, whether the requester
+        # was answered by a person, by the assistant, or by an action taken on
+        # their behalf. A bare status change is not a response to anyone.
+        if action_type != "status_change":
+            cur.execute(
+                f"""UPDATE tickets SET first_response_at = {_PH}
+                    WHERE id = {_PH} AND tenant_id = {_PH} AND first_response_at IS NULL""",
+                (now, ticket_id, tenant_id))
         conn.commit()
     finally:
         conn.close()

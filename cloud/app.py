@@ -269,6 +269,12 @@ def _security_headers(resp):
 
 db.init_db()
 db.migrate_db()
+try:
+    _n = db.backfill_due_dates()
+    if _n:
+        print(f"[sla] set a due date on {_n} existing tickets", flush=True)
+except Exception as _e:
+    print(f"[sla] backfill skipped: {_e}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -4608,6 +4614,17 @@ Now give your final analysis using the exact JSON format above. Do not request a
 @require_dashboard_user
 def list_tickets():
     status  = request.args.get("status")
+    # Sweep on read rather than on a timer: a self-hosted install may be shut
+    # down overnight, and a background thread would simply not have run. The
+    # sweep is a single indexed UPDATE, so it is cheap enough to do per load.
+    try:
+        for t in db.sweep_sla_breaches(g.tenant_id):
+            db.log_activity(g.tenant_id, "sla_breach", "system",
+                            target=t.get("title", "")[:80],
+                            detail=(f"Missed the {t.get('priority', 'medium')} "
+                                    f"priority target (due {t.get('due_at', '')[:16]})"))
+    except Exception as e:
+        print(f"[sla] sweep failed: {e}", flush=True)
     tickets = db.list_tickets(g.tenant_id, status=status)
     return jsonify({"success": True, "data": tickets})
 
