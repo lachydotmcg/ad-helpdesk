@@ -28,7 +28,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import wraps
 from flask import (
-    Flask, request, jsonify, g,
+    Flask, request, jsonify, g, abort,
     session, redirect, url_for, render_template, flash, send_file
 )
 from dotenv import load_dotenv
@@ -304,6 +304,21 @@ if AID_LOCAL_MODE:
     _bootstrap_local_mode()
 
 
+def cloud_only(fn):
+    """Disable a commercial (hosted-SaaS) route when running the local edition.
+
+    The local edition is self-hosted and unlimited, so billing, checkout, plan
+    management, and public sign-up have no meaning there. Those routes 404 in
+    local mode instead of existing as dead ends."""
+    from functools import wraps as _wraps
+    @_wraps(fn)
+    def _wrapped(*a, **kw):
+        if AID_LOCAL_MODE:
+            abort(404)
+        return fn(*a, **kw)
+    return _wrapped
+
+
 # ---------------------------------------------------------------------------
 # Rate limiting (DB-backed — shared across dynos, survives deploys)
 # ---------------------------------------------------------------------------
@@ -478,14 +493,27 @@ def _get_ai_context(settings: dict | None = None) -> str:
     return str(settings.get("ai_context") or settings.get("janus_context") or "").strip()
 
 
+# The local edition is self-hosted and unmetered: no plans, no quotas, every
+# feature on. Cloud plan limits only apply to the hosted service.
+_LOCAL_UNLIMITED = {
+    "label": "Self-hosted", "janus_calls": None, "ad_commands": None, "tickets": None,
+    "auto_actions": True, "scheduled_reports": True, "integrations": True,
+    "email_intake": True, "custom_scripts_limit": None, "team_members": None,
+}
+
+
 def _tenant_plan_limits(tenant_id: str) -> tuple[str, dict]:
     """Return the effective plan and limits. Paid plans require active Stripe billing."""
+    if AID_LOCAL_MODE:
+        return "local", dict(_LOCAL_UNLIMITED)
     plan = db.get_tenant_plan(tenant_id)
     return plan, db.get_plan_limits(plan)
 
 
 def _paid_feature_block(tenant_id: str, feature_key: str, feature_label: str) -> str | None:
     """Return an error message when a plan feature is unavailable."""
+    if AID_LOCAL_MODE:
+        return None   # self-hosted: everything unlocked
     plan, limits = _tenant_plan_limits(tenant_id)
     value = limits.get(feature_key)
     if isinstance(value, bool):
@@ -1264,6 +1292,7 @@ def zoho_intake(api_key):
 
 
 @app.route("/signup", methods=["GET", "POST"])
+@cloud_only
 def signup():
     if "tenant_id" in session:
         return redirect(url_for("dashboard"))
@@ -1618,7 +1647,7 @@ def api_v1_action(action):
 @app.route("/dashboard")
 @require_dashboard_user
 def dashboard():
-    plan = db.get_tenant_plan(g.tenant_id)
+    plan, limits = _tenant_plan_limits(g.tenant_id)
     settings = db.get_settings(g.tenant_id)
     capabilities = db.get_tenant_capabilities(g.tenant_id)
     return render_template("dashboard.html",
@@ -1626,13 +1655,15 @@ def dashboard():
                            user_email=g.user_email,
                            user_role=g.user_role,
                            tenant_plan=plan,
-                           tenant_limits=db.get_plan_limits(plan),
+                           tenant_limits=limits,
+                           local_mode=AID_LOCAL_MODE,
                            ai_name=_get_ai_name(settings),
                            capabilities=capabilities,
                            entra_configured=_entra_configured(g.tenant_id))
 
 
 @app.route("/billing")
+@cloud_only
 @require_dashboard_user
 def billing():
     settings      = db.get_settings(g.tenant_id)
@@ -1857,6 +1888,7 @@ def _create_portal_url(tenant_id: str) -> str | None:
 
 @app.route("/create-checkout-session", methods=["POST"])
 @app.route("/billing/create-checkout-session", methods=["POST"])
+@cloud_only
 @require_dashboard_user
 def billing_create_checkout_session():
     """Create a Stripe Checkout session and return its URL."""
@@ -1922,6 +1954,7 @@ def billing_create_checkout_session():
 
 
 @app.route("/billing/portal", methods=["GET"])
+@cloud_only
 @require_dashboard_user
 def billing_portal():
     """Open Stripe Customer Portal for subscription management."""
@@ -1937,6 +1970,7 @@ def billing_portal():
 
 
 @app.route("/billing/success")
+@cloud_only
 @require_dashboard_user
 def billing_success():
     """Redirect target after a completed Stripe checkout."""
@@ -1946,6 +1980,7 @@ def billing_success():
 
 @app.route("/webhook/stripe", methods=["POST"])
 @app.route("/billing/webhook", methods=["POST"])
+@cloud_only
 def billing_webhook():
     """
     Stripe webhook receiver.  Automatically upgrades (or downgrades) the

@@ -1256,7 +1256,9 @@
     </div>
     <div class="tenant-badge">{{ tenant_name }}</div>
     <span>{{ user_email }}</span>
+    {% if not local_mode %}
     <a href="/billing" class="logout-btn icon-btn" title="Billing &amp; Plan"><svg class="icon icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></a>
+    {% endif %}
     <button id="theme-toggle" onclick="toggleTheme()" class="logout-btn icon-btn" title="Toggle light/dark mode" style="background:none;border:none;cursor:pointer;padding:0;line-height:0;">
       <svg class="icon icon-md theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
       <svg class="icon icon-md theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
@@ -1540,7 +1542,9 @@
             <span style="font-size:13px;color:var(--muted);font-weight:600;" id="usage-tickets-limit"></span>
             <div style="font-size:11px;color:var(--muted);margin-top:2px;">Tickets</div>
           </div>
+          {% if not local_mode %}
           <a href="/billing" style="font-size:11px;color:var(--accent2);text-decoration:none;margin-left:4px;" id="usage-plan-badge"></a>
+          {% endif %}
         </div>
       </div>
 
@@ -2527,7 +2531,8 @@
               </details>
             </div>
 
-            <!-- Billing -->
+            {% if not local_mode %}
+            <!-- Billing (hosted service only) -->
             <div class="settings-section" style="border-bottom:none;padding-bottom:0;">
               <div class="settings-section-title">Billing &amp; Plan</div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
@@ -2536,6 +2541,7 @@
               </div>
               <a href="/billing" class="btn btn-ghost" style="font-size:13px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> Manage Billing</a>
             </div>
+            {% endif %}
 
           </div>
         </div>
@@ -3830,7 +3836,8 @@
       document.getElementById('usage-commands-bar').style.width    = pctC + '%';
       document.getElementById('usage-commands-bar').style.background = barColor(pctC);
       const planLabels = { free: 'Free plan', pro: 'Pro', enterprise: 'Enterprise' };
-      document.getElementById('usage-plan-badge').textContent      = planLabels[plan] || plan;
+      const planBadge = document.getElementById('usage-plan-badge');   // absent in local mode
+      if (planBadge) planBadge.textContent = planLabels[plan] || plan;
       document.getElementById('usage-bar').style.display           = 'flex';
     } catch { /* silently skip */ }
   }
