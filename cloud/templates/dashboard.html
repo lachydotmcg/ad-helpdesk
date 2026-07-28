@@ -263,12 +263,16 @@
     }
 
     /* ---- Collapsible nav groups ---- */
+    /* Group headers must read as peers of plain nav items -- the chevron is the
+       only thing that marks them as expandable, not extra weight or brightness. */
     .nav-group-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 20px; cursor: pointer; user-select: none;
-      font-size: 13px; font-weight: 600; color: var(--text);
-      transition: background 0.15s;
+      padding: 10px 20px; cursor: pointer; user-select: none;
+      font-size: 14px; color: var(--muted);
+      border-left: 3px solid transparent;
+      transition: color 0.15s, background 0.15s;
     }
+    .nav-group-header:hover { color: var(--text); }
     .nav-group-header:hover { background: rgba(129,140,248,0.06); }
     .nav-group-header .nav-icon { margin-right: 2px; }
     .nav-group-title { display: flex; align-items: center; gap: 10px; flex: 1; }
