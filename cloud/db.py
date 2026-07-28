@@ -30,7 +30,8 @@ import secrets_crypto
 
 # Tenant-settings keys that hold secrets and must be encrypted at rest. Encryption
 # is transparent: callers of get_settings/update_settings always see plaintext.
-SECRET_SETTING_KEYS = ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key")
+SECRET_SETTING_KEYS = ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key",
+                       "slack_bot_token", "slack_app_token")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "adhelpdesk.db")
 
@@ -1418,6 +1419,10 @@ _SETTINGS_DEFAULTS = {
     "custom_priorities":  [],
     "ticket_labels":      [],
     "slack_webhook_url":  "",
+    # Slack self-service bot (Socket Mode, outbound only). Tokens encrypted at rest.
+    "slack_bot_enabled":  False,
+    "slack_bot_token":    "",   # xoxb-
+    "slack_app_token":    "",   # xapp-
     "teams_webhook_url":  "",
     # Entra ID (Microsoft Graph) app registration, per tenant. Secret fields
     # (graph_client_secret, smtp_pass) are encrypted at rest via secrets_crypto
@@ -1939,6 +1944,42 @@ def get_tenant_by_user_email(email: str) -> dict | None:
         return _row(cur.fetchone())
     finally:
         conn.close()
+
+
+def get_last_result(tenant_id: str, action: str, max_age_seconds: int = 900):
+    """Return the data from the most recent successful result for `action`, or
+    None if there isn't a recent one.
+
+    Used by the Slack bot to resolve a sender's identity without queueing an
+    agent command on every single message. Deliberately age-bounded: acting on a
+    stale user directory could mean matching an account that has since been
+    disabled or renamed.
+    """
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""SELECT r.data, r.created_at FROM results r
+                JOIN commands c ON c.id = r.command_id
+                WHERE r.tenant_id = {_PH} AND c.action = {_PH} AND r.success = {_PH}
+                ORDER BY r.created_at DESC LIMIT 1""",
+            (tenant_id, action, True if _USE_PG else 1)
+        )
+        row = _row(cur.fetchone())
+    finally:
+        conn.close()
+    if not row or not row["data"]:
+        return None
+    try:
+        created = datetime.fromisoformat(str(row["created_at"]).replace("Z", ""))
+        if (datetime.utcnow() - created).total_seconds() > max_age_seconds:
+            return None
+    except Exception:
+        return None
+    try:
+        return json.loads(row["data"]) if isinstance(row["data"], str) else row["data"]
+    except Exception:
+        return None
 
 
 def get_activity_feed(tenant_id: str, limit: int = 100) -> list:

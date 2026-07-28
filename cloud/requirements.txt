@@ -7,3 +7,6 @@ psycopg2-binary>=2.9.0
 requests>=2.31.0
 msal>=1.24
 cryptography>=42.0.0
+# Optional: enables the Slack self-service bot (Socket Mode). The server runs
+# fine without it; the Slack feature just reports itself unavailable.
+slack_sdk>=3.27.0

@@ -34,6 +34,7 @@ from flask import (
 from dotenv import load_dotenv
 import db
 import action_policy
+import slack_bot
 from graph_client import GraphClient, ACTIONS as GRAPH_ACTIONS
 
 load_dotenv()
@@ -2950,12 +2951,124 @@ def api_entra_test_connection():
     return jsonify(result), (200 if result["success"] else 502)
 
 
+# ---------------------------------------------------------------------------
+# Slack self-service
+# ---------------------------------------------------------------------------
+
+def _slack_user_directory(tenant_id):
+    """Users to match a Slack email against. Uses the most recent list_users
+    result so this does not queue an agent command on every single message."""
+    try:
+        cached = db.get_last_result(tenant_id, "list_users")
+    except Exception:
+        cached = None
+    if cached and isinstance(cached, list):
+        return cached
+    return []
+
+
+def handle_slack_message(tenant_id, slack_email, text):
+    """Called by slack_bot for each inbound message. Resolves who the sender is
+    from their Slack profile (never from the message text), then runs the
+    assistant restricted to self-service on that account."""
+    users = _slack_user_directory(tenant_id)
+    if not users:
+        # Fail closed: with no fresh directory we cannot prove who is asking, so
+        # we must not act. Say so accurately rather than implying they have no
+        # account, and try to warm the cache for next time.
+        try:
+            db.queue_command(tenant_id, "list_users", [])
+        except Exception:
+            pass
+        return ("I cannot reach the directory to confirm who you are right now, so I have "
+                "not made any changes. Please try again shortly, or raise a ticket.")
+    sam, reason = slack_bot.resolve_ad_identity(slack_email, users)
+    if not sam:
+        db.log_activity(tenant_id, "security_flag", slack_email or "unknown-slack-user",
+                        detail=f"Slack request refused, identity unresolved: {text[:80]}")
+        return reason
+
+    db.log_activity(tenant_id, "janus_action", slack_email, target=sam,
+                    detail=f"Slack self-service: {text[:100]}")
+    try:
+        out = _run_chat(tenant_id, slack_email, text, self_service_for=sam)
+    except Exception:
+        log_msg = "Slack chat pipeline failed"
+        try:
+            db.log_activity(tenant_id, "security_flag", slack_email, target=sam, detail=log_msg)
+        except Exception:
+            pass
+        return "Something went wrong on my end, so I have not made any changes."
+    if not out.get("success"):
+        return out.get("message") or "I could not do that right now."
+    if out.get("requires_confirmation"):
+        # A self-service user must never be handed a confirmation token: those
+        # gate admin-only operations, and the self-service allowlist should have
+        # rejected the action long before this point.
+        return "That one needs an IT admin to approve it, so I have not actioned it."
+    return out.get("reply") or "Done."
+
+
+# ---------------------------------------------------------------------------
+# Self-service policy
+#
+# An end user talking to the chat bot is NOT an admin. They may do a small number
+# of things, and only to their own account. This is deliberately much narrower
+# than the dashboard's policy: unlocking a colleague is an admin action, not a
+# self-service one, because "unlock bob.smith" from a compromised or borrowed
+# account is exactly the attack this prevents.
+#
+# The identity is resolved server-side from the chat platform's profile, never
+# from anything the user typed, so it cannot be spoofed by asking nicely.
+# ---------------------------------------------------------------------------
+SELF_SERVICE_ACTIONS = {
+    "unlock_account":        0,   # value = index of the argument holding the target
+    "reset_password":        0,
+    "force_password_change": 0,
+    "get_user_info":         0,
+    "list_group_memberships": 0,
+}
+# Reads that carry no user target and are harmless for anyone to run.
+SELF_SERVICE_OPEN_READS = {"get_stats", "list_ous"}
+
+
+def _self_service_check(action: str, args: list, requester_sam: str) -> tuple[bool, str]:
+    """Return (allowed, reason). Enforces that a self-service caller may only run
+    an allowlisted action, and only against their own account."""
+    if action in SELF_SERVICE_OPEN_READS:
+        return True, ""
+    if action not in SELF_SERVICE_ACTIONS:
+        return False, ("That one needs an IT admin. I can help you with your own account: "
+                       "unlocking it, resetting your password, or telling you what groups "
+                       "you are in.")
+    idx = SELF_SERVICE_ACTIONS[action]
+    raw = args[idx] if (args and len(args) > idx and args[idx]) else ""
+    target = str(raw).strip().lower()
+    me = (requester_sam or "").strip().lower()
+    if not me:
+        return False, "I could not confirm who you are, so I have not made any changes."
+    if not target:
+        return False, "I could not tell whose account you meant, so I have not made any changes."
+    # Accept sam, DOMAIN\sam, or sam@domain for the requester's own identity.
+    target_sam = target.split("\\")[-1].split("@")[0]
+    if target_sam != me:
+        return False, (f"I can only do that for your own account. If {raw} needs help, "
+                       "an IT admin will need to action it.")
+    return True, ""
+
+
 def _run_chat(tenant_id: str, user_email: str, message: str,
-              history: list = None, session_id: str = None) -> dict:
+              history: list = None, session_id: str = None,
+              self_service_for: str = None) -> dict:
     """
     Core AI chat pipeline shared by the dashboard and the public API.
     Returns a plain dict (suitable for jsonify). Never raises — errors are
     returned as {"success": False, "message": "..."}.
+
+    self_service_for: when set to an AD sAMAccountName, the caller is an end user
+    (e.g. someone talking to the Slack bot) rather than an admin. Actions are then
+    restricted to SELF_SERVICE_ACTIONS and must target that account only. See
+    _self_service_check.
     """
     if not ai_enabled(tenant_id):
         return {"success": False, "message": ai_unavailable_message(tenant_id)}
@@ -3305,6 +3418,17 @@ CRITICAL RULES:
                 result_data = {"success": False, "message": f"Invalid arguments for {action}.", "data": None}
             command_id = None
         else:
+            # Self-service callers (an end user in Slack, not an admin at the
+            # dashboard) are held to a much narrower policy: a short allowlist,
+            # and the target must be themselves. Enforced here in Python so no
+            # amount of prompting can widen it.
+            if self_service_for:
+                ss_ok, ss_reason = _self_service_check(action, args, self_service_for)
+                if not ss_ok:
+                    db.log_activity(tenant_id, "security_flag", user_email,
+                                    detail=f"Self-service blocked '{action}': {ss_reason}")
+                    return {"success": True, "reply": ss_reason, "action_taken": None}
+
             policy_ok, policy_reason = action_policy.validate(action, source="ai_chat")
             if not policy_ok:
                 db.log_activity(tenant_id, "security_flag", user_email,
@@ -3747,7 +3871,8 @@ def dashboard_get_settings():
     # Never expose secrets in the API response — redact them (client shows a
     # placeholder and a "key is set" hint instead).
     safe = dict(settings)
-    for _secret in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key"):
+    for _secret in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key",
+                    "slack_bot_token", "slack_app_token"):
         if safe.get(_secret):
             safe[_secret + "_set"] = True   # tell the UI a value exists
             safe[_secret] = ""
@@ -3768,6 +3893,7 @@ def dashboard_update_settings():
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
                "ai_context", "ai_name", "ai_model",
                "ai_provider", "ai_base_url", "ai_model_name", "ai_cloud_key", "ai_local_key",
+               "slack_bot_enabled", "slack_bot_token", "slack_app_token",
                "report_enabled", "report_frequency", "report_day",
                "report_hour", "report_recipients", "last_report_sent",
                "slack_webhook_url", "teams_webhook_url",
@@ -3796,7 +3922,8 @@ def dashboard_update_settings():
         if k in allowed:
             # Never overwrite smtp_pass / graph_client_secret with an empty
             # string (blank = "keep existing")
-            if k in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key") and v == "":
+            if k in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key",
+                     "slack_bot_token", "slack_app_token") and v == "":
                 continue
             if k == "ai_name":
                 v = str(v or "").strip() or DEFAULT_AI_NAME
@@ -3806,10 +3933,60 @@ def dashboard_update_settings():
     db.update_settings(g.tenant_id, current)
     db.log_activity(g.tenant_id, "settings_changed", g.user_email, detail="Settings updated")
     safe = dict(current)
-    for _secret in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key"):
+    for _secret in ("smtp_pass", "graph_client_secret", "ai_cloud_key", "ai_local_key",
+                    "slack_bot_token", "slack_app_token"):
         if safe.get(_secret):
             safe[_secret] = ""   # never echo secrets back; client shows placeholder
     return jsonify({"success": True, "data": safe})
+
+
+@app.route("/dashboard/api/slack/connect", methods=["POST"])
+@require_dashboard_user
+def dashboard_slack_connect():
+    """Start or stop the Slack self-service bot for this tenant."""
+    if g.user_role != "admin":
+        return jsonify({"success": False, "message": "Admin only."}), 403
+    data   = request.get_json() or {}
+    enable = bool(data.get("enabled", True))
+
+    if not enable:
+        slack_bot.stop_for_tenant(g.tenant_id)
+        st = db.get_settings(g.tenant_id); st["slack_bot_enabled"] = False
+        db.update_settings(g.tenant_id, st)
+        return jsonify({"success": True, "message": "Slack bot disconnected."})
+
+    if not slack_bot.slack_available():
+        return jsonify({"success": False, "message": slack_bot.unavailable_message()})
+
+    st  = db.get_settings(g.tenant_id)
+    bot = str(data.get("bot_token", "")).strip() or st.get("slack_bot_token", "")
+    app_t = str(data.get("app_token", "")).strip() or st.get("slack_app_token", "")
+    if not bot.startswith("xoxb-"):
+        return jsonify({"success": False, "message": "The bot token should start with 'xoxb-'."})
+    if not app_t.startswith("xapp-"):
+        return jsonify({"success": False, "message": "The app-level token should start with 'xapp-'."})
+
+    ok, msg = slack_bot.start_for_tenant(g.tenant_id, bot, app_t, handle_slack_message)
+    if ok:
+        st["slack_bot_token"] = bot
+        st["slack_app_token"] = app_t
+        st["slack_bot_enabled"] = True
+        db.update_settings(g.tenant_id, st)
+        db.log_activity(g.tenant_id, "settings_changed", g.user_email,
+                        detail="Slack self-service bot connected")
+    return jsonify({"success": ok, "message": msg})
+
+
+@app.route("/dashboard/api/slack/status", methods=["GET"])
+@require_dashboard_user
+def dashboard_slack_status():
+    st = db.get_settings(g.tenant_id)
+    return jsonify({"success": True, "data": {
+        "available": slack_bot.slack_available(),
+        "running":   slack_bot.is_running(g.tenant_id),
+        "enabled":   bool(st.get("slack_bot_enabled")),
+        "configured": bool(st.get("slack_bot_token") and st.get("slack_app_token")),
+    }})
 
 
 @app.route("/dashboard/api/ai/test", methods=["POST"])
