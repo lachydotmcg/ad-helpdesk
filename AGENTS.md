@@ -34,7 +34,6 @@ ad-helpdesk/
 │       └── dashboard.html    # Entire single-page frontend (vanilla JS)
 ├── installer/
 │   └── setup_wizard.py       # Windows EXE installer wizard (PyInstaller target)
-└── legacy/                   # Old local-only version — ignore
 ```
 
 ---

@@ -41,3 +41,18 @@ Thumbs.db
 # demo tooling scratch output
 demo_agent_out.txt
 demo_agent_err.txt
+
+# Internal working notes / scratch docs - keep them local, not in the public repo.
+# Long-lived docs live in docs/ or the named *.md files already tracked.
+MORNING.md
+OVERNIGHT_PLAN.md
+NOTES.md
+TODO.md
+SCRATCH.md
+log.md
+*_PLAN.md
+*-notes.md
+
+# Runtime logs and scratch output
+*.log
+demo_agent_*.txt

@@ -1,2 +1,0 @@
-[phases.start]
-cmd = "python cloud/app.py"

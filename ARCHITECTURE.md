@@ -210,7 +210,6 @@ ad-helpdesk/
 │       └── dashboard.html    # Single-page frontend (vanilla JS)
 ├── installer/
 │   └── setup_wizard.py       # Windows EXE installer wizard
-└── legacy/                   # v0.1–v0.4 local-only files  - not active
 ```
 
 ---
