@@ -128,6 +128,23 @@ Get-DhcpServerv4ScopeStatistics |
 """
 
 
+def _build_find_free_ip_script(scope_id: str, count: int) -> str:
+    """Ask the DHCP server for the next free address(es) in a scope.
+
+    Creating a reservation means picking an address that is genuinely free, and
+    eyeballing a lease list to find one is exactly the kind of manual step this
+    product exists to remove. Get-DhcpServerv4FreeIPAddress is authoritative
+    (it accounts for leases, reservations, and exclusions).
+    """
+    s = _ps_escape(scope_id)
+    return f"""
+{_preamble()}
+$ErrorActionPreference = 'Stop'
+$free = Get-DhcpServerv4FreeIPAddress -ScopeId '{s}' -NumAddress {count}
+[pscustomobject]@{{ scope = '{s}'; addresses = @($free) }} | ConvertTo-Json -Depth 3
+"""
+
+
 def _build_list_leases_script(scope_id: str) -> str:
     s = _ps_escape(scope_id)
     return f"""
@@ -255,6 +272,25 @@ def get_scope_stats() -> dict:
     return r
 
 
+def find_free_ip(scope_id: str, count=3) -> dict:
+    """Return the next free address(es) in a scope, ready to reserve."""
+    try:
+        scope_id = _validate_ip(scope_id, "Scope ID")
+        try:
+            count = max(1, min(int(count), 10))
+        except (TypeError, ValueError):
+            count = 3
+    except DhcpValidationError as e:
+        return {"success": False, "message": str(e), "data": None}
+    r = _run(_build_find_free_ip_script(scope_id, count))
+    if r["success"]:
+        addrs = _normalise_list((r.get("data") or {}).get("addresses"))
+        r["data"] = addrs
+        r["message"] = (f"Next free address in {scope_id}: {addrs[0]}." if addrs
+                        else f"No free addresses available in {scope_id}.")
+    return r
+
+
 def list_leases(scope_id: str) -> dict:
     try:
         scope_id = _validate_ip(scope_id, "Scope ID")
@@ -366,4 +402,5 @@ ACTIONS = {
     "add_dhcp_exclusion":      lambda a: add_exclusion_range(*a),
     "remove_dhcp_exclusion":   lambda a: remove_exclusion_range(*a),
     "list_dhcp_exclusions":    lambda a: list_exclusions(*a),
+    "find_free_dhcp_ip":       lambda a: find_free_ip(*a),
 }

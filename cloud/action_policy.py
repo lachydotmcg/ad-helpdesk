@@ -41,6 +41,7 @@ READ: frozenset[str] = frozenset({
     "get_dns_zone",
     "list_dns_records",
     "get_dns_scavenging",
+    "resolve_dns_name",      # diagnostic: does this name resolve, and to what
     # DHCP reads
     "list_dhcp_scopes",
     "get_dhcp_scope",
@@ -48,6 +49,7 @@ READ: frozenset[str] = frozenset({
     "list_dhcp_leases",
     "list_dhcp_reservations",
     "list_dhcp_exclusions",
+    "find_free_dhcp_ip",     # diagnostic: next free address, ready to reserve
     # GPO reads
     "list_gpos",
     "get_gpo",

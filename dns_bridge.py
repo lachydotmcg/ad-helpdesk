@@ -333,6 +333,34 @@ Write-Output '{{"result":"ok","scavenging_state":"{flag}"}}'
 """
 
 
+def _build_resolve_name_script(name: str, record_type: str) -> str:
+    """Actually resolve a name from the DNS server's own perspective.
+
+    This is the diagnostic behind "the printer isn't resolving" style tickets:
+    it answers whether the name resolves at all, and to what. Resolve-DnsName is
+    part of the in-box DnsClient module, so it does not need the DNS Server role
+    (a member server can answer too). Failure to resolve is a legitimate,
+    expected answer here, so NXDOMAIN is reported as data, not as an error.
+    """
+    n = _ps_escape(name)
+    t = _ps_escape(record_type) if record_type else "A"
+    return f"""
+$ErrorActionPreference = 'Stop'
+try {{
+  $ans = Resolve-DnsName -Name '{n}' -Type {t} -DnsOnly -ErrorAction Stop |
+         Select-Object Name, Type, TTL,
+                       @{{N='Value';E={{ if ($_.IPAddress) {{ $_.IPAddress }}
+                                        elseif ($_.NameHost) {{ $_.NameHost }}
+                                        elseif ($_.NameExchange) {{ $_.NameExchange }}
+                                        else {{ $_.Strings -join ' ' }} }}}}
+  [pscustomobject]@{{ resolved = $true; query = '{n}'; type = '{t}'; answers = @($ans) }} | ConvertTo-Json -Depth 4
+}} catch {{
+  [pscustomobject]@{{ resolved = $false; query = '{n}'; type = '{t}'; answers = @();
+                     reason = $_.Exception.Message }} | ConvertTo-Json -Depth 4
+}}
+"""
+
+
 # ---------------------------------------------------------------------------
 # Public functions (validate -> build -> run)
 # ---------------------------------------------------------------------------
@@ -452,6 +480,30 @@ def set_scavenging(enabled_bool) -> dict:
     return r
 
 
+def resolve_name(name: str, record_type: str = "A") -> dict:
+    """Resolve a name and report what it points to, or why it failed.
+
+    Read-only diagnostic. A name that does not resolve is a successful answer
+    (resolved=False), not an error, so the assistant can tell an admin "that
+    hostname does not resolve" instead of surfacing a stack trace.
+    """
+    try:
+        n = _validate_name(name, "Name")
+        t = _validate_record_type(record_type) if record_type else "A"
+    except DnsValidationError as e:
+        return {"success": False, "message": str(e), "data": None}
+    r = _run(_build_resolve_name_script(n, t))
+    if r["success"]:
+        d = r.get("data") or {}
+        if d.get("resolved"):
+            answers = _normalise_list(d.get("answers"))
+            vals = ", ".join(str(a.get("Value")) for a in answers if a.get("Value"))
+            r["message"] = f"{n} resolves to {vals}." if vals else f"{n} resolved."
+        else:
+            r["message"] = f"{n} does not resolve ({d.get('reason', 'no answer')})."
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Action registry -- merged by agent.py. Every bridge module exposes ACTIONS
 # mapping a flat action name to a callable taking one list of args.
@@ -466,4 +518,5 @@ ACTIONS = {
     "remove_dns_record":   lambda a: remove_record(*a),
     "get_dns_scavenging":  lambda a: get_scavenging(),
     "set_dns_scavenging":  lambda a: set_scavenging(*a),
+    "resolve_dns_name":    lambda a: resolve_name(*a),
 }
