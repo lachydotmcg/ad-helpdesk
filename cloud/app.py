@@ -359,6 +359,8 @@ TIME_SAVED_MINUTES: dict[str, float] = {
     "list_dns_records":           0.5,
     "get_dns_zone":               0.5,
     "get_dns_scavenging":         0.5,
+    "resolve_dns_name":           1.0,
+    "find_free_dhcp_ip":          1.0,
     # DHCP
     "add_dhcp_reservation":       1.5,
     "remove_dhcp_reservation":    1.0,
@@ -1914,6 +1916,22 @@ def api_dns_records_update():
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
 
+@app.route("/api/dns/resolve", methods=["GET"])
+@require_dashboard_user
+def api_dns_resolve():
+    """Test whether a name resolves, and to what. Read-only diagnostic.
+    Query: ?name=<host>&type=<A|AAAA|CNAME|MX|TXT|PTR>"""
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    name = request.args.get("name", "").strip()
+    rtype = request.args.get("type", "A").strip() or "A"
+    if not name:
+        return jsonify({"success": False, "message": "Enter a name to look up."}), 400
+    command = db.queue_command(g.tenant_id, "resolve_dns_name", [name, rtype])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
 @app.route("/api/dns/scavenging", methods=["GET"])
 @require_dashboard_user
 def api_dns_scavenging_get():
@@ -1988,6 +2006,26 @@ def api_dhcp_scopes_stats():
     if block:
         return jsonify({"success": False, "message": block}), 403
     command = db.queue_command(g.tenant_id, "get_dhcp_scope_stats", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dhcp/free-ip", methods=["GET"])
+@require_dashboard_user
+def api_dhcp_free_ip():
+    """Ask the DHCP server for the next free address(es) in a scope, so a
+    reservation can be created without hunting through the lease table.
+    Read-only. Query: ?scope=<scope_id>&count=<1-10>"""
+    block = _require_dhcp_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    scope = request.args.get("scope", "").strip()
+    if not scope:
+        return jsonify({"success": False, "message": "A scope ID is required."}), 400
+    try:
+        count = max(1, min(int(request.args.get("count", 3)), 10))
+    except (TypeError, ValueError):
+        count = 3
+    command = db.queue_command(g.tenant_id, "find_free_dhcp_ip", [scope, count])
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
 
@@ -3036,6 +3074,11 @@ Available AD actions (use exact action names):
   get_dns_zone                args: [zone]                                      -- LOW RISK, read-only. Zone details (type, dynamic update, reverse-lookup).
   list_dns_records            args: [zone, type]                                -- LOW RISK, read-only. type is optional (A/AAAA/CNAME/MX/TXT/PTR), pass "" for all.
   get_dns_scavenging          args: []                                          -- LOW RISK, read-only. Current scavenging settings.
+  resolve_dns_name            args: [name, type]                                -- LOW RISK, read-only. Actually resolves a name and reports what it
+                                                                                   points to. Use this FIRST for any "X is not resolving" or "works by
+                                                                                   IP but not by name" report, before looking at zone records. type is
+                                                                                   optional (defaults to A). A name that does not resolve comes back as
+                                                                                   resolved=false with a reason: that is a valid answer, not an error.
   add_dns_record               args: [zone, name, type, value, ttl_seconds]     -- ROUTINE WRITE. Adds one record. ttl_seconds defaults to 3600 if unsure.
   update_dns_record            args: [zone, name, type, old_value, new_value]   -- ROUTINE WRITE. Changes an existing record's value.
   remove_dns_record            args: [zone, name, type, value]                  -- HIGH CAUTION. Deletes a record; can break name resolution. The dashboard
@@ -3059,6 +3102,10 @@ Available AD actions (use exact action names):
   list_dhcp_leases            args: [scope_id]                                  -- LOW RISK, read-only. Active leases in a scope.
   list_dhcp_reservations       args: [scope_id]                                 -- LOW RISK, read-only. Reservations in a scope.
   list_dhcp_exclusions         args: [scope_id]                                 -- LOW RISK, read-only. Excluded address ranges in a scope.
+  find_free_dhcp_ip            args: [scope_id, count]                          -- LOW RISK, read-only. The next genuinely free address(es) in a scope,
+                                                                                   accounting for leases, reservations and exclusions. Call this before
+                                                                                   add_dhcp_reservation so you reserve an address that is actually free.
+                                                                                   count is optional (defaults to 3).
   add_dhcp_reservation          args: [scope_id, ip, mac, name, description]    -- ROUTINE WRITE. Pins an IP to a MAC (e.g. converting a lease). description can be "".
   remove_dhcp_reservation       args: [scope_id, ip]                            -- HIGH CAUTION. Drops the device back into the general lease pool. The dashboard
                                                                                     always makes the admin confirm this with a 6-digit code before it runs --
@@ -3182,6 +3229,7 @@ CRITICAL RULES:
         'list_expired_passwords', 'get_stats', 'list_group_memberships',
         'get_group_members',
         'list_dns_zones', 'get_dns_zone', 'list_dns_records', 'get_dns_scavenging',
+        'resolve_dns_name', 'find_free_dhcp_ip',
         'list_dhcp_scopes', 'get_dhcp_scope', 'get_dhcp_scope_stats',
         'list_dhcp_leases', 'list_dhcp_reservations', 'list_dhcp_exclusions',
         'list_gpos', 'get_gpo', 'get_gpo_report', 'list_gpo_links', 'get_gpo_inheritance',
@@ -3990,7 +4038,7 @@ DNS-shaped (a hostname isn't resolving, a device can't be reached by name, "work
 but not by name", a record looks wrong or missing) you may run ONE read-only DNS lookup
 before finishing your analysis. To do that, respond with ONLY this JSON instead of the
 final analysis format:
-{"dns_lookup": {"action": "list_dns_zones|get_dns_zone|list_dns_records|get_dns_scavenging", "args": ["arg1"]}}
+{"dns_lookup": {"action": "resolve_dns_name|list_dns_zones|get_dns_zone|list_dns_records|get_dns_scavenging", "args": ["arg1"]}}
 You will then be shown the lookup result and asked for the final analysis. Only use
 read actions here (list_dns_zones, get_dns_zone, list_dns_records, get_dns_scavenging) --
 never request a DNS write (add/update/remove a record) from analysis. If a DNS fix is
@@ -4105,7 +4153,8 @@ RULES:
             lookup      = precheck.get("dns_lookup") or {}
             lookup_action = lookup.get("action")
             lookup_args   = lookup.get("args", [])
-            DNS_READ_ACTIONS = {"list_dns_zones", "get_dns_zone", "list_dns_records", "get_dns_scavenging"}
+            DNS_READ_ACTIONS = {"list_dns_zones", "get_dns_zone", "list_dns_records",
+                                "get_dns_scavenging", "resolve_dns_name"}
 
             if lookup_action in DNS_READ_ACTIONS:
                 command     = db.queue_command(tenant_id, lookup_action, lookup_args)

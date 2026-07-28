@@ -147,6 +147,19 @@ def handle(action, args):
         return _r(msg=f"{len(DNS_RECORDS)} record(s).", data=DNS_RECORDS)
     if action == "get_dns_scavenging":
         return _r(data=dict(SCAVENGING))
+    if action == "resolve_dns_name":
+        q = (args[0] if args else "").strip()
+        rtype = (args[1] if len(args) > 1 else "A") or "A"
+        base = q.split(".")[0].lower()
+        hit = next((r for r in DNS_RECORDS if r["name"].lower() == base), None)
+        if hit:
+            return _r(msg=f"{q} resolves to {hit['value']}.",
+                      data={"resolved": True, "query": q, "type": hit["type"],
+                            "answers": [{"Name": q, "Type": hit["type"],
+                                         "TTL": hit["ttl"], "Value": hit["value"]}]})
+        return _r(msg=f"{q} does not resolve (DNS name does not exist).",
+                  data={"resolved": False, "query": q, "type": rtype, "answers": [],
+                        "reason": "DNS name does not exist"})
     if action == "set_dns_scavenging":
         enabled = bool(args[0]) if args else False
         SCAVENGING["ScavengingState"] = enabled
@@ -184,6 +197,12 @@ def handle(action, args):
                          "Name": "printer01", "Description": "Follow-me printer"}])
     if action == "list_dhcp_exclusions":
         return _r(data=[{"StartRange": "10.0.5.1", "EndRange": "10.0.5.19"}])
+    if action == "find_free_dhcp_ip":
+        scope = (args[0] if args else "10.0.5.0").strip()
+        n = int(args[1]) if len(args) > 1 and str(args[1]).isdigit() else 3
+        base = ".".join(scope.split(".")[:3])
+        addrs = [f"{base}.{60 + i}" for i in range(n)]
+        return _r(msg=f"Next free address in {scope}: {addrs[0]}.", data=addrs)
 
     # Group Policy
     if action == "list_gpos":
