@@ -24,6 +24,10 @@
   Done. John is unlocked and Karen's temp password has been sent.
 ```
 
+<p align="center">
+  <img src="docs/screenshots/platform.png" alt="AD Helpdesk dashboard: Active Directory, DNS, DHCP, Group Policy, NPS and Entra ID in one place" width="900"/>
+</p>
+
 ## Why you might want this
 
 - 🧠 **Bring your own AI.** Point it at [Ollama](https://ollama.com), your own GPU box by IP, or any OpenAI-compatible server (LM Studio, vLLM, LocalAI, Jan, LiteLLM). Pick Local or Cloud in the UI. **No cloud dependency unless you choose one.**
@@ -55,23 +59,16 @@ Full walkthrough: **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)**.
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="AID Helpdesk dashboard — live AD user list, stats, and one-click actions" width="900"/>
+  <img src="docs/screenshots/assistant.png" alt="The AI assistant, running on your own local model" width="900"/>
 </p>
-<p align="center"><em>Dashboard — live AD user list, domain stats, and one-click actions</em></p>
+<p align="center"><em>Ask in plain English &mdash; running on your own model, on your own network</em></p>
 
 <br/>
 
 <p align="center">
-  <img src="docs/screenshots/assistant.png" alt="AI assistant — manage Active Directory in plain English" width="900"/>
+  <img src="docs/screenshots/home-overview.png" alt="Home overview with agent status, lockout alerts and domain stats" width="900"/>
 </p>
-<p align="center"><em>Assistant — manage Active Directory in plain English</em></p>
-
-<br/>
-
-<p align="center">
-  <img src="docs/screenshots/ticket.png" alt="Ticket triage — AI scores threat and auto-resolves routine requests" width="900"/>
-</p>
-<p align="center"><em>Tickets — the AI triages each request, scores threat, and auto-resolves routine ones</em></p>
+<p align="center"><em>Agent status, proactive alerts, and live domain stats at a glance</em></p>
 
 ---
 
