@@ -1,0 +1,13 @@
+# AD Helpdesk AGENT dependencies.
+#
+# The agent is the small piece that runs on a domain-joined Windows box and
+# executes AD/DNS/DHCP/GPO/NPS commands over WinRM. It does NOT need Flask,
+# Anthropic, Postgres, or any of the server's dependencies.
+#
+#   pip install -r requirements-agent.txt
+#   python agent.py
+#
+# The server's dependencies live in requirements.txt.
+pywinrm>=0.4.3
+requests>=2.31.0
+python-dotenv>=1.0.0

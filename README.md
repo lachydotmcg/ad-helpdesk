@@ -128,8 +128,17 @@ The agent polls the server **outbound**, so your domain controller needs no inbo
    - **Install**: writes `agent-config.json` and registers the agent as a Windows Service
 3. **Check the dashboard** &mdash; it shows **Agent: Online** and you're live.
 
-> **No installer needed?** Copy `agent-config.example.json` to `agent-config.json`, fill it in, and run `python agent.py`.
+> **No installer needed?** Copy `agent-config.example.json` to `agent-config.json`, fill it in, then `pip install -r requirements-agent.txt` and run `python agent.py`.
 > **Build the installer yourself:** `installer/build.bat` (needs Python 3.9+ and PyInstaller on Windows).
+
+### Building the releases
+
+```bash
+python build-releases.py          # -> dist/aid-server-<v>.zip and dist/aid-agent-<v>.zip
+python build-releases.py --agent  # just one of them
+```
+
+Each artifact carries only what that component needs (the agent never ships Flask; the server never ships the WinRM bridges) and a `START-HERE.txt` with its own setup steps. Credentials and local state are excluded from both.
 
 ---
 
