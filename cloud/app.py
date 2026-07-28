@@ -16,6 +16,7 @@ Environment variables:
     ANTHROPIC_API_KEY -- for the AI chat interface (v0.6)
 """
 
+import uuid
 import os
 import re
 import json
@@ -3938,6 +3939,125 @@ def dashboard_update_settings():
         if safe.get(_secret):
             safe[_secret] = ""   # never echo secrets back; client shows placeholder
     return jsonify({"success": True, "data": safe})
+
+
+# ---------------------------------------------------------------------------
+# Ticket attachments
+#
+# Threat model for user-uploaded files, and how each part is handled:
+#   * Path traversal  -> the client filename is NEVER used on disk. We write to a
+#                        generated uuid under a per-tenant folder and verify the
+#                        resolved path stays inside the upload root.
+#   * Stored XSS      -> files are served with Content-Disposition: attachment and
+#                        a neutral content type, so an uploaded .html/.svg cannot
+#                        execute in the dashboard's origin.
+#   * Cross-tenant    -> every lookup is scoped by tenant_id, so an attachment id
+#                        alone is not enough to read another org's file.
+#   * Disk exhaustion -> hard per-file size cap, enforced after the read.
+# ---------------------------------------------------------------------------
+ATTACHMENT_ROOT = os.getenv("AID_ATTACHMENT_DIR",
+                            os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads"))
+MAX_ATTACHMENT_BYTES = int(os.getenv("AID_MAX_ATTACHMENT_MB", "10")) * 1024 * 1024
+# Deliberately an allowlist. Anything not named here is refused rather than
+# guessed at, which keeps executables and script types out by default.
+ALLOWED_ATTACHMENT_EXTS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+    ".pdf", ".txt", ".log", ".csv", ".json", ".xml",
+    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".zip", ".eml", ".msg",
+}
+
+
+def _attachment_dir(tenant_id: str) -> str:
+    d = os.path.join(ATTACHMENT_ROOT, tenant_id)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _safe_attachment_path(tenant_id: str, stored_name: str) -> str | None:
+    """Resolve a stored file path and refuse anything that escapes the tenant's
+    own upload folder, whatever the stored name claims to be."""
+    base = os.path.realpath(_attachment_dir(tenant_id))
+    full = os.path.realpath(os.path.join(base, stored_name))
+    if not (full == base or full.startswith(base + os.sep)):
+        return None
+    return full
+
+
+@app.route("/dashboard/api/tickets/<ticket_id>/attachments", methods=["GET"])
+@require_dashboard_user
+def api_ticket_attachments(ticket_id):
+    if not db.get_ticket(ticket_id, g.tenant_id):
+        return jsonify({"success": False, "message": "Ticket not found."}), 404
+    return jsonify({"success": True, "data": db.list_attachments(ticket_id, g.tenant_id)})
+
+
+@app.route("/dashboard/api/tickets/<ticket_id>/attachments", methods=["POST"])
+@require_dashboard_user
+def api_ticket_attachment_upload(ticket_id):
+    if not db.get_ticket(ticket_id, g.tenant_id):
+        return jsonify({"success": False, "message": "Ticket not found."}), 404
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"success": False, "message": "No file was uploaded."}), 400
+
+    original = os.path.basename(f.filename.replace("\\", "/")).strip()
+    ext = os.path.splitext(original)[1].lower()
+    if ext not in ALLOWED_ATTACHMENT_EXTS:
+        return jsonify({"success": False, "message":
+                        f"'{ext or 'that file type'}' is not an allowed attachment type."}), 400
+
+    data = f.read()
+    if len(data) == 0:
+        return jsonify({"success": False, "message": "That file is empty."}), 400
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        mb = MAX_ATTACHMENT_BYTES // (1024 * 1024)
+        return jsonify({"success": False, "message": f"Files must be {mb} MB or smaller."}), 400
+
+    stored = f"{uuid.uuid4().hex}{ext}"          # never the client's name
+    path = _safe_attachment_path(g.tenant_id, stored)
+    if not path:
+        return jsonify({"success": False, "message": "Could not store that file."}), 400
+    with open(path, "wb") as out:
+        out.write(data)
+
+    att = db.add_attachment(g.tenant_id, ticket_id, original, stored,
+                            len(data), f.mimetype or "application/octet-stream",
+                            g.user_email)
+    db.log_activity(g.tenant_id, "ticket_created", g.user_email, target=ticket_id,
+                    detail=f"Attached {original}")
+    return jsonify({"success": True, "data": att}), 201
+
+
+@app.route("/dashboard/api/attachments/<att_id>", methods=["GET"])
+@require_dashboard_user
+def api_attachment_download(att_id):
+    att = db.get_attachment(att_id, g.tenant_id)
+    if not att:
+        return jsonify({"success": False, "message": "Attachment not found."}), 404
+    path = _safe_attachment_path(g.tenant_id, att["stored_name"])
+    if not path or not os.path.exists(path):
+        return jsonify({"success": False, "message": "That file is no longer on disk."}), 404
+    # as_attachment forces a download rather than rendering in our own origin,
+    # which is what stops an uploaded .html or .svg becoming stored XSS.
+    return send_file(path, as_attachment=True, download_name=att["filename"],
+                     mimetype="application/octet-stream")
+
+
+@app.route("/dashboard/api/attachments/<att_id>", methods=["DELETE"])
+@require_dashboard_user
+def api_attachment_delete(att_id):
+    att = db.delete_attachment(att_id, g.tenant_id)
+    if not att:
+        return jsonify({"success": False, "message": "Attachment not found."}), 404
+    path = _safe_attachment_path(g.tenant_id, att["stored_name"])
+    if path and os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return jsonify({"success": True, "message": "Attachment removed."})
 
 
 @app.route("/dashboard/api/slack/connect", methods=["POST"])

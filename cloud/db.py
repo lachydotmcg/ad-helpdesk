@@ -201,6 +201,18 @@ _SCHEMA = [
         created_at TEXT NOT NULL,
         FOREIGN KEY (ticket_id) REFERENCES tickets(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS ticket_attachments (
+        id          TEXT PRIMARY KEY,
+        ticket_id   TEXT NOT NULL,
+        tenant_id   TEXT NOT NULL,
+        filename    TEXT NOT NULL,
+        stored_name TEXT NOT NULL,
+        size_bytes  INTEGER NOT NULL,
+        mime_type   TEXT,
+        uploaded_by TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+    )""",
     """CREATE TABLE IF NOT EXISTS usage (
         id          TEXT PRIMARY KEY,
         tenant_id   TEXT NOT NULL,
@@ -1329,6 +1341,81 @@ def get_ticket_actions(ticket_id: str, tenant_id: str) -> list:
         return _rows(cur.fetchall())
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Ticket attachments
+#
+# Only metadata lives in the database. The bytes go on disk under a generated
+# name so a hostile filename can never influence where we write.
+# ---------------------------------------------------------------------------
+
+def add_attachment(tenant_id: str, ticket_id: str, filename: str, stored_name: str,
+                   size_bytes: int, mime_type: str, uploaded_by: str) -> dict:
+    att_id = str(uuid.uuid4())
+    now    = datetime.utcnow().isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""INSERT INTO ticket_attachments
+                (id, ticket_id, tenant_id, filename, stored_name, size_bytes, mime_type, uploaded_by, created_at)
+                VALUES ({_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH}, {_PH})""",
+            (att_id, ticket_id, tenant_id, filename, stored_name, size_bytes, mime_type, uploaded_by, now)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"id": att_id, "ticket_id": ticket_id, "filename": filename,
+            "size_bytes": size_bytes, "mime_type": mime_type,
+            "uploaded_by": uploaded_by, "created_at": now}
+
+
+def list_attachments(ticket_id: str, tenant_id: str) -> list:
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"""SELECT id, ticket_id, filename, size_bytes, mime_type, uploaded_by, created_at
+                FROM ticket_attachments WHERE ticket_id = {_PH} AND tenant_id = {_PH}
+                ORDER BY created_at ASC""",
+            (ticket_id, tenant_id)
+        )
+        return _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def get_attachment(att_id: str, tenant_id: str) -> dict | None:
+    """Always scoped by tenant: an attachment id alone must never be enough to
+    read another organisation's file."""
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"SELECT * FROM ticket_attachments WHERE id = {_PH} AND tenant_id = {_PH}",
+            (att_id, tenant_id)
+        )
+        return _row(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def delete_attachment(att_id: str, tenant_id: str) -> dict | None:
+    att = get_attachment(att_id, tenant_id)
+    if not att:
+        return None
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(
+            f"DELETE FROM ticket_attachments WHERE id = {_PH} AND tenant_id = {_PH}",
+            (att_id, tenant_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return att
 
 
 # ---------------------------------------------------------------------------

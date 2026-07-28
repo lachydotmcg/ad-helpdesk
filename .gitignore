@@ -49,6 +49,7 @@ OVERNIGHT_PLAN.md
 NOTES.md
 TODO.md
 SCRATCH.md
+TESTING.md
 log.md
 *_PLAN.md
 *-notes.md
@@ -56,3 +57,6 @@ log.md
 # Runtime logs and scratch output
 *.log
 demo_agent_*.txt
+
+# User-uploaded ticket attachments (local data, never committed)
+cloud/uploads/
