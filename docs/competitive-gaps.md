@@ -84,13 +84,17 @@ Ranked by (value to a real deal) / (effort), not by how impressive it sounds.
    guard, tenant-scoped.
 3. ~~**SLA basics**~~ - **built.** Priority-based targets, due dates, breach flag,
    escalation to the activity log, first-response timestamps.
-4. **Knowledge base + RAG** - the largest remaining item, and now the top one. It is
-   what lets the assistant answer "how do I connect to the VPN" instead of
-   shrugging. Pairs naturally with the local model story: embeddings can run
-   locally too.
-5. **Service metrics** - MTTR, first-contact resolution, CSAT. Cheaper than it was:
-   SLA work already added `first_response_at` and `resolved_at`, so first-contact
-   resolution and MTTR are now mostly a query rather than a schema change.
+4. ~~**Knowledge base**~~ - **built**, retrieval included. Not RAG in the vector
+   sense, and that was a deliberate call rather than a shortcut: Anthropic has no
+   embeddings API, so a Cloud tenant cannot embed with the provider they already
+   pay for, and the local alternative (sentence-transformers, so torch) is two
+   gigabytes of dependency on a domain controller. BM25 covers every tenant with
+   no new dependencies. `kb.search()` is the seam if an embedding re-rank is
+   worth adding later for tenants whose provider supports it.
+5. **Service metrics** - MTTR, first-contact resolution, CSAT. Now the top
+   remaining item, and cheaper than it was: SLA work already added
+   `first_response_at` and `resolved_at`, so first-contact resolution and MTTR
+   are mostly a query rather than a schema change.
 
 ---
 
