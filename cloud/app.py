@@ -3756,6 +3756,26 @@ def dashboard_usage():
     return jsonify({"success": True, "data": data})
 
 
+@app.route("/dashboard/api/metrics")
+@require_dashboard_user
+def dashboard_metrics():
+    """Service metrics over a trailing window (default 30 days).
+
+    CSAT is deliberately absent rather than faked. Satisfaction can only come
+    from the person who raised the ticket, and this product has no channel back
+    to them that is guaranteed to exist: requesters do not have dashboard
+    accounts, email intake is optional, and Slack is optional. Any number
+    invented from what IS available (resolution time, reopen counts) would be a
+    proxy dressed up as a survey, which is worse than an empty panel.
+    """
+    try:
+        days = int(request.args.get("days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 365))
+    return jsonify({"success": True, "data": db.get_service_metrics(g.tenant_id, days)})
+
+
 @app.route("/dashboard/api/time-saved")
 @require_dashboard_user
 def dashboard_time_saved():
@@ -4671,7 +4691,7 @@ Now give your final analysis using the exact JSON format above. Do not request a
                     break
 
             if result_data and result_data["success"]:
-                db.update_ticket(ticket_id, tenant_id, status="resolved")
+                db.update_ticket(ticket_id, tenant_id, status="resolved", auto_resolved=1)
                 db.add_ticket_action(ticket_id, tenant_id, "ad_action",
                                      f"{ai_name} auto-resolved: {janus_action} on {janus_args[0] if janus_args else '?'} - {result_data['message']}", ai_actor)
                 db.log_activity(tenant_id, "ticket_resolved", ai_actor, target=ticket_id,

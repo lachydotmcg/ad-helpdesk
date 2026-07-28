@@ -487,8 +487,12 @@ def migrate_db():
         # target when the ticket is created; sla_breached is a stored flag rather
         # than a computed one so a breach that already happened stays true even
         # if the target is later changed.
+        # v13 adds auto_resolved. Whether the assistant closed a ticket without a
+        # human was previously only recoverable by string-matching a log message,
+        # which is no basis for a metric anyone reports on.
         for col, ddl in (("due_at", "TEXT"), ("sla_breached", "INTEGER DEFAULT 0"),
-                         ("first_response_at", "TEXT")):
+                         ("first_response_at", "TEXT"),
+                         ("auto_resolved", "INTEGER DEFAULT 0")):
             if _USE_PG:
                 cur.execute(f"ALTER TABLE tickets ADD COLUMN IF NOT EXISTS {col} {ddl}")
             else:
@@ -1351,10 +1355,13 @@ def update_ticket(ticket_id: str, tenant_id: str, **fields) -> None:
     now     = datetime.utcnow().isoformat()
     allowed = {"status", "priority", "assigned_to", "janus_analysis",
                "janus_action", "janus_action_args", "resolved_at", "labels",
-               "due_at", "sla_breached", "first_response_at"}
+               "due_at", "sla_breached", "first_response_at", "auto_resolved"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     updates["updated_at"] = now
-    if "status" in updates and updates["status"] == "resolved":
+    # Stamp the resolution time on transition, but never overwrite one the caller
+    # supplied. Clobbering it silently rewrites history, and MTTR is computed
+    # from this column.
+    if updates.get("status") == "resolved" and not updates.get("resolved_at"):
         updates["resolved_at"] = now
     # Raising the priority of a ticket should pull its deadline in, not leave it
     # on the target it was opened with. Only recalculated if the caller did not
@@ -2319,6 +2326,104 @@ def touch_memory(tenant_id: str, memory_id: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Service metrics
+# ---------------------------------------------------------------------------
+
+def _parse_iso(value):
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except Exception:
+        return None
+
+
+def _median(values: list):
+    if not values:
+        return None
+    s = sorted(values)
+    mid = len(s) // 2
+    return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
+
+
+def get_service_metrics(tenant_id: str, days: int = 30) -> dict:
+    """Resolution and response metrics over a trailing window.
+
+    Both the mean and the median are reported for every duration. They disagree
+    loudly in helpdesk data and the median is usually the honest one: a single
+    ticket somebody left open over a long weekend drags a mean MTTR into
+    uselessness while the median barely moves. Showing only the mean is how a
+    dashboard ends up flattering or slandering a team that did neither.
+
+    Computed in Python rather than SQL so it behaves identically on SQLite and
+    Postgres, which matters because timestamps are stored as ISO strings and the
+    two engines do not agree on date arithmetic over those.
+    """
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    conn = _get_conn()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"SELECT * FROM tickets WHERE tenant_id = {_PH}", (tenant_id,))
+        tickets = _rows(cur.fetchall())
+    finally:
+        conn.close()
+
+    created  = [t for t in tickets if (t.get("created_at") or "") >= cutoff]
+    # Resolution stats key off when a ticket was RESOLVED, not when it was
+    # opened, so a long-running ticket finally closed this week counts this week.
+    resolved = [t for t in tickets if (t.get("resolved_at") or "") >= cutoff]
+    open_now = [t for t in tickets if t.get("status") not in ("resolved", "closed")]
+
+    res_hours, first_hours = [], []
+    for t in resolved:
+        c, r = _parse_iso(t.get("created_at")), _parse_iso(t.get("resolved_at"))
+        if c and r and r >= c:
+            res_hours.append((r - c).total_seconds() / 3600)
+    for t in created:
+        c, f = _parse_iso(t.get("created_at")), _parse_iso(t.get("first_response_at"))
+        if c and f and f >= c:
+            first_hours.append((f - c).total_seconds() / 3600)
+
+    auto = [t for t in resolved if t.get("auto_resolved")]
+
+    # SLA attainment counts only tickets that had a deadline to hit. Tickets
+    # predating the SLA feature have no due_at and are excluded rather than
+    # scored as passes, which would invent an attainment rate out of nothing.
+    with_sla = [t for t in resolved if t.get("due_at")]
+    met      = [t for t in with_sla if not t.get("sla_breached")]
+
+    def pct(part, whole):
+        return round(len(part) / len(whole) * 100, 1) if whole else None
+
+    def stat(vals):
+        return {
+            "mean":   round(sum(vals) / len(vals), 1) if vals else None,
+            "median": round(_median(vals), 1) if vals else None,
+            "count":  len(vals),
+        }
+
+    by_priority = {}
+    for t in created:
+        p = (t.get("priority") or "unknown").lower()
+        by_priority[p] = by_priority.get(p, 0) + 1
+
+    return {
+        "window_days":       days,
+        "created":           len(created),
+        "resolved":          len(resolved),
+        "open_now":          len(open_now),
+        "overdue_now":       len([t for t in open_now if t.get("sla_breached")]),
+        "resolution_hours":  stat(res_hours),
+        "first_response_hours": stat(first_hours),
+        "auto_resolved":     len(auto),
+        "auto_resolution_rate": pct(auto, resolved),
+        "sla_measured":      len(with_sla),
+        "sla_attainment":    pct(met, with_sla),
+        "by_priority":       by_priority,
+        # Nothing here measures satisfaction. See the metrics route.
+        "csat":              None,
+    }
 
 
 # ---------------------------------------------------------------------------

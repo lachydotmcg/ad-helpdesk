@@ -1399,6 +1399,9 @@
     <div class="nav-item" onclick="showPage('activity')">
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span> Activity Feed
     </div>
+    <div class="nav-item" onclick="showPage('metrics')">
+      <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg></span> Service Metrics
+    </div>
     <div class="nav-item" onclick="showPage('audit')">
       <span class="nav-icon"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 9h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span> Audit Log
     </div>
@@ -2072,6 +2075,23 @@
       </div>
       </div>
       {% endif %}
+    </div>
+
+    <!-- ===== SERVICE METRICS PAGE ===== -->
+    <div class="page" id="page-metrics">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Service Metrics</span>
+          <select class="btn btn-ghost" id="metrics-window" onchange="loadMetrics()" style="font-size:12px;">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <div id="metrics-wrap" style="padding:20px;">
+          <div class="loading"><span class="spinner"></span>Loading metrics...</div>
+        </div>
+      </div>
     </div>
 
     <!-- ===== KNOWLEDGE BASE PAGE ===== -->
@@ -6704,6 +6724,7 @@
     entra:    'Entra ID',
     tickets:  'Tickets',
     kb:       'Knowledge Base',
+    metrics:  'Service Metrics',
     chat:     'AI Assistant',
     audit:    'Audit Log',
     activity: 'Activity Feed',
@@ -6790,8 +6811,103 @@
       if (name === 'team')     loadTeam();
       if (name === 'tickets')  loadTickets();
       if (name === 'kb')       loadKbArticles();
+      if (name === 'metrics')  loadMetrics();
       if (name === 'activity') loadActivity();
       if (name === 'settings') loadSettings();
+    }
+  }
+
+  // =========================================================
+  // Service Metrics
+  // =========================================================
+  function fmtHours(h) {
+    if (h == null) return '—';
+    if (h < 1)  return Math.round(h * 60) + 'm';
+    if (h < 48) return (Math.round(h * 10) / 10) + 'h';
+    return (Math.round(h / 24 * 10) / 10) + 'd';
+  }
+
+  function metricCard(label, value, sub, tone) {
+    const colour = tone === 'good' ? 'var(--green)' : tone === 'bad' ? 'var(--red)' : 'var(--accent2)';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">${label}</div>
+      <div style="font-size:26px;font-weight:800;color:${colour};margin-top:6px;line-height:1.1;">${value}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">${sub || '&nbsp;'}</div>
+    </div>`;
+  }
+
+  async function loadMetrics() {
+    const wrap = document.getElementById('metrics-wrap');
+    const days = document.getElementById('metrics-window').value;
+    wrap.innerHTML = '<div class="loading"><span class="spinner"></span>Loading metrics...</div>';
+    try {
+      const res  = await fetch(`/dashboard/api/metrics?days=${days}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || 'Could not load metrics.');
+      const m = json.data;
+
+      if (!m.created && !m.resolved) {
+        wrap.innerHTML = `<div class="empty"><div class="empty-icon">📈</div>No ticket activity in this window.<br/>
+          <span style="font-size:13px;color:var(--muted)">Metrics appear once tickets are raised and resolved.</span></div>`;
+        return;
+      }
+
+      const rh = m.resolution_hours, fr = m.first_response_hours;
+      // Median first, mean underneath. In helpdesk data one ticket left open over
+      // a weekend can drag the mean far from anything a person would recognise,
+      // so the median is the headline and the mean is shown for contrast.
+      let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;">';
+      html += metricCard('Resolved', m.resolved, `${m.created} raised in the same period`);
+      html += metricCard('Time to resolve', fmtHours(rh.median),
+                         rh.mean != null ? `median · mean ${fmtHours(rh.mean)}` : 'median');
+      html += metricCard('First response', fmtHours(fr.median),
+                         fr.count ? `median · mean ${fmtHours(fr.mean)}` : 'no data yet');
+      html += metricCard('Resolved by the assistant',
+                         m.auto_resolution_rate == null ? '—' : m.auto_resolution_rate + '%',
+                         `${m.auto_resolved} of ${m.resolved} with no human step`,
+                         m.auto_resolution_rate >= 50 ? 'good' : null);
+      html += metricCard('SLA attainment',
+                         m.sla_attainment == null ? '—' : m.sla_attainment + '%',
+                         m.sla_measured ? `${m.sla_measured} ticket${m.sla_measured === 1 ? '' : 's'} with a target`
+                                        : 'no tickets had a target',
+                         m.sla_attainment == null ? null : (m.sla_attainment >= 90 ? 'good' : 'bad'));
+      html += metricCard('Open now', m.open_now,
+                         m.overdue_now ? `${m.overdue_now} past due` : 'none past due',
+                         m.overdue_now ? 'bad' : null);
+      html += '</div>';
+
+      const pri = m.by_priority || {};
+      const order = ['urgent', 'high', 'medium', 'low'];
+      const total = Object.values(pri).reduce((a, b) => a + b, 0);
+      if (total) {
+        html += `<div style="margin-top:22px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:10px;">Raised by priority</div>`;
+        for (const p of order) {
+          if (!pri[p]) continue;
+          const pctv = Math.round(pri[p] / total * 100);
+          html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span class="priority-${p}" style="width:64px;font-size:12px;text-transform:capitalize;">${p}</span>
+            <div style="flex:1;background:var(--surface2);border-radius:99px;height:6px;overflow:hidden;max-width:340px;">
+              <div style="height:100%;width:${pctv}%;background:var(--accent);border-radius:99px;"></div>
+            </div>
+            <span style="font-size:12px;color:var(--muted);">${pri[p]}</span>
+          </div>`;
+        }
+        html += '</div>';
+      }
+
+      // Stated plainly rather than left as a blank card, so nobody assumes CSAT
+      // is being collected somewhere and is simply zero.
+      html += `<div style="margin-top:22px;padding:14px 16px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--muted);line-height:1.6;">
+        <strong style="color:var(--text)">Satisfaction is not measured.</strong>
+        A CSAT score has to come from the person who raised the ticket, and there is no
+        channel back to them that always exists here: requesters do not have logins,
+        and email and Slack are both optional. Anything derived from resolution times
+        instead would be a guess wearing a survey's clothes, so it is left out.
+      </div>`;
+
+      wrap.innerHTML = html;
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>${escHtml(e.message)}</div>`;
     }
   }
 

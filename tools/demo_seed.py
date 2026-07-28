@@ -24,6 +24,13 @@ import db  # noqa: E402
 
 AI = "Assistant"
 
+
+def _parse(value):
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except Exception:
+        return None
+
 TICKETS = [
     ("I'm locked out of my account", "Tried logging in a few times this morning and now it says my account is locked. Need access for a client call at 11.",
      "high", "Priya Nadkarni", "priya.nadkarni@corp.local", "email", "resolved", "unlock_account"),
@@ -81,6 +88,18 @@ AUDIT = [
 ]
 
 
+def _set_created(ticket_id, iso):
+    """created_at is not writable through update_ticket, by design."""
+    conn = db._get_conn()
+    try:
+        cur = db._cur(conn)
+        cur.execute(f"UPDATE tickets SET created_at = {db._PH} WHERE id = {db._PH}",
+                    (iso, ticket_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _backdate(table, tenant_id, column="created_at", days=9):
     """Spread existing rows over the last `days` so charts and feeds look lived-in."""
     conn = db._get_conn()
@@ -135,17 +154,45 @@ def main():
 
     random.seed(11)
     made = 0
-    for title, desc, prio, rname, remail, source, status, action in TICKETS:
+    # Actions the assistant can carry out end to end. Tickets resolved by one of
+    # these are marked auto_resolved so the metrics page shows a realistic
+    # deflection rate rather than a flat zero.
+    AUTO_ACTIONS = {"unlock_account", "reset_password", "add_to_group"}
+    # created_at is backdated HERE rather than by the generic _backdate pass, so
+    # everything derived from it stays consistent. Doing it afterwards would move
+    # the open date while leaving first response and resolution where they were,
+    # producing tickets answered days before they were raised.
+    now = datetime.utcnow()
+    for i, (title, desc, prio, rname, remail, source, status, action) in enumerate(TICKETS):
         tk = db.create_ticket(tid, remail, title, desc, priority=prio,
                               requester_name=rname, requester_email=remail, source=source)
-        fields = {"status": status}
+        created = now - timedelta(days=random.random() * 9, hours=random.randint(0, 20))
+        fields = {
+            "status":  status,
+            # Recomputed from the backdated open date, not the real one.
+            "due_at":  db.sla_due_at(prio, created.isoformat()),
+        }
         if action:
             analysis, threat = ANALYSES.get(action, ("Reviewed and actioned.", 3))
             fields["janus_analysis"] = analysis
             fields["janus_action"] = action
+        # Spread first responses over a plausible range so the mean and median
+        # differ, which is the whole reason both are reported.
+        fields["first_response_at"] = (created + timedelta(minutes=random.choice(
+            [4, 7, 12, 25, 40, 95, 180, 240]))).isoformat()
         if status == "resolved":
-            fields["resolved_at"] = datetime.utcnow().isoformat()
+            auto = action in AUTO_ACTIONS
+            fields["auto_resolved"] = 1 if auto else 0
+            # Auto-resolved tickets close in minutes; the rest take a human a day or two.
+            delta = timedelta(minutes=random.choice([3, 6, 11])) if auto \
+                    else timedelta(hours=random.choice([5, 26, 51]))
+            resolved = created + delta
+            fields["resolved_at"] = resolved.isoformat()
+            fields["sla_breached"] = 1 if resolved.isoformat() > fields["due_at"] else 0
+            if auto:
+                fields["first_response_at"] = (created + timedelta(minutes=1)).isoformat()
         db.update_ticket(tk["id"], tid, **fields)
+        _set_created(tk["id"], created.isoformat())
         made += 1
     print(f"  {made} tickets")
 
@@ -157,8 +204,10 @@ def main():
         db.log_audit(tid, who, action, target, statusv)
     print(f"  {len(AUDIT)} audit entries")
 
-    # Make it look like it has been running for a while.
-    for table in ("tickets", "activity_log", "audit_log"):
+    # Make it look like it has been running for a while. Tickets are excluded:
+    # their dates were set consistently above and this pass would desynchronise
+    # them from their own first-response and resolution times.
+    for table in ("activity_log", "audit_log"):
         try:
             _backdate(table, tid)
         except Exception:
