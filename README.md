@@ -5,30 +5,44 @@
 </p>
 
 <p align="center">
-  <strong>Your IT Admin, powered by AI.</strong><br/>
-  Manage Windows Active Directory in plain English, with a smart ticket system,<br/>
-  your own named AI assistant, and a cloud dashboard your whole team can use.
+  <strong>Your IT Admin, powered by AI. Self-hosted, on your terms.</strong><br/>
+  Manage your whole Windows Server estate in plain English, with a smart ticket system<br/>
+  and your own named AI assistant, running entirely on your own infrastructure.<br/>
+  <em>Your data, your network, your choice of AI model. No cloud required.</em>
 </p>
 
 <p align="center">
-  <a href="https://web-production-01ecc.up.railway.app">Live demo</a> &nbsp;·&nbsp;
-  <a href="https://web-production-01ecc.up.railway.app/signup">Get started free</a>
+  <a href="SELF_HOSTING_LOCAL.md"><strong>Run it locally in 3 steps &rarr;</strong></a>
 </p>
 
 <p align="center">
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue"/>
   <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue"/>
+  <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-yes-9333ea"/>
+  <img alt="Local AI" src="https://img.shields.io/badge/local%20AI-Ollama%20%7C%20any%20endpoint-9333ea"/>
 </p>
 
 ---
 
 ## What is AID Helpdesk?
 
-AID Helpdesk is a multi-tenant SaaS that puts an AI layer in front of your Windows Server estate, not just Active Directory. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **your AI assistant** (which you name, and which gets smarter about your organisation over time) analyses, triages, and resolves them automatically, then logs every action for your audit trail.
+AID Helpdesk puts an AI layer in front of your entire Windows Server estate, not just Active Directory, and **runs entirely on your own infrastructure**. Staff submit support tickets in plain English ("I'm locked out", "I need a temp password") and **your AI assistant** (which you name, and which gets smarter about your organisation over time) analyses, triages, and resolves them automatically, then logs every action for your audit trail.
 
-It started as an AD helpdesk and is growing into a full Windows Server management platform: Active Directory, DNS, DHCP, and Group Policy from one dashboard, NPS (RADIUS) visibility, plus Entra ID via Microsoft Graph with hybrid awareness, so synced users are always managed on the correct side automatically.
+It started as an AD helpdesk and is now a full Windows Server management platform: Active Directory, DNS, DHCP, and Group Policy from one dashboard, NPS (RADIUS) visibility, app deployment via Group Policy, plus Entra ID via Microsoft Graph with hybrid awareness, so synced users are always managed on the correct side automatically.
 
 No scripting. No clicking through MMC consoles. Just describe the problem and it gets handled.
+
+### Runs where you want, on the AI you want
+
+This is the **self-hosted edition** - you run the whole thing yourself: the dashboard, the database, the agent, and the AI. Nothing leaves your network unless you send it there.
+
+- 🧠 **Any AI, anywhere.** Point the assistant at a local [Ollama](https://ollama.com) model, at your own AI server/VM by IP or hostname (anything OpenAI-compatible: LM Studio, vLLM, LocalAI, Jan, LiteLLM, and more), or at a managed cloud model. **No cloud dependency unless you choose one.**
+- 🏠 **One command to run it.** `AID_LOCAL_MODE=1` provisions a single-organisation install with an admin login on first start. No account, no billing, no keys.
+- 🔒 **Your data stays yours.** On-prem database, on-prem AD, on-prem AI. Full audit trail, and secrets encrypted at rest.
+
+See **[SELF_HOSTING_LOCAL.md](SELF_HOSTING_LOCAL.md)** for the 3-step quickstart.
+
+> **Prefer a managed, hosted version?** The same platform is available as a fully managed cloud service (we run it, you just log in). Contact [lachyswebdev@gmail.com](mailto:lachyswebdev@gmail.com).
 
 ---
 

@@ -25,25 +25,51 @@ Nothing calls out to the internet for AI or billing. The dashboard, the database
 
 ## Quickstart
 
-### 1. Install a local model with Ollama
+### 1. Point the assistant at a model you control
 
-Download [Ollama](https://ollama.com), then pull a model:
+You have three options - pick one:
+
+**a) Ollama (simplest).** Download [Ollama](https://ollama.com) and pull a model:
 
 ```bash
 ollama pull llama3          # solid default; qwen2.5 or mistral also work well
 ```
 
-Ollama can run on the same box as the dashboard, or on a separate machine - just
-point `OLLAMA_URL` at it (e.g. `http://192.168.1.50:11434`).
+Ollama can run on the same box or a separate machine - point `OLLAMA_URL` at it
+(e.g. `http://192.168.1.50:11434`).
+
+**b) Any AI server / VM (`AI_PROVIDER=custom`).** If you already run an AI server -
+LM Studio, vLLM, LocalAI, Jan, text-generation-webui, LiteLLM, or your own GPU VM -
+just give AID its address. Anything that exposes an OpenAI-compatible
+`/v1/chat/completions` endpoint works:
+
+```bash
+AI_PROVIDER=custom
+AI_BASE_URL=http://192.168.1.50:1234/v1     # your AI box's IP or hostname
+AI_MODEL_NAME=qwen2.5-7b-instruct
+AI_API_KEY=                                 # optional, if your endpoint needs one
+```
+
+This also works for hosted OpenAI-compatible APIs (OpenRouter, Groq, Together) if
+you'd rather route there than to Anthropic. There is no dependency on our cloud at
+all unless you choose one.
+
+**c) Managed cloud (`AI_PROVIDER=anthropic`).** Set `ANTHROPIC_API_KEY` and you get
+the same experience as the hosted product, just self-hosted.
 
 ### 2. Configure the environment
 
 Copy `cloud/.env.example` to `.env` and set:
 
 ```bash
+# choose ONE brain (see step 1):
 AI_PROVIDER=ollama
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3
+# ...or point at any AI server:
+# AI_PROVIDER=custom
+# AI_BASE_URL=http://192.168.1.50:1234/v1
+# AI_MODEL_NAME=qwen2.5-7b-instruct
 
 AID_LOCAL_MODE=1
 AID_LOCAL_ORG=Acme IT

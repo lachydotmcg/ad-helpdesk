@@ -112,28 +112,40 @@ def _ai_cost(tenant_id):
 
 
 # ---------------------------------------------------------------------------
-# AI provider abstraction -- cloud (Anthropic) or fully local (Ollama).
+# AI provider abstraction -- run the assistant against the managed cloud model,
+# a local model, or ANY AI server you point it at.
 #
-# Set AI_PROVIDER=ollama to run the whole assistant against a local model with
-# no Anthropic key and no per-call cost. OLLAMA_URL points at the Ollama server
-# (default localhost, but it can be any machine on your network running Ollama).
-# _get_ai_client() returns either the real Anthropic client or a thin shim that
-# speaks the same .messages.create(...).content[0].text interface, so every
-# existing call site keeps working unchanged.
+#   AI_PROVIDER=anthropic  (default)  -> Anthropic (managed cloud)
+#   AI_PROVIDER=ollama                -> a local/LAN Ollama server (OLLAMA_URL)
+#   AI_PROVIDER=custom                -> ANY OpenAI-compatible endpoint: LM Studio,
+#                                        vLLM, LocalAI, Jan, text-generation-webui,
+#                                        LiteLLM, OpenRouter, Groq, or your own AI
+#                                        VM/server. Set AI_BASE_URL to its address
+#                                        (e.g. http://192.168.1.50:1234/v1), plus
+#                                        AI_MODEL_NAME and an optional AI_API_KEY.
+#
+# _get_ai_client() returns the real Anthropic client or a thin shim that speaks
+# the same .messages.create(...).content[0].text interface, so every existing
+# call site keeps working unchanged. No cloud is required at all if you don't
+# want one.
 # ---------------------------------------------------------------------------
-AI_PROVIDER  = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
-OLLAMA_URL   = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+AI_PROVIDER   = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
+OLLAMA_URL    = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL  = os.getenv("OLLAMA_MODEL", "llama3")
+# Custom OpenAI-compatible endpoint (point at any local model / AI server)
+AI_BASE_URL   = os.getenv("AI_BASE_URL", "").rstrip("/")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "")
+AI_API_KEY    = os.getenv("AI_API_KEY", "")
 
 
-class _OllamaBlock:
+class _ShimBlock:
     __slots__ = ("text",)
     def __init__(self, text): self.text = text
 
 
-class _OllamaResponse:
+class _ShimResponse:
     __slots__ = ("content",)
-    def __init__(self, text): self.content = [_OllamaBlock(text)]
+    def __init__(self, text): self.content = [_ShimBlock(text)]
 
 
 class _OllamaMessages:
@@ -148,32 +160,59 @@ class _OllamaMessages:
         )
         resp.raise_for_status()
         text = ((resp.json() or {}).get("message") or {}).get("content", "")
-        return _OllamaResponse(text.strip())
+        return _ShimResponse(text.strip())
 
 
-class _OllamaClient:
-    """Minimal Anthropic-shaped client backed by a local Ollama server."""
-    def __init__(self):
-        self.messages = _OllamaMessages()
+class _OpenAICompatMessages:
+    """Talks to any OpenAI-compatible /chat/completions endpoint."""
+    def create(self, model=None, max_tokens=512, system=None, messages=None, **kwargs):
+        import requests
+        msgs = ([{"role": "system", "content": system}] if system else []) + (messages or [])
+        headers = {"Content-Type": "application/json"}
+        if AI_API_KEY:
+            headers["Authorization"] = f"Bearer {AI_API_KEY}"
+        resp = requests.post(
+            f"{AI_BASE_URL}/chat/completions",
+            headers=headers,
+            json={"model": AI_MODEL_NAME or "local-model", "messages": msgs,
+                  "max_tokens": max_tokens, "stream": False},
+            timeout=180,
+        )
+        resp.raise_for_status()
+        data = resp.json() or {}
+        text = (((data.get("choices") or [{}])[0].get("message") or {}).get("content", "")) or ""
+        return _ShimResponse(text.strip())
+
+
+class _ShimClient:
+    def __init__(self, messages_impl):
+        self.messages = messages_impl
 
 
 def ai_enabled() -> bool:
     """Whether the configured AI provider is usable at all."""
     if AI_PROVIDER == "ollama":
         return True
+    if AI_PROVIDER == "custom":
+        return bool(AI_BASE_URL)
     return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
 
 
 def ai_unavailable_message() -> str:
     if AI_PROVIDER == "ollama":
         return f"The local AI model isn't reachable. Check that Ollama is running at {OLLAMA_URL}."
+    if AI_PROVIDER == "custom":
+        return "No AI endpoint configured. Set AI_BASE_URL to your AI server's OpenAI-compatible address."
     return "ANTHROPIC_API_KEY not set in environment."
 
 
 def _get_ai_client():
-    """Return an Anthropic client, or an Ollama-backed shim, per AI_PROVIDER."""
+    """Return an Anthropic client, or a shim for Ollama / any OpenAI-compatible
+    endpoint, per AI_PROVIDER."""
     if AI_PROVIDER == "ollama":
-        return _OllamaClient()
+        return _ShimClient(_OllamaMessages())
+    if AI_PROVIDER == "custom":
+        return _ShimClient(_OpenAICompatMessages())
     import anthropic
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
