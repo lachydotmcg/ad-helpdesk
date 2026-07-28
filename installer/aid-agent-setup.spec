@@ -15,12 +15,14 @@ import sys
 
 block_cipher = None
 
-# Path to repo root (one level up from installer/)
+# Path to repo root (one level up from installer/). The agent and its bridges
+# live in agent/, so that directory is what has to be importable.
 REPO_ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
+AGENT_DIR = os.path.join(REPO_ROOT, "agent")
 
 a = Analysis(
     [os.path.join(SPECPATH, "setup_wizard.py")],
-    pathex=[REPO_ROOT],            # makes ad_bridge importable
+    pathex=[AGENT_DIR, REPO_ROOT],   # makes ad_bridge and friends importable
     binaries=[],
     datas=[],
     hiddenimports=[

@@ -20,6 +20,7 @@ The agent is MIT-licensed and fully open source.
 git clone https://github.com/lachydotmcg/ad-helpdesk.git
 cd ad-helpdesk
 pip install -r requirements.txt
+cd agent
 cp agent-config.example.json agent-config.json
 # Edit agent-config.json — see field reference below
 python agent.py
@@ -68,7 +69,7 @@ Run this once from an **elevated** Command Prompt or PowerShell. It launches `py
 
 ```bat
 schtasks /create /tn "AID Helpdesk Agent" /sc onlogon /rl highest /f ^
-  /tr "cmd /c cd /d C:\Users\you\ad-helpdesk && python agent.py"
+  /tr "cmd /c cd /d C:\Users\you\ad-helpdesk\agent && python agent.py"
 ```
 
 - **Working directory matters.** The `cd /d C:\Users\you\ad-helpdesk` is required so the agent finds `agent-config.json` and loads `.env` from the repo root. Without it, Task Scheduler starts in `C:\Windows\System32` and `.env` won't be picked up.

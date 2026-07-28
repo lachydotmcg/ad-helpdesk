@@ -191,26 +191,35 @@ Migrations are version-gated in `migrate_db()` (currently v11). Schema version i
 
 ```
 ad-helpdesk/
-├── agent.py                  # Windows agent: polls cloud, merges bridge ACTIONS, executes, posts results
-├── winrm_core.py              # Shared WinRM transport, circuit breaker, role_installed_check
-├── ad_bridge.py               # AD bridge module (ACTIONS + CAPABILITY = "ad")
-├── dns_bridge.py               # DNS bridge module (ACTIONS + CAPABILITY = "dns")
-├── dhcp_bridge.py              # DHCP bridge module (ACTIONS + CAPABILITY = "dhcp")
-├── gpo_bridge.py                # GPO bridge module (ACTIONS + CAPABILITY = "gpo")
-├── agent-config.example.json # Template config for agent install
-├── requirements.txt
-├── Procfile                  # Railway: web=gunicorn cloud.app:app
-├── nixpacks.toml             # Railway build config
-├── cloud/
+├── agent/                    # THE AGENT (runs on a domain-joined Windows box)
+│   ├── agent.py              # Polls the server, merges bridge ACTIONS, executes, posts results
+│   ├── winrm_core.py         # Shared WinRM transport, circuit breaker, role_installed_check
+│   ├── ad_bridge.py          # AD bridge module        (CAPABILITY = "ad")
+│   ├── dns_bridge.py         # DNS bridge module       (CAPABILITY = "dns")
+│   ├── dhcp_bridge.py        # DHCP bridge module      (CAPABILITY = "dhcp")
+│   ├── gpo_bridge.py         # Group Policy bridge     (CAPABILITY = "gpo")
+│   ├── nps_bridge.py         # NPS bridge, read-only   (CAPABILITY = "nps")
+│   ├── deploy_bridge.py      # App deployment via GPO  (CAPABILITY = "deploy")
+│   ├── agent-config.example.json
+│   └── requirements.txt      # Agent deps only (pywinrm, requests, dotenv)
+├── cloud/                    # THE SERVER (runs anywhere Python does)
 │   ├── app.py                # Flask backend, routes, AI assistant
-│   ├── db.py                 # Database layer (SQLite dev / PostgreSQL prod)
+│   ├── db.py                 # Database layer (SQLite by default, PostgreSQL optional)
 │   ├── action_policy.py      # Hard permission enforcement (READ/WRITE/DESTRUCTIVE)
-│   ├── graph_client.py        # Entra ID bridge  - Microsoft Graph, client-credentials flow
+│   ├── graph_client.py       # Entra ID bridge, Microsoft Graph client-credentials flow
+│   ├── secrets_crypto.py     # Fernet encryption for tenant secrets at rest
 │   └── templates/
 │       └── dashboard.html    # Single-page frontend (vanilla JS)
 ├── installer/
 │   └── setup_wizard.py       # Windows EXE installer wizard
+├── tools/                    # demo_agent.py + demo_seed.py (synthetic data for demos)
+├── build-releases.py         # Packages aid-server and aid-agent zips
+└── requirements.txt          # Server deps only (Flask, anthropic, msal, ...)
 ```
+
+The two top-level packages mirror the two releases: `agent/` becomes `aid-agent`,
+`cloud/` plus the root `requirements.txt` becomes `aid-server`. Neither ships the
+other's dependencies.
 
 ---
 

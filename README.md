@@ -125,7 +125,7 @@ The agent polls the server **outbound**, so your domain controller needs no inbo
    - **Install**: writes `agent-config.json` and registers the agent as a Windows Service
 3. **Check the dashboard** &mdash; it shows **Agent: Online** and you're live.
 
-> **No installer needed?** Copy `agent-config.example.json` to `agent-config.json`, fill it in, then `pip install -r requirements-agent.txt` and run `python agent.py`.
+> **No installer needed?** From `agent/`, copy `agent-config.example.json` to `agent-config.json`, fill it in, then `pip install -r requirements.txt` and run `python agent.py`.
 > **Build the installer yourself:** `installer/build.bat` (needs Python 3.9+ and PyInstaller on Windows).
 
 ### Building the releases

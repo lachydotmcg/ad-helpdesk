@@ -20,20 +20,30 @@ A cloud backend runs on Railway. A lightweight Windows agent installs on the cus
 
 ```
 ad-helpdesk/
-├── ad_bridge.py              # All PowerShell execution — called by agent.py
-├── agent.py                  # Windows agent: polls cloud, executes, posts results
-├── agent-config.example.json # Template config for agent install
-├── requirements.txt          # Python deps (Flask, psycopg2, anthropic, etc.)
-├── Procfile                  # Railway: web=gunicorn cloud.app:app
-├── nixpacks.toml             # Railway build config
-├── cloud/
+├── agent/                    # THE AGENT (domain-joined Windows box)
+│   ├── agent.py              # Polls the server, merges bridge ACTIONS, executes
+│   ├── winrm_core.py         # Shared WinRM transport + circuit breaker
+│   ├── ad_bridge.py          # One bridge module per Windows role: ad, dns, dhcp,
+│   ├── dns_bridge.py         #   gpo, nps, deploy. Each exposes ACTIONS + CAPABILITY
+│   ├── dhcp_bridge.py        #   and is auto-registered by agent.py.
+│   ├── gpo_bridge.py
+│   ├── nps_bridge.py
+│   ├── deploy_bridge.py
+│   ├── agent-config.example.json
+│   └── requirements.txt      # Agent deps only (pywinrm, requests, dotenv)
+├── cloud/                    # THE SERVER (anywhere Python runs)
 │   ├── app.py                # Flask backend + dashboard routes + AI assistant
-│   ├── db.py                 # Database layer (SQLite dev / PostgreSQL prod)
+│   ├── db.py                 # Database layer (SQLite by default, PostgreSQL optional)
 │   ├── action_policy.py      # Hard permission enforcement (READ/WRITE/DESTRUCTIVE)
+│   ├── graph_client.py       # Entra ID via Microsoft Graph
+│   ├── secrets_crypto.py     # Encrypts tenant secrets at rest
 │   └── templates/
 │       └── dashboard.html    # Entire single-page frontend (vanilla JS)
 ├── installer/
 │   └── setup_wizard.py       # Windows EXE installer wizard (PyInstaller target)
+├── tools/                    # demo_agent.py + demo_seed.py for demos/screenshots
+├── build-releases.py         # Packages the aid-server and aid-agent zips
+└── requirements.txt          # Server deps only (Flask, anthropic, msal, ...)
 ```
 
 ---
@@ -240,7 +250,7 @@ python app.py
 
 # Agent (separate terminal, needs agent-config.json filled in)
 cd ..
-python agent.py
+cd agent && python agent.py
 ```
 
 The dashboard is at `http://localhost:5000`. First run creates the SQLite DB automatically.

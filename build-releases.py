@@ -43,17 +43,20 @@ SERVER_FILES = [
 ]
 SERVER_DIRS = ["cloud"]
 
+# The agent lives in agent/, but its release is flattened to the zip root so a
+# user can run `pip install -r requirements.txt` and `python agent.py` straight
+# out of the extracted folder.
 AGENT_FILES = [
-    "agent.py",
-    "winrm_core.py",
-    "ad_bridge.py",
-    "dns_bridge.py",
-    "dhcp_bridge.py",
-    "gpo_bridge.py",
-    "nps_bridge.py",
-    "deploy_bridge.py",
-    "agent-config.example.json",
-    "requirements-agent.txt",
+    "agent/agent.py",
+    "agent/winrm_core.py",
+    "agent/ad_bridge.py",
+    "agent/dns_bridge.py",
+    "agent/dhcp_bridge.py",
+    "agent/gpo_bridge.py",
+    "agent/nps_bridge.py",
+    "agent/deploy_bridge.py",
+    "agent/agent-config.example.json",
+    "agent/requirements.txt",
     "LICENSE",
 ]
 AGENT_DIRS = ["skill"]
@@ -74,10 +77,13 @@ def _skip(path: str) -> bool:
     return any(part in EXCLUDE_NAMES for part in path.split(os.sep))
 
 
-def _add_file(zf: zipfile.ZipFile, src: str, arc_root: str, rel: str) -> int:
+def _add_file(zf: zipfile.ZipFile, src: str, arc_root: str, rel: str, flatten: bool = False) -> int:
+    """Add one file. `flatten` drops the source directory so agent/agent.py
+    lands at the zip root as agent.py."""
     if not os.path.exists(src) or _skip(src):
         return 0
-    zf.write(src, os.path.join(arc_root, rel))
+    arcname = os.path.basename(rel) if flatten else rel
+    zf.write(src, os.path.join(arc_root, arcname))
     return 1
 
 
@@ -106,7 +112,7 @@ def build(kind: str, version: str) -> str:
     count = 0
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in files:
-            count += _add_file(zf, os.path.join(ROOT, f), name, f)
+            count += _add_file(zf, os.path.join(ROOT, f), name, f, flatten=(kind == "agent"))
         for d in dirs:
             count += _add_dir(zf, ROOT, name, d)
         # A short, artifact-specific getting-started note.
@@ -143,7 +149,7 @@ Runs on a domain-joined Windows box and executes AD / DNS / DHCP / Group Policy
 / NPS commands over WinRM. It polls the server outbound, so no inbound ports,
 VPN, or firewall changes are needed.
 
-  1. pip install -r requirements-agent.txt
+  1. pip install -r requirements.txt
   2. copy agent-config.example.json agent-config.json
   3. Fill in:
         cloud_url        your server's address, e.g. http://192.168.1.20:5000
