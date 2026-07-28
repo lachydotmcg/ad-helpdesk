@@ -91,10 +91,27 @@ Ranked by (value to a real deal) / (effort), not by how impressive it sounds.
    gigabytes of dependency on a domain controller. BM25 covers every tenant with
    no new dependencies. `kb.search()` is the seam if an embedding re-rank is
    worth adding later for tenants whose provider supports it.
-5. **Service metrics** - MTTR, first-contact resolution, CSAT. Now the top
-   remaining item, and cheaper than it was: SLA work already added
-   `first_response_at` and `resolved_at`, so first-contact resolution and MTTR
-   are mostly a query rather than a schema change.
+5. ~~**Service metrics**~~ - **built**, minus CSAT. Resolution time, first
+   response, assistant deflection rate, SLA attainment and backlog, all with
+   median alongside mean. CSAT was left out rather than faked: it has to come
+   from the requester, and no channel back to them is guaranteed to exist here.
+   Adding it means first choosing that channel (a rating link in the resolution
+   email, or a Slack follow-up), which is a product decision, not a query.
+
+---
+
+## What is left
+
+Everything rated High is done. The remaining items are all Medium or deliberate
+skips:
+
+| Item | Notes |
+|---|---|
+| **Approval workflows** | We have a 6-digit confirm token, not routed multi-party approval. The nearest real use case is "a manager must approve group membership changes", which needs an approver identity and a waiting state on the action. |
+| **Integration breadth** | Okta, Workday, Jira, Zendesk, Jamf. Each is a connector; the pattern is already set by `graph_client.py`. Volume of work, not difficulty. |
+| **Agent Studio** | Low-code action builder. We have custom PowerShell scripts with a classification, which covers some of this for an admin willing to write PowerShell. |
+| **Teams support** | Blocked on transport, not effort: Teams has no Socket Mode equivalent, so it needs a reachable endpoint, which a firewalled self-hosted install does not have. |
+| CMDB, change management, problem management, service catalog | Still deliberate skips. Enterprise ITSM, not an AD helpdesk. |
 
 ---
 
