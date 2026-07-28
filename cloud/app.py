@@ -1878,6 +1878,75 @@ def api_dns_records_delete():
     return jsonify({"success": True, "command_id": command["id"]}), 202
 
 
+@app.route("/api/dns/records/update", methods=["POST"])
+@require_dashboard_user
+def api_dns_records_update():
+    """
+    Queue a DNS record update (routine write, no confirmation token,
+    same tier as add_dns_record).
+    Body: { "zone": "...", "name": "...", "type": "A", "old_value": "...", "new_value": "..." }
+    """
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data      = request.get_json() or {}
+    zone      = str(data.get("zone", "")).strip()
+    name      = str(data.get("name", "")).strip()
+    rtype     = str(data.get("type", "")).strip()
+    old_value = str(data.get("old_value", "")).strip()
+    new_value = str(data.get("new_value", "")).strip()
+
+    if not (zone and name and rtype and old_value and new_value):
+        return jsonify({"success": False, "message": "Zone, name, type, old value, and new value are all required."}), 400
+
+    action = "update_dns_record"
+    args   = [zone, name, rtype, old_value, new_value]
+
+    ok, reason = action_policy.validate(action, source="human")
+    if not ok:
+        return jsonify({"success": False, "message": reason}), 403
+
+    command = db.queue_command(g.tenant_id, action, args)
+    db.log_audit(g.tenant_id, g.user_email, action, f"{name}.{zone}", "queued")
+    db.log_activity(g.tenant_id, "ad_action", g.user_email, target=f"{name}.{zone}",
+                     detail=f"{action} queued via dashboard")
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dns/scavenging", methods=["GET"])
+@require_dashboard_user
+def api_dns_scavenging_get():
+    """Queue a DNS scavenging status read. Body: none. Returns { command_id }."""
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+    command = db.queue_command(g.tenant_id, "get_dns_scavenging", [])
+    return jsonify({"success": True, "command_id": command["id"]}), 202
+
+
+@app.route("/api/dns/scavenging", methods=["POST"])
+@require_dashboard_user
+def api_dns_scavenging_set():
+    """
+    Queue a DNS scavenging state change. DESTRUCTIVE -- gated behind the
+    same 6-digit confirmation challenge as disable_account.
+    Body: { "enabled": true|false, "confirm_token": "" }
+    """
+    block = _require_dns_capability()
+    if block:
+        return jsonify({"success": False, "message": block}), 403
+
+    data    = request.get_json() or {}
+    enabled = bool(data.get("enabled", False))
+
+    action = "set_dns_scavenging"
+    args   = [enabled]
+    label  = f"{'Enable' if enabled else 'Disable'} DNS scavenging"
+
+    return _gpo_destructive_write(action, args, "DNS scavenging", label, data)
+
+
 # ---------------------------------------------------------------------------
 # Dashboard API -- DHCP
 # Same shape as the DNS routes above: thin, capability-gated wrappers around

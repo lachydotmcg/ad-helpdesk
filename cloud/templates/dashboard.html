@@ -1707,7 +1707,10 @@
       <div class="panel" id="dns-zones-panel">
         <div class="panel-header">
           <span class="panel-title">DNS Zones</span>
-          <button class="btn btn-ghost" onclick="loadDnsZones()">↺ Refresh</button>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="dns-zones-count">loading...</span>
+            <button class="btn btn-ghost" onclick="loadDnsZones()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
         </div>
         <div id="dns-zones-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -1717,7 +1720,8 @@
       <div class="panel" id="dns-records-panel" style="display:none;margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Records: <span id="dns-current-zone"></span></span>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="dns-records-count"></span>
             <button class="btn btn-primary" id="dns-add-record-btn" onclick="openAddDnsRecord()">+ Add Record</button>
             <button class="btn btn-ghost" onclick="loadDnsRecords(_dnsCurrentZone)">↺ Refresh</button>
           </div>
@@ -1735,7 +1739,23 @@
           </select>
         </div>
         <div id="dns-records-wrap">
-          <div class="empty"><div class="empty-icon">🌐</div>Select a zone above to view its records.</div>
+          <div class="empty"><div class="empty-icon"><svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>Select a zone above to view its records.</div>
+        </div>
+      </div>
+
+      <div class="panel" id="dns-scavenging-panel" style="margin-top:16px;">
+        <div class="panel-header">
+          <span class="panel-title">Scavenging</span>
+          <button class="btn btn-ghost" onclick="loadDnsScavenging()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+        </div>
+        <div style="padding:16px 20px;">
+          <p style="font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.6;">
+            Scavenging automatically cleans up stale DNS records that were never removed after a device
+            left the network. Turning it off stops that cleanup server-wide, so records can pile up over time.
+          </p>
+          <div id="dns-scavenging-wrap">
+            <div class="loading"><span class="spinner"></span>Loading...</div>
+          </div>
         </div>
       </div>
     </div>
@@ -1745,7 +1765,10 @@
       <div class="panel" id="dhcp-scopes-panel">
         <div class="panel-header">
           <span class="panel-title">DHCP Scopes</span>
-          <button class="btn btn-ghost" onclick="loadDhcpScopes()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="dhcp-scopes-count">loading...</span>
+            <button class="btn btn-ghost" onclick="loadDhcpScopes()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
         </div>
         <div id="dhcp-scopes-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -1755,7 +1778,10 @@
       <div class="panel" id="dhcp-leases-panel" style="display:none;margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Leases: <span id="dhcp-current-scope-label"></span></span>
-          <button class="btn btn-ghost" onclick="loadDhcpLeases(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="dhcp-leases-count"></span>
+            <button class="btn btn-ghost" onclick="loadDhcpLeases(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
         </div>
         <div class="search-row">
           <input class="search-input" id="dhcp-lease-search" type="search" placeholder="Search by IP, MAC, or hostname..." oninput="filterDhcpLeases()" autocomplete="off" spellcheck="false"/>
@@ -1768,7 +1794,8 @@
       <div class="panel" id="dhcp-reservations-panel" style="display:none;margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Reservations</span>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="dhcp-reservations-count"></span>
             <button class="btn btn-primary" onclick="openAddDhcpReservation()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Reservation</button>
             <button class="btn btn-ghost" onclick="loadDhcpReservations(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
           </div>
@@ -1781,7 +1808,8 @@
       <div class="panel" id="dhcp-exclusions-panel" style="display:none;margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Exclusion Ranges</span>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="dhcp-exclusions-count"></span>
             <button class="btn btn-primary" onclick="openAddDhcpExclusion()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Exclusion</button>
             <button class="btn btn-ghost" onclick="loadDhcpExclusions(_dhcpCurrentScope)"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
           </div>
@@ -1797,7 +1825,10 @@
       <div class="panel" id="gpo-list-panel">
         <div class="panel-header">
           <span class="panel-title">Group Policy Objects</span>
-          <button class="btn btn-ghost" onclick="loadGpoList()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="gpo-list-count">loading...</span>
+            <button class="btn btn-ghost" onclick="loadGpoList()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
         </div>
         <div class="search-row">
           <input class="search-input" id="gpo-search" type="search" placeholder="Search GPOs by name..." oninput="filterGpoList()" autocomplete="off" spellcheck="false"/>
@@ -1916,7 +1947,13 @@
       <div class="panel" id="nps-clients-panel" style="margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">RADIUS Clients</span>
-          <button class="btn btn-ghost" onclick="loadNpsAll()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="panel-count" id="nps-clients-count">loading...</span>
+            <button class="btn btn-ghost" onclick="loadNpsAll()"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh</button>
+          </div>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="nps-clients-search" type="search" placeholder="Search by name, address, or vendor..." oninput="filterNpsClients()" autocomplete="off" spellcheck="false"/>
         </div>
         <div id="nps-clients-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -1928,6 +1965,10 @@
       <div class="panel" id="nps-policies-panel" style="margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Network Policies</span>
+          <span class="panel-count" id="nps-policies-count">loading...</span>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="nps-policies-search" type="search" placeholder="Search by policy name..." oninput="filterNpsPolicies()" autocomplete="off" spellcheck="false"/>
         </div>
         <div id="nps-policies-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -1937,6 +1978,10 @@
       <div class="panel" id="nps-crp-panel" style="margin-top:16px;">
         <div class="panel-header">
           <span class="panel-title">Connection Request Policies</span>
+          <span class="panel-count" id="nps-crp-count">loading...</span>
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="nps-crp-search" type="search" placeholder="Search by policy name..." oninput="filterNpsCrp()" autocomplete="off" spellcheck="false"/>
         </div>
         <div id="nps-crp-wrap">
           <div class="loading"><span class="spinner"></span>Loading...</div>
@@ -2962,11 +3007,11 @@
   </div>
 </div>
 
-<!-- Add DNS record modal -->
+<!-- Add / edit DNS record modal (shared -- dns-add-mode drives which behavior applies) -->
 <div class="modal-overlay" id="modal-dns-add">
   <div class="modal">
-    <h2>Add DNS Record</h2>
-    <p>Add a record to zone <strong id="dns-add-zone-label"></strong>.</p>
+    <h2 id="dns-add-title">Add DNS Record</h2>
+    <p id="dns-add-subtitle">Add a record to zone <strong id="dns-add-zone-label"></strong>.</p>
     <div class="field">
       <label>Name (use "@" for the zone apex)</label>
       <input type="text" id="dns-add-name" placeholder="www"/>
@@ -2983,17 +3028,17 @@
       </select>
     </div>
     <div class="field">
-      <label>Value</label>
+      <label id="dns-add-value-label">Value</label>
       <input type="text" id="dns-add-value" placeholder="10.0.0.5"/>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;" id="dns-add-value-hint">IPv4 address, e.g. 10.0.0.5</div>
     </div>
-    <div class="field">
+    <div class="field" id="dns-add-ttl-field">
       <label>TTL (seconds)</label>
       <input type="number" id="dns-add-ttl" value="3600" min="1" max="2592000"/>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-dns-add')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAddDnsRecord()">Add Record</button>
+      <button class="btn btn-primary" id="dns-add-submit-btn" onclick="submitAddDnsRecord()">Add Record</button>
     </div>
   </div>
 </div>
@@ -3258,6 +3303,8 @@
     warning:  '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
     pin:      '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
     trash:    '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    edit:     '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>',
+    globe:    '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
   };
 
   async function execCommand(action, args = [], target = '') {
@@ -4051,9 +4098,10 @@
     try {
       const data = await dnsGet('/api/dns/zones');
       _dnsZones = Array.isArray(data) ? data : (data.zones || []);
+      document.getElementById('dns-zones-count').textContent = _dnsZones.length + ' zone' + (_dnsZones.length === 1 ? '' : 's');
       if (!_dnsZones.length) {
         document.getElementById('dns-zones-wrap').innerHTML =
-          '<div class="empty"><div class="empty-icon">🌐</div>No DNS zones found.</div>';
+          `<div class="empty"><div class="empty-icon">${ICON.globe}</div>No DNS zones found. Check that the DNS Server role is installed and the agent has reconnected.</div>`;
         return;
       }
       let html = '<table><thead><tr><th>Zone</th><th>Type</th><th>Dynamic Update</th><th>Reverse Lookup</th><th></th></tr></thead><tbody>';
@@ -4072,8 +4120,9 @@
       html += '</tbody></table>';
       document.getElementById('dns-zones-wrap').innerHTML = html;
     } catch (e) {
+      document.getElementById('dns-zones-count').textContent = 'error';
       document.getElementById('dns-zones-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">⚠️</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load DNS zones: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4097,8 +4146,9 @@
       _dnsRecords = Array.isArray(data) ? data : (data.records || []);
       renderDnsRecords();
     } catch (e) {
+      document.getElementById('dns-records-count').textContent = 'error';
       document.getElementById('dns-records-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">⚠️</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load records: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4110,9 +4160,12 @@
       if (!q) return true;
       return String(r.HostName || '').toLowerCase().includes(q) || String(r.Value || '').toLowerCase().includes(q);
     });
+    document.getElementById('dns-records-count').textContent =
+      rows.length + (rows.length === _dnsRecords.length ? '' : ' of ' + _dnsRecords.length) + ' record' + (_dnsRecords.length === 1 ? '' : 's');
     if (!rows.length) {
-      document.getElementById('dns-records-wrap').innerHTML =
-        '<div class="empty"><div class="empty-icon">🌐</div>No matching records.</div>';
+      document.getElementById('dns-records-wrap').innerHTML = _dnsRecords.length
+        ? `<div class="empty"><div class="empty-icon">${ICON.globe}</div>No records match "${escHtml(q)}".</div>`
+        : `<div class="empty"><div class="empty-icon">${ICON.globe}</div>No records in this zone yet. Use "Add Record" to create one.</div>`;
       return;
     }
     let html = '<table><thead><tr><th>Name</th><th>Type</th><th>Value</th><th>TTL</th><th></th></tr></thead><tbody>';
@@ -4127,7 +4180,10 @@
               `<td><span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}55;">${escHtml(type)}</span></td>` +
               `<td style="font-size:12px;">${escHtml(value)}</td>` +
               `<td style="font-size:12px;color:var(--muted)">${ttl}</td>` +
-              `<td><button class="btn btn-danger btn-sm" onclick="deleteDnsRecord('${jsArg(name)}','${jsArg(type)}','${jsArg(value)}')">Delete</button></td></tr>`;
+              `<td style="display:flex;gap:6px;">` +
+              `<button class="btn btn-ghost btn-sm" onclick="openEditDnsRecord('${jsArg(name)}','${jsArg(type)}','${jsArg(value)}')">${ICON.edit} Edit</button>` +
+              `<button class="btn btn-danger btn-sm" onclick="deleteDnsRecord('${jsArg(name)}','${jsArg(type)}','${jsArg(value)}')">${ICON.trash} Delete</button>` +
+              `</td></tr>`;
     }
     html += '</tbody></table>';
     document.getElementById('dns-records-wrap').innerHTML = html;
@@ -4149,13 +4205,47 @@
     document.getElementById('dns-add-value-hint').textContent = DNS_VALUE_HINTS[type] || '';
   }
 
+  let _dnsEditMode = false;
+  let _dnsEditOldValue = '';
+
   function openAddDnsRecord() {
     if (!_dnsCurrentZone) { toast('Select a zone first.', 'error'); return; }
+    _dnsEditMode = false;
+    _dnsEditOldValue = '';
+    document.getElementById('dns-add-title').textContent = 'Add DNS Record';
+    document.getElementById('dns-add-subtitle').innerHTML = 'Add a record to zone <strong id="dns-add-zone-label"></strong>.';
     document.getElementById('dns-add-zone-label').textContent = _dnsCurrentZone;
+    document.getElementById('dns-add-value-label').textContent = 'Value';
+    document.getElementById('dns-add-submit-btn').textContent = 'Add Record';
+    document.getElementById('dns-add-ttl-field').style.display = '';
     document.getElementById('dns-add-name').value = '';
+    document.getElementById('dns-add-name').disabled = false;
+    document.getElementById('dns-add-type').disabled = false;
     document.getElementById('dns-add-value').value = '';
     document.getElementById('dns-add-ttl').value = 3600;
     document.getElementById('dns-add-type').value = 'A';
+    updateDnsValueHint();
+    openModal('modal-dns-add');
+  }
+
+  // Opens the same modal in edit mode, prefilled from an existing record row.
+  // Name and type identify the record and stay locked -- update_dns_record
+  // only changes the value, so we keep the original value as old_value.
+  function openEditDnsRecord(name, type, value) {
+    if (!_dnsCurrentZone) { toast('Select a zone first.', 'error'); return; }
+    _dnsEditMode = true;
+    _dnsEditOldValue = value;
+    document.getElementById('dns-add-title').textContent = 'Edit DNS Record';
+    document.getElementById('dns-add-subtitle').innerHTML =
+      `Edit <strong>${escHtml(type)}</strong> record '<strong>${escHtml(name)}</strong>' in zone <strong>${escHtml(_dnsCurrentZone)}</strong>.`;
+    document.getElementById('dns-add-value-label').textContent = 'New value';
+    document.getElementById('dns-add-submit-btn').textContent = 'Save Changes';
+    document.getElementById('dns-add-ttl-field').style.display = 'none';
+    document.getElementById('dns-add-name').value = name;
+    document.getElementById('dns-add-name').disabled = true;
+    document.getElementById('dns-add-type').value = type;
+    document.getElementById('dns-add-type').disabled = true;
+    document.getElementById('dns-add-value').value = value;
     updateDnsValueHint();
     openModal('modal-dns-add');
   }
@@ -4164,9 +4254,22 @@
     const name  = document.getElementById('dns-add-name').value.trim();
     const type  = document.getElementById('dns-add-type').value;
     const value = document.getElementById('dns-add-value').value.trim();
-    const ttl   = parseInt(document.getElementById('dns-add-ttl').value, 10) || 3600;
     if (!name || !value) { toast('Name and value are required.', 'error'); return; }
     if (name === '@' && !confirm('This is the zone apex record. Changing it can affect mail routing or the primary address for the whole domain. Continue?')) return;
+
+    if (_dnsEditMode) {
+      if (value === _dnsEditOldValue) { toast('New value is the same as the current value.', 'error'); return; }
+      closeModal('modal-dns-add');
+      toast(`Updating ${type} record '${name}'...`, 'info');
+      try {
+        await dnsPost('/api/dns/records/update', { zone: _dnsCurrentZone, name, type, old_value: _dnsEditOldValue, new_value: value });
+        toast(`${type} record '${name}' updated.`, 'success');
+        loadDnsRecords(_dnsCurrentZone);
+      } catch (e) { toast(e.message, 'error'); }
+      return;
+    }
+
+    const ttl = parseInt(document.getElementById('dns-add-ttl').value, 10) || 3600;
     closeModal('modal-dns-add');
     toast(`Adding ${type} record '${name}'...`, 'info');
     try {
@@ -4185,6 +4288,48 @@
       toast(`${type} record '${name}' removed.`, 'success');
       loadDnsRecords(_dnsCurrentZone);
     } catch (e) { toast(e.message, 'error'); }
+  }
+
+  let _dnsScavengingState = null;
+
+  async function loadDnsScavenging() {
+    document.getElementById('dns-scavenging-wrap').innerHTML =
+      '<div class="loading"><span class="spinner"></span>Loading...</div>';
+    try {
+      const data = await dnsGet('/api/dns/scavenging');
+      const enabled  = !!(data && data.ScavengingState);
+      const interval = (data && data.RefreshInterval) || null;
+      _dnsScavengingState = enabled;
+      document.getElementById('dns-scavenging-wrap').innerHTML = `
+        <div class="toggle-row" style="border-bottom:none;margin-bottom:0;padding:0;">
+          <label class="toggle-switch" for="dns-scavenging-toggle">
+            <input type="checkbox" id="dns-scavenging-toggle" ${enabled ? 'checked' : ''} onchange="toggleDnsScavenging(this)"/>
+            <span class="toggle-track"></span>
+          </label>
+          <label for="dns-scavenging-toggle">
+            <div class="label-title">${enabled ? 'Scavenging is enabled' : 'Scavenging is disabled'}</div>
+            <div class="label-desc">${interval ? `Refresh interval: ${escHtml(interval)}` : 'Server-wide stale record cleanup.'}</div>
+          </label>
+        </div>`;
+    } catch (e) {
+      document.getElementById('dns-scavenging-wrap').innerHTML =
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load scavenging status: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  async function toggleDnsScavenging(checkbox) {
+    const enabled = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      await dnsPost('/api/dns/scavenging', { enabled });
+      toast(`Scavenging ${enabled ? 'enabled' : 'disabled'}.`, 'success');
+      loadDnsScavenging();
+    } catch (e) {
+      checkbox.checked = !enabled;
+      toast(e.message, 'error');
+    } finally {
+      checkbox.disabled = false;
+    }
   }
 
   // =========================================================
@@ -4220,9 +4365,10 @@
       _dhcpStatsById = {};
       for (const s of statsList) _dhcpStatsById[s.ScopeId] = s;
 
+      document.getElementById('dhcp-scopes-count').textContent = _dhcpScopes.length + ' scope' + (_dhcpScopes.length === 1 ? '' : 's');
       if (!_dhcpScopes.length) {
         document.getElementById('dhcp-scopes-wrap').innerHTML =
-          `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No DHCP scopes found.</div>`;
+          `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No DHCP scopes found. Check that the DHCP Server role is installed and the agent has reconnected.</div>`;
         return;
       }
       let html = '<div class="scope-grid">';
@@ -4242,8 +4388,9 @@
       html += '</div>';
       document.getElementById('dhcp-scopes-wrap').innerHTML = html;
     } catch (e) {
+      document.getElementById('dhcp-scopes-count').textContent = 'error';
       document.getElementById('dhcp-scopes-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load DHCP scopes: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4292,8 +4439,9 @@
       _dhcpLeases = Array.isArray(data) ? data : (data.leases || []);
       renderDhcpLeases();
     } catch (e) {
+      document.getElementById('dhcp-leases-count').textContent = 'error';
       document.getElementById('dhcp-leases-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load leases: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4305,11 +4453,16 @@
              String(l.ClientId || '').toLowerCase().includes(q) ||
              String(l.HostName || '').toLowerCase().includes(q);
     });
+    document.getElementById('dhcp-leases-count').textContent =
+      rows.length + (rows.length === _dhcpLeases.length ? '' : ' of ' + _dhcpLeases.length) + ' lease' + (_dhcpLeases.length === 1 ? '' : 's');
     if (!rows.length) {
-      document.getElementById('dhcp-leases-wrap').innerHTML =
-        '<div class="empty"><div class="empty-icon">' +
-        '<svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>' +
-        '</div>No matching leases.</div>';
+      document.getElementById('dhcp-leases-wrap').innerHTML = _dhcpLeases.length
+        ? '<div class="empty"><div class="empty-icon">' +
+          '<svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>' +
+          '</div>No matching leases.</div>'
+        : '<div class="empty"><div class="empty-icon">' +
+          '<svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>' +
+          '</div>No active leases in this scope.</div>';
       return;
     }
     let html = '<table><thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>State</th><th>Expiry</th><th></th></tr></thead><tbody>';
@@ -4340,9 +4493,10 @@
       const qs = new URLSearchParams({ scope: scopeId });
       const data = await dhcpGet('/api/dhcp/reservations?' + qs.toString());
       _dhcpReservations = Array.isArray(data) ? data : (data.reservations || []);
+      document.getElementById('dhcp-reservations-count').textContent = _dhcpReservations.length + ' reservation' + (_dhcpReservations.length === 1 ? '' : 's');
       if (!_dhcpReservations.length) {
         document.getElementById('dhcp-reservations-wrap').innerHTML =
-          '<div class="empty">No reservations in this scope yet.</div>';
+          '<div class="empty">No reservations in this scope yet. Reserve a lease above, or use "Add Reservation".</div>';
         return;
       }
       let html = '<table><thead><tr><th>IP</th><th>MAC</th><th>Name</th><th>Description</th><th></th></tr></thead><tbody>';
@@ -4356,8 +4510,9 @@
       html += '</tbody></table>';
       document.getElementById('dhcp-reservations-wrap').innerHTML = html;
     } catch (e) {
+      document.getElementById('dhcp-reservations-count').textContent = 'error';
       document.getElementById('dhcp-reservations-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load reservations: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4417,9 +4572,10 @@
       const qs = new URLSearchParams({ scope: scopeId });
       const data = await dhcpGet('/api/dhcp/exclusions?' + qs.toString());
       _dhcpExclusions = Array.isArray(data) ? data : (data.exclusions || []);
+      document.getElementById('dhcp-exclusions-count').textContent = _dhcpExclusions.length + ' range' + (_dhcpExclusions.length === 1 ? '' : 's');
       if (!_dhcpExclusions.length) {
         document.getElementById('dhcp-exclusions-wrap').innerHTML =
-          '<div class="empty">No exclusion ranges in this scope.</div>';
+          '<div class="empty">No exclusion ranges in this scope. Use "Add Exclusion" to keep addresses out of the assignable pool.</div>';
         return;
       }
       let html = '<table><thead><tr><th>Start</th><th>End</th><th></th></tr></thead><tbody>';
@@ -4431,8 +4587,9 @@
       html += '</tbody></table>';
       document.getElementById('dhcp-exclusions-wrap').innerHTML = html;
     } catch (e) {
+      document.getElementById('dhcp-exclusions-count').textContent = 'error';
       document.getElementById('dhcp-exclusions-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load exclusions: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4502,8 +4659,9 @@
       _gpoList = Array.isArray(data) ? data : (data.gpos || []);
       renderGpoList();
     } catch (e) {
+      document.getElementById('gpo-list-count').textContent = 'error';
       document.getElementById('gpo-list-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load GPOs: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -4512,9 +4670,12 @@
   function renderGpoList() {
     const q = (document.getElementById('gpo-search').value || '').toLowerCase();
     const rows = _gpoList.filter(g => !q || String(g.name || '').toLowerCase().includes(q));
+    document.getElementById('gpo-list-count').textContent =
+      rows.length + (rows.length === _gpoList.length ? '' : ' of ' + _gpoList.length) + ' GPO' + (_gpoList.length === 1 ? '' : 's');
     if (!rows.length) {
-      document.getElementById('gpo-list-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No GPOs found.</div>`;
+      document.getElementById('gpo-list-wrap').innerHTML = _gpoList.length
+        ? `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No GPOs match "${escHtml(q)}".</div>`
+        : `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No GPOs found on this domain.</div>`;
       return;
     }
     let html = '<table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th>Modified</th><th></th></tr></thead><tbody>';
@@ -4816,35 +4977,56 @@
     }
   }
 
+  let _npsClients  = [];
+  let _npsPolicies = [];
+  let _npsCrp      = [];
+
   async function loadNpsClients() {
     document.getElementById('nps-clients-wrap').innerHTML =
       '<div class="loading"><span class="spinner"></span>Loading...</div>';
     try {
       const data = await npsGet('/api/nps/clients');
-      const rows = Array.isArray(data) ? data : (data.clients || []);
-      if (!rows.length) {
-        document.getElementById('nps-clients-wrap').innerHTML =
-          `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No RADIUS clients found.</div>`;
-        return;
-      }
-      let html = '<table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th>Enabled</th></tr></thead><tbody>';
-      for (const c of rows) {
-        html += `<tr><td>${escHtml(c.name || '-')}</td>` +
-                `<td style="font-family:monospace;font-size:12px;">${escHtml(c.address || '-')}</td>` +
-                `<td>${escHtml(c.vendor_name || '-')}</td>` +
-                `<td>${npsEnabledPill(c.enabled)}</td></tr>`;
-      }
-      html += '</tbody></table>';
-      document.getElementById('nps-clients-wrap').innerHTML = html;
+      _npsClients = Array.isArray(data) ? data : (data.clients || []);
+      renderNpsClients();
     } catch (e) {
+      document.getElementById('nps-clients-count').textContent = 'error';
       document.getElementById('nps-clients-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load RADIUS clients: ${escHtml(e.message)}</div>`;
     }
   }
 
-  function _npsPolicyTable(rows) {
+  function filterNpsClients() { renderNpsClients(); }
+
+  function renderNpsClients() {
+    const q = (document.getElementById('nps-clients-search').value || '').toLowerCase();
+    const rows = _npsClients.filter(c => !q ||
+      String(c.name || '').toLowerCase().includes(q) ||
+      String(c.address || '').toLowerCase().includes(q) ||
+      String(c.vendor_name || '').toLowerCase().includes(q));
+    document.getElementById('nps-clients-count').textContent =
+      rows.length + (rows.length === _npsClients.length ? '' : ' of ' + _npsClients.length) + ' client' + (_npsClients.length === 1 ? '' : 's');
     if (!rows.length) {
-      return `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No policies found.</div>`;
+      document.getElementById('nps-clients-wrap').innerHTML = _npsClients.length
+        ? `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No RADIUS clients match "${escHtml(q)}".</div>`
+        : `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No RADIUS clients configured on this server.</div>`;
+      return;
+    }
+    let html = '<table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th>Enabled</th></tr></thead><tbody>';
+    for (const c of rows) {
+      html += `<tr><td>${escHtml(c.name || '-')}</td>` +
+              `<td style="font-family:monospace;font-size:12px;">${escHtml(c.address || '-')}</td>` +
+              `<td>${escHtml(c.vendor_name || '-')}</td>` +
+              `<td>${npsEnabledPill(c.enabled)}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('nps-clients-wrap').innerHTML = html;
+  }
+
+  function _npsPolicyTable(rows, all, noun, q) {
+    if (!rows.length) {
+      return all.length
+        ? `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No ${noun} match "${escHtml(q)}".</div>`
+        : `<div class="empty"><div class="empty-icon">${ICON.warning}</div>No ${noun} configured on this server.</div>`;
     }
     let html = '<table><thead><tr><th>Name</th><th>Enabled</th><th>Processing Order</th></tr></thead><tbody>';
     for (const p of rows) {
@@ -4861,12 +5043,23 @@
       '<div class="loading"><span class="spinner"></span>Loading...</div>';
     try {
       const data = await npsGet('/api/nps/policies');
-      const rows = Array.isArray(data) ? data : (data.policies || []);
-      document.getElementById('nps-policies-wrap').innerHTML = _npsPolicyTable(rows);
+      _npsPolicies = Array.isArray(data) ? data : (data.policies || []);
+      renderNpsPolicies();
     } catch (e) {
+      document.getElementById('nps-policies-count').textContent = 'error';
       document.getElementById('nps-policies-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load network policies: ${escHtml(e.message)}</div>`;
     }
+  }
+
+  function filterNpsPolicies() { renderNpsPolicies(); }
+
+  function renderNpsPolicies() {
+    const q = (document.getElementById('nps-policies-search').value || '').toLowerCase();
+    const rows = _npsPolicies.filter(p => !q || String(p.name || '').toLowerCase().includes(q));
+    document.getElementById('nps-policies-count').textContent =
+      rows.length + (rows.length === _npsPolicies.length ? '' : ' of ' + _npsPolicies.length) + ' polic' + (_npsPolicies.length === 1 ? 'y' : 'ies');
+    document.getElementById('nps-policies-wrap').innerHTML = _npsPolicyTable(rows, _npsPolicies, 'network policies', q);
   }
 
   async function loadNpsConnectionPolicies() {
@@ -4874,12 +5067,23 @@
       '<div class="loading"><span class="spinner"></span>Loading...</div>';
     try {
       const data = await npsGet('/api/nps/connection-policies');
-      const rows = Array.isArray(data) ? data : (data.policies || []);
-      document.getElementById('nps-crp-wrap').innerHTML = _npsPolicyTable(rows);
+      _npsCrp = Array.isArray(data) ? data : (data.policies || []);
+      renderNpsCrp();
     } catch (e) {
+      document.getElementById('nps-crp-count').textContent = 'error';
       document.getElementById('nps-crp-wrap').innerHTML =
-        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>${escHtml(e.message)}</div>`;
+        `<div class="empty"><div class="empty-icon">${ICON.warning}</div>Could not load connection request policies: ${escHtml(e.message)}</div>`;
     }
+  }
+
+  function filterNpsCrp() { renderNpsCrp(); }
+
+  function renderNpsCrp() {
+    const q = (document.getElementById('nps-crp-search').value || '').toLowerCase();
+    const rows = _npsCrp.filter(p => !q || String(p.name || '').toLowerCase().includes(q));
+    document.getElementById('nps-crp-count').textContent =
+      rows.length + (rows.length === _npsCrp.length ? '' : ' of ' + _npsCrp.length) + ' polic' + (_npsCrp.length === 1 ? 'y' : 'ies');
+    document.getElementById('nps-crp-wrap').innerHTML = _npsPolicyTable(rows, _npsCrp, 'connection request policies', q);
   }
 
   // =========================================================
@@ -6386,7 +6590,7 @@
       if (name === 'users')    loadUsers();
       if (name === 'locked')   loadLocked();
       if (name === 'expired')  loadExpired();
-      if (name === 'dns')      loadDnsZones();
+      if (name === 'dns')      { loadDnsZones(); loadDnsScavenging(); }
       if (name === 'dhcp')     loadDhcpScopes();
       if (name === 'gpo')      { loadGpoList(); loadDeployPanel(); }
       if (name === 'nps')      loadNpsAll();

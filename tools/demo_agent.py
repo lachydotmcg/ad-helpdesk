@@ -94,6 +94,8 @@ DNS_RECORDS = [
     {"name": "@", "type": "MX", "value": "10 mail.corp.local", "ttl": 3600},
 ]
 
+SCAVENGING = {"ScavengingState": True, "RefreshInterval": "7.00:00:00"}
+
 
 def _r(ok=True, msg="OK", data=None):
     return {"success": ok, "message": msg, "data": data}
@@ -144,7 +146,18 @@ def handle(action, args):
     if action == "list_dns_records":
         return _r(msg=f"{len(DNS_RECORDS)} record(s).", data=DNS_RECORDS)
     if action == "get_dns_scavenging":
-        return _r(data={"ScavengingState": True, "RefreshInterval": "7.00:00:00"})
+        return _r(data=dict(SCAVENGING))
+    if action == "set_dns_scavenging":
+        enabled = bool(args[0]) if args else False
+        SCAVENGING["ScavengingState"] = enabled
+        return _r(msg=f"Scavenging {'enabled' if enabled else 'disabled'}.", data=dict(SCAVENGING))
+    if action == "update_dns_record":
+        zone, name, rtype, old_value, new_value = (args + [""] * 5)[:5]
+        for rec in DNS_RECORDS:
+            if rec["name"] == name and rec["type"] == rtype and rec["value"] == old_value:
+                rec["value"] = new_value
+                return _r(msg=f"Updated {rtype} record '{name}' to {new_value}.", data=rec)
+        return _r(msg=f"Updated {rtype} record '{name}' to {new_value}.", data=None)
 
     # DHCP
     if action in ("list_dhcp_scopes", "get_dhcp_scope_stats"):
