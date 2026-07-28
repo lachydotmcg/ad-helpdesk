@@ -292,12 +292,12 @@ def _bootstrap_local_mode():
     pw    = os.getenv("AID_LOCAL_ADMIN_PASSWORD", "changeme")
     tenant = db.create_tenant(name)
     db.create_tenant_user(tenant["id"], email, pw, role="admin")
-    print("\n AID Helpdesk -- local mode")
+    print("\n AD Helpdesk -- self-hosted")
     print(" ----------------------------")
-    print(f" Organisation: {name}")
-    print(f" Sign in at /login with:  {email} / {pw}")
-    print(f" Agent API key:           {tenant['api_key']}")
-    print(f" AI provider:             {AI_PROVIDER}" + (f" ({OLLAMA_URL})" if AI_PROVIDER == 'ollama' else ""))
+    print(f" Organisation:  {name}")
+    print(f" Sign in with:  {email} / {pw}")
+    print(f" Agent key:     {tenant['api_key']}")
+    print(f" AI provider:   {AI_PROVIDER}" + (f" ({OLLAMA_URL})" if AI_PROVIDER == 'ollama' else ""))
     print(" Change the admin password in Settings after first sign-in.\n")
 
 if AID_LOCAL_MODE:

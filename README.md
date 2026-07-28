@@ -108,19 +108,28 @@ The **agent** is a lightweight Windows Service that polls *outbound*; your domai
 
 ---
 
-## Connecting the agent
+## The two pieces
 
-The dashboard talks to Windows through a lightweight agent. Install it on any box that can reach your domain controller over WinRM:
+AD Helpdesk ships as two components. Run the server anywhere; run the agent next to your domain controller.
 
-1. **Get your API key** &mdash; printed to the console on first start, and shown in **Settings**.
-2. **Run the installer** &mdash; `aid-agent-setup.exe` walks through three screens:
-   - **Server**: paste your API key and your dashboard's address (e.g. `http://your-server:5000`); the wizard verifies connectivity
+| | What it does | Runs on |
+|---|---|---|
+| **Server** (`aid-server`) | Dashboard, database, AI assistant | Anything with Python: Linux box, VM, NAS, Docker |
+| **Agent** (`aid-agent`) | Executes AD/DNS/DHCP/GPO/NPS commands over WinRM | A domain-joined Windows box |
+
+The agent polls the server **outbound**, so your domain controller needs no inbound ports, no VPN, and no firewall changes.
+
+### Connecting the agent
+
+1. **Grab the agent key** &mdash; printed to the console on first start, and shown under **Settings &rarr; Windows Agent**. It is a shared secret that proves the agent belongs to this install, so treat it like a password.
+2. **Run the installer** on the Windows box &mdash; `aid-agent-setup.exe` walks through three screens:
+   - **Server**: the agent key and your server's address (e.g. `http://192.168.1.20:5000`); the wizard verifies connectivity
    - **AD Credentials**: your AD server IP, domain name, and service account
-   - **Install**: copies the agent, writes `agent-config.json`, and registers + starts the Windows Service
-3. **Check the dashboard** &mdash; it shows **Agent: Online** and you're ready to go.
+   - **Install**: writes `agent-config.json` and registers the agent as a Windows Service
+3. **Check the dashboard** &mdash; it shows **Agent: Online** and you're live.
 
-> **Build the installer yourself:** `installer/build.bat`; requires Python 3.9+ and PyInstaller on Windows.
-> **Prefer no installer?** `python agent.py` with a filled-in `agent-config.json` works too.
+> **No installer needed?** Copy `agent-config.example.json` to `agent-config.json`, fill it in, and run `python agent.py`.
+> **Build the installer yourself:** `installer/build.bat` (needs Python 3.9+ and PyInstaller on Windows).
 
 ---
 

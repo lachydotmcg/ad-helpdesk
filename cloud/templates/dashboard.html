@@ -1447,20 +1447,20 @@
             <div style="flex:1;">
               <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Connect your Windows agent</div>
               <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;">
-                AID Helpdesk needs a small agent running on your Windows Server to talk to Active Directory.
+                AD Helpdesk needs a small agent running on your Windows Server to talk to Active Directory.
                 Download the installer below and run it on your server — the setup wizard handles everything.
               </div>
-              <!-- Download + API key row -->
+              <!-- Download + agent key row -->
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
                 <a href="https://github.com/lachydotmcg/ad-helpdesk/releases/latest/download/aid-agent-setup.exe"
                    style="display:inline-flex;align-items:center;gap:7px;background:var(--accent2);color:#fff;font-size:12px;font-weight:700;padding:9px 16px;border-radius:8px;text-decoration:none;white-space:nowrap;flex-shrink:0;"
                    download>
-                  ⬇ Download Agent Installer
+                  <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download Agent Installer
                 </a>
                 <input id="onboard-api-key" class="search-input" readonly
                        style="flex:1;min-width:160px;max-width:340px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
                        placeholder="Loading..."/>
-                <button class="btn btn-ghost" style="font-size:12px;" onclick="copyOnboardApiKey()">📋 Copy key</button>
+                <button class="btn btn-ghost" style="font-size:12px;" onclick="copyOnboardApiKey()" style="font-size:12px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy key</button>
               </div>
               <div id="onboard-agent-status" style="font-size:13px;color:var(--muted);margin-bottom:12px;">
                 <span class="status-dot" id="onboard-dot" style="display:inline-block;margin-right:6px;"></span>
@@ -2258,7 +2258,7 @@
         <div class="panel-header">
           <span class="panel-title">Audit Log</span>
           <div style="display:flex;gap:8px;">
-            <a class="btn btn-ghost" href="/dashboard/api/audit/export" download style="font-size:13px;">⬇ Export CSV</a>
+            <a class="btn btn-ghost" href="/dashboard/api/audit/export" download style="font-size:13px;display:inline-flex;align-items:center;gap:6px;"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export CSV</a>
             <button class="btn btn-ghost" onclick="loadAudit()">↺ Refresh</button>
           </div>
         </div>
@@ -2414,25 +2414,29 @@
                   <a href="https://github.com/lachydotmcg/ad-helpdesk/releases/latest/download/aid-agent-setup.exe"
                      style="display:inline-flex;align-items:center;gap:8px;background:var(--accent2);color:#fff;font-size:12px;font-weight:700;padding:9px 16px;border-radius:8px;text-decoration:none;white-space:nowrap;flex-shrink:0;"
                      download>
-                    ⬇ Download Agent
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download Agent
                   </a>
                 </div>
                 <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);line-height:1.7;">
-                  Run <strong style="color:var(--text);">aid-agent-setup.exe</strong> on your Windows Server.
-                  The setup wizard will ask for your API key and AD credentials, then install the agent as a Windows Service automatically.
+                  Run <strong style="color:var(--text);">aid-agent-setup.exe</strong> on the Windows box that can reach your domain controller.
+                  The setup wizard asks for the agent key and server address below, plus your AD credentials, then installs the agent as a Windows Service.
                 </div>
               </div>
 
-              <!-- API key -->
-              <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600;color:var(--text);">Your API Key</div>
+              <!-- Agent key + server address: what the agent needs to connect -->
+              <div style="font-size:12px;margin-bottom:8px;font-weight:600;color:var(--text);">Agent key</div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <input id="tenant-api-key" class="search-input" readonly
                        style="flex:1;min-width:200px;max-width:420px;font-family:'Courier New',monospace;font-size:12px;color:var(--accent2);letter-spacing:0.03em;"
                        placeholder="Loading..." />
                 <button class="btn btn-ghost" style="font-size:12px;" onclick="copyApiKey()">Copy</button>
               </div>
-              <div style="font-size:12px;color:var(--muted);margin-top:10px;">
-                Cloud URL: <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;font-size:11px;">{{ request.host_url.rstrip('/') }}</code>
+              <div style="font-size:11px;color:var(--muted);margin-top:7px;line-height:1.6;">
+                The shared secret your agent uses to prove it belongs to this install. Treat it like a password.
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:12px;">
+                Server address: <code style="background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px;font-size:11px;">{{ request.host_url.rstrip('/') }}</code>
               </div>
             </div>
 
@@ -3112,7 +3116,7 @@
     </div>
     <div style="margin-top:12px;">
       <button class="btn btn-ghost" style="font-size:12px;width:100%;" onclick="copyInviteMessage()">
-        📋 Copy full invite message
+        <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy full invite message
       </button>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:10px;">
@@ -3140,7 +3144,7 @@
     </div>
     <div style="margin-top:12px;">
       <button class="btn btn-ghost" style="font-size:12px;width:100%;" onclick="copyResetMessage()">
-        📋 Copy message for the user
+        <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy message for the user
       </button>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:10px;">
@@ -5218,7 +5222,7 @@
       _auditRows = json.data || [];
       if (!_auditRows.length) {
         document.getElementById('audit-table-wrap').innerHTML =
-          '<div class="empty"><div class="empty-icon">📋</div>No audit log entries yet.</div>';
+          '<div class="empty"><div class="empty-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:34px;height:34px;"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg></div>No audit log entries yet.</div>';
         return;
       }
       renderAuditPage();
@@ -5328,7 +5332,7 @@
       if (d.dismissed) return;
 
       const steps = [
-        { key: 'agent_connected',   done: d.agent_connected,   label: 'Connect the Windows agent',  tip: 'Copy your API key and run agent.py on your server' },
+        { key: 'agent_connected',   done: d.agent_connected,   label: 'Connect the Windows agent',  tip: 'Copy your agent key and run agent.py on your server' },
         { key: 'email_domain_set',  done: d.email_domain_set,  label: 'Set your email domain',       tip: 'Lets your AI verify who is making requests' },
         { key: 'first_ticket',      done: d.first_ticket,      label: 'Create your first ticket',    tip: 'Email in or use the Tickets page' },
         { key: 'team_member_added', done: d.team_member_added, label: 'Invite a team member',        tip: 'Settings → Team tab' },
@@ -5349,7 +5353,7 @@
         trialEl.style.color = d.trial_days_left <= 3 ? 'var(--error)' : 'var(--muted)';
       }
 
-      // Populate API key
+      // Populate agent key
       if (tenJson.success) {
         const keyEl = document.getElementById('onboard-api-key');
         if (keyEl) keyEl.value = tenJson.data.api_key || '';
@@ -5394,11 +5398,11 @@
     const el = document.getElementById('onboard-api-key');
     if (!el || !el.value) return;
     navigator.clipboard.writeText(el.value).then(() => {
-      toast('API key copied to clipboard', 'success');
+      toast('Agent key copied to clipboard', 'success');
     }).catch(() => {
       el.select();
       document.execCommand('copy');
-      toast('API key copied', 'success');
+      toast('Agent key copied', 'success');
     });
   }
 
@@ -6552,7 +6556,7 @@
   function copyApiKey() {
     const el = document.getElementById('tenant-api-key');
     if (!el.value) return;
-    navigator.clipboard.writeText(el.value).then(() => toast('API key copied!', 'success'));
+    navigator.clipboard.writeText(el.value).then(() => toast('Agent key copied', 'success'));
   }
 
   async function submitChangePassword() {
